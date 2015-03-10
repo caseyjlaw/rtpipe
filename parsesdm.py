@@ -4,7 +4,8 @@
 #
 
 import numpy as n
-import casautil, tasklib, sdmreader
+import casautil, tasklib
+import sdmreader.sdmreader as sdmreader
 import os, shutil, subprocess, glob, string
 import xml.etree.ElementTree as et
 
