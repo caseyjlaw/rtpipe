@@ -1,8 +1,0 @@
-Library for real-time fast transient searching of radio interferometer data.
-
-Work in progress...
-
-Requirements:
--- sdmreader (github.com/caseyjlaw/sdmreader)
--- casapy-free CASA (pwkit; github.com/pkgw/pwkit)
--- numpy, scipy, matplotlib, etc.
