@@ -259,6 +259,20 @@ def filter_scans(sdmfile, namefilter='', intentfilter=''):
 """ Misc stuff from Steve. Not yet in sdmreader
 """
 
+def call_qatime(arg, form='', prec=0):
+    """
+    This is a wrapper for qa.time(), which in casa 4.0 returns a list of 
+    strings instead of just a scalar string.  In this case, return the first 
+    value in the list.
+    - Todd Hunter
+    """
+
+    result = qa.time(arg, form=form, prec=prec)
+    if (type(result) == list or type(result)==np.ndarray):
+        return(result[0])
+    else:
+        return(result)
+
 def listscans(dicts):
     myscans = dicts[0]
     mysources = dicts[1]
