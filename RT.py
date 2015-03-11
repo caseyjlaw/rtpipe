@@ -361,6 +361,39 @@ def correct_dmdt(d, dmind, dtind):
     rtlib.dedisperse_resample(datadt, d['freq'], d['inttime'], d['dmarr'][dmind], dt, verbose=0)        # dedisperses data.
 #    rtlib.dedisperse_resample(data[:,:,i0:i1], d['freq'][i0:i1], d['inttime'], d['dmarr'][dmind], dt, verbose=0)        # seems to not dedisperse
 
+def calc_dmgrid(d, maxloss=0.05, dt=3000., mindm=0., maxdm=2000.):
+    """ Function to calculate the DM values for a given maximum sensitivity loss.
+    maxloss is sensitivity loss tolerated by dm bin width. dt is assumed pulse width.
+    This differs from Sarah's function by decimating final dm grid by factor of 2. **Need to check on this**
+    """
+
+    print '**Still undergoing testing...**'
+
+    # parameters
+    tsamp = d['inttime']*1e6  # in microsec
+    k = 8.3
+    freq = d['freq'].mean()  # central (mean) frequency in GHz
+    bw = 1e3*(d['freq'][-1] - d['freq'][0])
+    ch = 1e3*(d['freq'][1] - d['freq'][0])  # channel width in MHz
+
+    # width functions and loss factor
+    dt0 = lambda dm: n.sqrt(dt**2 + tsamp**2 + ((k*dm*ch)/(freq**3))**2)
+    dt1 = lambda dm, ddm: n.sqrt(dt**2 + tsamp**2 + ((k*dm*ch)/(freq**3))**2 + ((k*ddm*bw)/(freq**3.))**2)
+    loss = lambda dm, ddm: 1-n.sqrt(dt0(dm)/dt1(dm,ddm))
+
+    # iterate over dmgrid to find optimal dm values. go higher than maxdm to be sure final list includes full range.
+    dmgrid = n.arange(mindm, maxdm*1.5, 0.05)
+    dmgrid_final = [dmgrid[0]]
+    for i in range(len(dmgrid)):
+        ddm = dmgrid[i] - dmgrid_final[-1]
+        ll = loss(dmgrid[i],ddm)
+        if ll > maxloss:
+            dmgrid_final.append(dmgrid[i])
+
+    dmgrid_final = n.array(dmgrid_final[::2])  # skip every other to get correct maxloss
+    # then trim list down below maxdm
+    return list(dmgrid_final[n.where(dmgrid_final < maxdm)])
+
 def image1(d, i0, i1, u, v, w, dmind, dtind, beamnum):
     """ Parallelizable function for imaging a chunk of data for a single dm.
     Assumes data is dedispersed and resampled, so this just images each integration.
@@ -547,20 +580,21 @@ def image2w(d, i0, i1, u, v, w, dmind, dtind, beamnum, bls, uvkers):
 
     return feat
 
-def numpyview(arr, datatype, shape):
-    """ Takes mp.Array and returns numpy array with given shape.
+def sample_image(d, data, u, v, w, i=-1, verbose=1, imager='xy', wres=100):
+    """ Samples one integration and returns image
+    i is integration to image. Default is mid int.
     """
 
-#    return n.frombuffer(arr.get_obj(), dtype=n.dtype(datatype)).view(n.dtype(datatype)).reshape(shape)  # for shared mp.Array
-    return n.frombuffer(arr, dtype=n.dtype(datatype)).view(n.dtype(datatype)).reshape(shape)   # for shared mps.RawArray
+    if i == -1:
+        i = len(data)/2
 
-def initpool(shared_arr_):
-    global data_resamp
-    data_resamp = shared_arr_ # must be inhereted, not passed as an argument
+    if imager == 'xy':
+        image = rtlib.imgonefullxy(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data[i], d['npixx'], d['npixy'], d['uvres'], verbose=verbose)
+    elif imager == 'w':
+        bls, uvkers = rtlib.genuvkernels(w, wres, d['npix'], d['uvres'], thresh=0.05)
+        image = rtlib.imgonefullw(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data[i], d['npix'], d['uvres'], bls, uvkers, verbose=verbose)
 
-def initpool2(shared_arr_):
-    global data
-    data = shared_arr_ # must be inhereted, not passed as an argument
+    return image
 
 def estimate_noiseperbl(data):
     """ Takes large data array and sigma clips it to find noise per bl for input to detect_bispectra.
@@ -595,22 +629,6 @@ def noisepickle(d, data, u, v, w, chunk=200):
     pickle.dump(results, pkl)
     pkl.close()
 
-def sample_image(d, data, u, v, w, i=-1, verbose=1, imager='xy', wres=100):
-    """ Samples one integration and returns image
-    i is integration to image. Default is mid int.
-    """
-
-    if i == -1:
-        i = len(data)/2
-
-    if imager == 'xy':
-        image = rtlib.imgonefullxy(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data[i], d['npixx'], d['npixy'], d['uvres'], verbose=verbose)
-    elif imager == 'w':
-        bls, uvkers = rtlib.genuvkernels(w, wres, d['npix'], d['uvres'], thresh=0.05)
-        image = rtlib.imgonefullw(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data[i], d['npix'], d['uvres'], bls, uvkers, verbose=verbose)
-
-    return image
-
 def savecands(d, cands):
     """ Save all candidates in pkl file for later aggregation and filtering.
     """
@@ -621,4 +639,19 @@ def savecands(d, cands):
     pickle.dump(d, pkl)
     pickle.dump(cands, pkl)
     pkl.close()
+
+def numpyview(arr, datatype, shape):
+    """ Takes mp.Array and returns numpy array with given shape.
+    """
+
+#    return n.frombuffer(arr.get_obj(), dtype=n.dtype(datatype)).view(n.dtype(datatype)).reshape(shape)  # for shared mp.Array
+    return n.frombuffer(arr, dtype=n.dtype(datatype)).view(n.dtype(datatype)).reshape(shape)   # for shared mps.RawArray
+
+def initpool(shared_arr_):
+    global data_resamp
+    data_resamp = shared_arr_ # must be inhereted, not passed as an argument
+
+def initpool2(shared_arr_):
+    global data
+    data = shared_arr_ # must be inhereted, not passed as an argument
 
