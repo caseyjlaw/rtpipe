@@ -6,15 +6,18 @@ from sdmreader import sdmreader
 class pipe():
     def __init__(self, sdmfile):
         self.sdmfile = sdmfile
-        self.scans, self.sources = sdmreader.read_metadata(sdmfile)
+        self.workdir = string.join(sdmfile.rstrip('/').split('/')[:-1], '/') + '/'
+        if self.workdir == '/':
+            self.workdir = os.getcwd() + '/'
 
+        self.scans, self.sources = sdmreader.read_metadata(sdmfile)
         gainscans = [sc for sc in self.scans.keys() if 'PHASE' in self.scans[sc]['intent']]   # get all cal fields
         bpscans = [sc for sc in self.scans.keys() if 'BANDPASS' in self.scans[sc]['intent']]   # get all cal fields
         self.gainscans = gainscans
         self.bpscans = bpscans
         self.gainstr = string.join([str(ss) for ss in gainscans], ',')
         self.bpstr = string.join([str(ss) for ss in bpscans], ',')
-        self.allstr = string.join([str(ss) for ss in sorted(gainscans+bpscans)], ',')
+        self.allstr = string.join([str(ss) for ss in sorted(list(set(gainscans+bpscans)))], ',')
         
         if len(self.gainstr) or len(self.bpstr):
             print 'Found gaincal scans %s and bpcal scans %s.' % (self.gainstr, self.bpstr)
@@ -26,8 +29,7 @@ class pipe():
         if len(scans):
             scanstr = string.join([str(ss) for ss in sorted(scans)], ',')
         else:
-            scanstr = string.join([str(ss) for ss in sorted(self.gainscans + self.bpscans)], ',')
-#self.gaincalscans + self.bpcalscans)), ',')
+            scanstr = self.allstr
 
         print 'Splitting out all cal scans (%s) with 1s int time' % scanstr
         newname = ps.sdm2ms(self.sdmfile, fileroot, scanstr, inttime='1')   # integrate down to 1s during split
@@ -55,6 +57,8 @@ class pipe():
         g1name = fileroot + '.g1'   # gain cal per scan
         g2name = fileroot + '.g2'   # flux scale applied
 
+        os.chdir(self.workdir)
+
         # set up scans to use
         if gainscans:
             gainstr = string.join([str(ss) for ss in gainscans], ',')
@@ -65,7 +69,7 @@ class pipe():
         else:
             bpstr = self.bpstr
         if gainscans or bpscans:
-            allstr = string.join([str(ss) for ss in sorted(gainscans+bpscans)], ',')
+            allstr = string.join([str(ss) for ss in sorted(list(set(gainscans+bpscans)))], ',')
         else:
             allstr = self.allstr
 
@@ -75,33 +79,24 @@ class pipe():
             fluxmodel = ''
 
         # set up MS file
-        msfilelist = glob.glob(fileroot + '*.ms')
-        if len(msfilelist):
-            print 'Found the following potential calibrator MS data:', msfilelist
-            filenum = int(raw_input('Which one to use? (-1 for none)'))
+        msfile = self.genms(fileroot)
 
-            if filenum in range(len(msfilelist)):
-                msfile = msfilelist[filenum]
-            else:
-#                scans = string.join([str(ss) for ss in sorted(gainscans + bpscans)], ',') # ignore this to generate all-scan ms, but calibrate on subsection
-                msfile = self.genms(fileroot)
+        # flag data via text file
+        flfile = open('flags.txt','w')
+        for flag in flags:
+            flfile.write(flag + '\n')
+        flfile.close()
 
-                # flag data via text file
-                flfile = open('flags.txt','w')
-                for flag in flags:
-                    flfile.write(flag + '\n')
-                flfile.close()
+        print 'Flagging with these commands:'
+        for ff in enumerate(open('flags.txt')): print ff[1].rstrip()
 
-                print 'Flagging with these commands:'
-                for ff in enumerate(open('flags.txt')): print ff[1].rstrip()
+        cfg = tl.FlaglistConfig()  # configure split
+        cfg.vis = msfile
+        cfg.inpfile = "flags.txt"
+        tl.flaglist(cfg)  # run task
 
-                cfg = tl.FlaglistConfig()  # configure split
-                cfg.vis = msfile
-                cfg.inpfile = "flags.txt"
-                tl.flaglist(cfg)  # run task
-
-                # clean up
-                os.remove('flags.txt')
+        # clean up
+        os.remove('flags.txt')
 
         # Calibrate!
         if fluxmodel:
@@ -229,3 +224,5 @@ class pipe():
                 cfg.antenna = antsel
                 cfg.uvrange = uvrange
                 tl.gaincal(cfg)
+
+        return 0

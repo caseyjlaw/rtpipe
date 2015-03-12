@@ -216,8 +216,7 @@ def sdm2ms(sdmfile, msfile, scan, inttime='0'):
     if os.path.exists(msfile2):
         print '%s already set.' % msfile2
     else:
-        # if filtering ants, use tmp file to split. **NOT TESTED YET**
-#        if (antlist != [row.find('name').text for row in anttree.getiterator('row')]) or (inttime != '0s'):
+        print 'No %s found. Creating anew.' % msfile2
         if inttime != '0':
             print 'Filtering by int time.'
             subprocess.call(['asdm2MS', '--ocm co --icm co --lazy --scans', scan, sdmfile, 'tmp_'+msfile2])
