@@ -655,3 +655,13 @@ def initpool2(shared_arr_):
     global data
     data = shared_arr_ # must be inhereted, not passed as an argument
 
+class Params(object):
+    """ I'm not proud of this.
+    """
+    def  __init__(self, paramfile):
+       f = open(paramfile, 'r')
+       for line in f.readlines():
+           line = line.rstrip('\n').split('#')[0]   # trim out comments and trailing cr
+           if '=' in line:   # use valid lines only
+               exec(line)
+               exec('self.'+line.lstrip())
