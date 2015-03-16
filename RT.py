@@ -35,14 +35,14 @@ def pipeline(d, segment, msdata=False):
     # 1) Read data
     ####    ####    ####    ####
     
-    if msdata:   # CASA-based read
+    if d['dataformat'] == 'ms':   # CASA-based read
         segread = pm.readsegment(d, segment)
         nints = len(segread[0])
         data = n.empty( (nints, d['nbl'], d['nchan'], d['npol']), dtype='complex64', order='C')
         data[:] = segread[0]
         (u, v, w) = (segread[1][nints/2], segread[2][nints/2], segread[3][nints/2])  # mid int good enough for segment. could extend this to save per chunk
         del segread
-    else:
+    elif d['dataformat'] == 'sdm':
         t0 = d['segmenttimes'][segment][0]
         t1 = d['segmenttimes'][segment][1]
         readints = n.round(24*3600*(t1 - t0)/d['inttime'], 0).astype(int)/d['read_downsample']
@@ -55,6 +55,8 @@ def pipeline(d, segment, msdata=False):
 
         data[:] = ps.read_bdf_segment(d, segment)
         (u,v,w) = ps.get_uvw_segment(d, segment)
+    else:
+        print 'Data format %s not supported.' % d['dataformat']
 
     ####    ####    ####    ####
     # 2) Prepare data
@@ -219,35 +221,36 @@ def search(d, data, u, v, w):
     print 'Found %d cands in segment %d of %s. ' % (len(cands), d['segment'], d['filename'])
     return cands
 
-def set_pipeline(d, nskip=0, excludeants=[], dmarr=[0], dtarr=[1], uvres=0, npix=0, nsegments=0, nthread=16, nchunk=0, iterating=False, sigma_image1=6, timesub='', read_downsample=1, **kwargs):
-    """ Function takes metadata (from parsems or parseasdm) and search parameters to define pipeline.
-    iterating mode not yet supported.
-    If nsegments=0, then the optimal size will be calculated based on uv extent.
-    nchunk defines how segment is split in time for imaging. Will be limited by available memory.
+def set_pipeline(filename, scan, paramfile='', **kwargs):
+    """ Function defines pipeline state for search. Takes data/scan as input.
+    paramfile is name of file that defines all pipeline parameters (python-like syntax).
+    kwargs used to overload paramfile definitions.
+    Many parameters take 0 as default, which auto-defines ideal parameters. 
+    This definition does not yet consider memory/cpu/time limitations.
+    nsegments defines how to break jobs in time. nchunk defines how each segment is split in time for imaging.
     """
 
-    d['nskip'] = nskip
-    d['excludeants'] = excludeants
-    d['dmarr'] = dmarr
-    d['dtarr'] = dtarr
-    d['nthread'] = nthread
-    d['l0'] = 0.; d['m0'] = 0.
-    d['timesub'] = timesub
-    assert read_downsample > 0
-    d['read_downsample'] = read_downsample
-    d['sigma_image1'] = sigma_image1
-    d['sigma_image2'] = sigma_image1
-    d['flagmode'] = ''
-    d['flagantsol'] = True
-    d['gainfile'] = ''
-    d['bpfile'] = ''
-    d['noisefile'] = ''
-    d['candsfile'] = ''
-    d['searchtype'] = 'image1'
-    # add in provided kwargs
+    # define metadata (state) dict. chans/spw is special because it goes in to get_metadata call
+    if 'chans' in kwargs.keys(): 
+        chans=kwargs['chans']
+    else:
+        chans = []
+    if 'spw' in kwargs.keys(): 
+        spw=kwargs['spw']
+    else:
+        spw = []
+    try:
+        d = ps.get_metadata(filename, scan, chans=chans, spw=spw, params=paramfile)   # can take file name or Params instance
+        d['dataformat'] = 'sdm'
+    except:
+        d = pm.get_metadata(filename, scan, chans=chans, spw=spw, params=paramfile)
+        d['dataformat'] = 'ms'
+
+    # overload with provided kwargs
     for key in kwargs.keys():
         print 'Setting %s to %s' % (key, kwargs[key])
         d[key] = kwargs[key]
+
     # supported features: snr1, immax1, l1, m1
     if d['searchtype'] == 'image1':
         d['features'] = ['snr1', 'immax1', 'l1', 'm1']   # features returned by image1
@@ -264,16 +267,11 @@ def set_pipeline(d, nskip=0, excludeants=[], dmarr=[0], dtarr=[1], uvres=0, npix
         d['nbl'] = len(d['blarr'])
 
     # set imaging parameters to use
-    if uvres == 0:
+    if d['uvres'] == 0:
         d['uvres'] = d['uvres_full']
-    else:
-        d['uvres'] = uvres
-    if npix == 0:
+    if d['npix'] == 0:
         d['npixx'] = d['npixx_full']
         d['npixy'] = d['npixy_full']
-    else:
-        d['npixx'] = npix
-        d['npixy'] = npix
     d['npix'] = max(d['npixx'], d['npixy'])
 
     # define times for data to read
@@ -281,23 +279,18 @@ def set_pipeline(d, nskip=0, excludeants=[], dmarr=[0], dtarr=[1], uvres=0, npix
     d['datadelay'] = n.max([rtlib.calc_delay(d['freq'], d['inttime'],dm).max() for dm in d['dmarr']])
     d['nints'] = d['nints'] - d['nskip']
 
-    if iterating:  # not supported yet
-        if nsegments > 0:
-            d['iterint'] = d['nints']/nsegments   # will likely need some logic here governed by memory/cpu resources
-    else:
-        if nsegments == 0:
-            nsegments = calc_nsegments(d)
-        d['nsegments'] = nsegments
+    if d['nsegments'] == 0:
+        d['nsegments'] = calc_nsegments(d)
 
-        stopdts = n.linspace(d['nskip']*d['inttime']+d['t_overlap'], (d['nints'])*d['inttime'], d['nsegments']+1)[1:]
-        startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
-        segmenttimes = []
-        for (startdt, stopdt) in zip(startdts, stopdts):
-            starttime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['starttime_mjd']+startdt/(24.*60*60),'d'),form=['ymd'], prec=9)[0], 's'))[0]/(24*3600)
-            stoptime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['starttime_mjd']+stopdt/(24.*60*60), 'd'), form=['ymd'], prec=9)[0], 's'))[0]/(24*3600)
-            segmenttimes.append((starttime, stoptime))
-        d['segmenttimes'] = n.array(segmenttimes)
-        d['t_segment'] = 24*3600*(d['segmenttimes'][0,1]-d['segmenttimes'][0,0])
+    stopdts = n.linspace(d['nskip']*d['inttime']+d['t_overlap'], (d['nints'])*d['inttime'], d['nsegments']+1)[1:]
+    startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
+    segmenttimes = []
+    for (startdt, stopdt) in zip(startdts, stopdts):
+        starttime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['starttime_mjd']+startdt/(24.*60*60),'d'),form=['ymd'], prec=9)[0], 's'))[0]/(24*3600)
+        stoptime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['starttime_mjd']+stopdt/(24.*60*60), 'd'), form=['ymd'], prec=9)[0], 's'))[0]/(24*3600)
+        segmenttimes.append((starttime, stoptime))
+    d['segmenttimes'] = n.array(segmenttimes)
+    d['t_segment'] = 24*3600*(d['segmenttimes'][0,1]-d['segmenttimes'][0,0])
 
     # check on cal files, if defined
     if d['gainfile']:
@@ -308,10 +301,8 @@ def set_pipeline(d, nskip=0, excludeants=[], dmarr=[0], dtarr=[1], uvres=0, npix
             print 'Can\'t find bpfile %s' % d['bpfile']
 
     # farm out work in pieces to use all threads well
-    if nchunk == 0:
+    if d['nchunk'] == 0:
         d['nchunk'] = d['nthread']
-    else:
-        d['nchunk'] = nchunk
 
     # scaling of number of integrations beyond dt=1
     dtfactor = n.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
@@ -654,14 +645,3 @@ def initpool(shared_arr_):
 def initpool2(shared_arr_):
     global data
     data = shared_arr_ # must be inhereted, not passed as an argument
-
-class Params(object):
-    """ I'm not proud of this.
-    """
-    def  __init__(self, paramfile):
-       f = open(paramfile, 'r')
-       for line in f.readlines():
-           line = line.rstrip('\n').split('#')[0]   # trim out comments and trailing cr
-           if '=' in line:   # use valid lines only
-               exec(line)
-               exec('self.'+line.lstrip())

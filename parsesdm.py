@@ -4,21 +4,35 @@
 #
 
 import numpy as n
-import casautil, tasklib
-import sdmreader
 import os, shutil, subprocess, glob, string
 import xml.etree.ElementTree as et
+import casautil, tasklib
+import sdmreader
+import rtpipe.parseparams as pp
 
 qa = casautil.tools.quanta()
 me = casautil.tools.measures()
 
-def get_metadata(filename, scan, spw=[], chans=[]):
+def get_metadata(filename, scan, spw=[], chans=[], params=None):
     """ Parses sdm file to define metadata for observation, including scan info, image grid parameters, pipeline memory usage, etc.
     Mirrors parsems.get_metadata(), though not all metadata set here yet.
+    If params defined, it will use it (filename or RT.Params instance ok).
+    spw/chans argument here will overload params file definition.
     """
 
     # create primary state dictionary
     d = {}
+
+    # define parameters of pipeline via Params object
+    if type(params) == str:
+        params = pp.Params(params)
+    for k in params.defined:   # fill in default params
+        d[k] = params[k]
+    if len(chans):
+        d['chans'] = chans
+    if len(spw):
+        d['spw'] = spw
+
     ss = filename.rstrip('/').split('/')
     if len(ss) > 1:
         d['filename'] = ss[-1]
@@ -112,12 +126,12 @@ def get_metadata(filename, scan, spw=[], chans=[]):
     # define pols
     root = et.parse(d['filename'] + '/Polarization.xml').getroot()
     pols = root.getchildren()[2].find('corrType').text.split(' ')
-    pp = []
+    newpols = []
     for pol in pols:
         if pol in ['XX', 'YY', 'XY', 'YX', 'RR', 'LL', 'RL', 'LR']:
-            pp.append(pol)
+            newpols.append(pol)
     d['npol'] = int(root.getchildren()[2].find('numCorr').text)
-    d['pols'] = pp
+    d['pols'] = newpols
 
     # summarize metadata
     print 'Metadata summary:'
