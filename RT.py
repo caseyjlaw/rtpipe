@@ -282,10 +282,14 @@ def set_pipeline(filename, scan, paramfile='', **kwargs):
     d['nints'] = d['nints'] - d['nskip']
 
     if d['nsegments'] == 0:
-        d['nsegments'] = calc_nsegments(d)
+        fringetime = calc_fringetime(d)
+        stopdts = n.arange(d['nskip']*d['inttime']+d['t_overlap'], d['nints']*d['inttime'], fringetime-d['t_overlap'])[1:]
+        startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
+        d['nsegments'] = len(startdts)
+    else:
+        stopdts = n.linspace(d['nskip']*d['inttime']+d['t_overlap'], d['nints']*d['inttime'], d['nsegments']+1)[1:]
+        startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
 
-    stopdts = n.linspace(d['nskip']*d['inttime']+d['t_overlap'], (d['nints'])*d['inttime'], d['nsegments']+1)[1:]
-    startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
     segmenttimes = []
     for (startdt, stopdt) in zip(startdts, stopdts):
         starttime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['starttime_mjd']+startdt/(24.*60*60),'d'),form=['ymd'], prec=9)[0], 's'))[0]/(24*3600)
@@ -334,7 +338,7 @@ def set_pipeline(filename, scan, paramfile='', **kwargs):
 
     return d
 
-def calc_nsegments(d):
+def calc_fringetime(d):
     """ Estimate largest time span of a "segment".
     A segment is the maximal time span that can be have a single bg fringe subtracted and uv grid definition.
     Max fringe window estimated for 5% amp loss at first null averaged over all baselines. Assumes dec=+90, which is conservative.
@@ -342,9 +346,8 @@ def calc_nsegments(d):
     """
 
     maxbl = d['uvres']*d['npix']/2    # fringe time for imaged data only
-    fringe_time = 0.5*(24*3600)/(2*n.pi*maxbl/25.)   # max fringe window in seconds
-    nseg = max(int(d['nints']*d['inttime']/fringe_time), 1)   # minimum of 1 segment
-    return nseg
+    fringetime = 0.5*(24*3600)/(2*n.pi*maxbl/25.)   # max fringe window in seconds
+    return fringetime
 
 def correct_dmdt(d, dmind, dtind):
     """ Dedisperses and resamples data *in place*.
