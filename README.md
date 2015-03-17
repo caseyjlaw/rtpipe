@@ -3,7 +3,7 @@ rtpipe
 
 Library for real-time fast transient searching of radio interferometer data.
 
-Work in progress...
+Work in progress....
 
 Requirements:
 -----
