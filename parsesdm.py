@@ -5,15 +5,14 @@
 
 import numpy as n
 import os, shutil, subprocess, glob, string
-import xml.etree.ElementTree as et
 import casautil, tasklib
-import sdmreader
+import sdmreader, sdmpy
 import rtpipe.parseparams as pp
 
 qa = casautil.tools.quanta()
 me = casautil.tools.measures()
 
-def get_metadata(filename, scan, spw=[], chans=[], params=None):
+def get_metadata(filename, scan, spw=[], chans=[], params=''):
     """ Parses sdm file to define metadata for observation, including scan info, image grid parameters, pipeline memory usage, etc.
     Mirrors parsems.get_metadata(), though not all metadata set here yet.
     If params defined, it will use it (filename or RT.Params instance ok).
@@ -24,8 +23,7 @@ def get_metadata(filename, scan, spw=[], chans=[], params=None):
     d = {}
 
     # define parameters of pipeline via Params object
-    if type(params) == str:
-        params = pp.Params(params)
+    params = pp.Params(params)
     for k in params.defined:   # fill in default params
         d[k] = params[k]
     if len(chans):
@@ -33,35 +31,28 @@ def get_metadata(filename, scan, spw=[], chans=[], params=None):
     if len(spw):
         d['spw'] = spw
 
-    ss = filename.rstrip('/').split('/')
-    if len(ss) > 1:
-        d['filename'] = ss[-1]
-        d['workdir'] = string.join(ss[:-1], '/') + '/'
+    # get workdir set
+    d['workdir'], d['filename'] = os.path.split(filename.rstrip('/'))
+    if len(d['workdir']):    # workdir may be cwd
         os.chdir(d['workdir'])
-    else:
-        d['filename'] = filename
-        d['workdir'] = os.getcwd() + '/'
 
     # define scan list
     scans, sources = sdmreader.read_metadata(d['filename'])
     d['scanlist'] = sorted(scans.keys())
 
     # define spectral info
-    root = et.parse(d['filename'] + '/SpectralWindow.xml').getroot()
-    reffreq = [float(row.find('chanFreqStart').text) for row in root.iter('row')]
-    numchan = [int(row.find('numChan').text) for row in root.iter('row')]
-    chansize = [float(row.find('chanFreqStep').text) for row in root.iter('row')]
-    spectralwindow = n.array([int(row.find('spectralWindowId').text.split('_')[1]) for row in root.iter('row')])
-
-    d['spw_orig'] = spectralwindow
-    d['spw_reffreq'] = reffreq
-    d['spw_nchan'] = numchan
+    sdm = sdmpy.SDM(d['filename'])
+    d['spw_orig'] = [int(row.spectralWindowId.split('_')[1]) for row in sdm['SpectralWindow']]
+    d['spw_reffreq'] = [float(row.chanFreqStart) for row in sdm['SpectralWindow']]
+    d['spw_nchan'] = [int(row.numChan) for row in sdm['SpectralWindow']]
+    d['spw_chansize'] = [float(row.chanFreqStep) for row in sdm['SpectralWindow']]
     if not len(spw):
         spw = range(len(d['spw_orig']))
-    d['spw'] = n.sort(spectralwindow)[spw]
+    d['spw'] = n.sort(d['spw_orig'])[spw]
 
     spwch = []
-    for freq in sorted(reffreq):
+    reffreq = d['spw_reffreq']; spectralwindow = d['spw_orig']; numchan = d['spw_nchan']; chansize = d['spw_chansize']
+    for freq in sorted(d['spw_reffreq']):
         ii = reffreq.index(freq)
         if spectralwindow[ii] in d['spw']:
             spwch.extend(list(n.linspace(reffreq[ii], reffreq[ii]+(numchan[ii]-1)*chansize[ii], numchan[ii])))  # spacing of channel *centers*
@@ -77,10 +68,7 @@ def get_metadata(filename, scan, spw=[], chans=[], params=None):
     d['nchan'] = len(d['freq'])
 
     # define image params
-    # originally looped over all scans, but now only does requested scan.
     d['urange'] = {}; d['vrange'] = {}
-#    for ss in d['scanlist']:
-#        d['scan'] = ss
     d['scan'] = scan
     (u, v, w) = sdmreader.calc_uvw(d['filename'], d['scan'])  # default uses time at start
     u = u * d['freq_orig'][0] * (1e9/3e8) * (-1)     
@@ -103,8 +91,7 @@ def get_metadata(filename, scan, spw=[], chans=[], params=None):
     d['npixy_full'] = (2**p2y * 3**p3y)[0]
 
     # define ants/bls
-    root = et.parse(d['filename'] + '/Antenna.xml').getroot()
-    d['ants'] = [int(row.find('name').text.lstrip('ea')) for row in root.iter("row")]
+    d['ants'] = [int(ant.name.lstrip('ea')) for ant in sdm['Antenna']]
     d['nants'] = len(d['ants'])
 #    d['blarr'] = n.array([[d['ants'][i],d['ants'][j]] for i in range(d['nants'])  for j in range(i+1, d['nants'])])
     d['blarr'] = n.array([[d['ants'][i],d['ants'][j]] for j in range(d['nants']) for i in range(0,j)])
@@ -113,25 +100,21 @@ def get_metadata(filename, scan, spw=[], chans=[], params=None):
     # define times
     d['starttime_mjd'] = scans[d['scan']]['startmjd']
     # assume inttime same for all scans
-    root = et.parse(d['filename'] + '/Main.xml').getroot()
-    for row in root.iter('row'):
-        interval = int(row.find('interval').text)
-        nints = int(row.find('numIntegration').text)
+    sdm['Main']
+
+    for scan in sdm['Main']:
+        interval = int(scan.interval)
+        nints = int(scan.numIntegration)
         inttime = 1e-9*interval/nints
-        scannum = int(row.find('scanNumber').text)
+        scannum = int(scan.scanNumber)
         if scannum == d['scan']:
             d['inttime'] = inttime
             d['nints'] = nints
 
     # define pols
-    root = et.parse(d['filename'] + '/Polarization.xml').getroot()
-    pols = root.getchildren()[2].find('corrType').text.split(' ')
-    newpols = []
-    for pol in pols:
-        if pol in ['XX', 'YY', 'XY', 'YX', 'RR', 'LL', 'RL', 'LR']:
-            newpols.append(pol)
-    d['npol'] = int(root.getchildren()[2].find('numCorr').text)
-    d['pols'] = newpols
+    pols = [pol.corrType for pol in sdm['Polarization'] if pol in ['XX', 'YY', 'XY', 'YX', 'RR', 'LL', 'RL', 'LR']]
+    d['npol'] = int(pol.numCorr)
+    d['pols'] = pols
 
     # summarize metadata
     print 'Metadata summary:'
@@ -255,17 +238,15 @@ def filter_scans(sdmfile, namefilter='', intentfilter=''):
 
     goodscans = {}
     # find scans
-    scantree = et.parse(sdmfile + '/Scan.xml')
-    scans = [ (int(row.find('scanNumber').text), row.find('sourceName').text, row.find('scanIntent').text) for row in scantree.getiterator('row')]
+    sdm = sdmpy.SDM(sdmfile)
+    scans = [ (int(scan.scanNumber), str(scan.sourceName), str(scan.scanIntent)) for scan in sdm['Scan'] ]
     # set total number of integrations
-    root = et.parse(sdmfile + '/Main.xml').getroot()
-    scanint = [int(row.find('numIntegration').text) for row in root.iter('row')]
-    bdfnum = [int(rr.attrib['entityId'].split('/')[-1]) for rr in root.iter('EntityRef')]
+    scanint = [int(scan.numIntegration) for scan in sdm['Main']]
+    bdfnum = [int(scan.dataUID).split('/')[-1] for scan in sdm['Main']]
     for i in range(len(scans)):
         if intentfilter in scans[i][2]:
             if namefilter in scans[i][1]:
                 goodscans[scans[i][0]] = (scans[i][1], scanint[i], bdfnum[i])
-#    goodscans = [(int(num), name, nints, bdfnum) for (num, name, intent, nints, bdfnum) in scans2 if intentfilter in intent if namefilter in name]
     print 'Found a total of %d scans and %d with name=%s and intent=%s.' % (len(scans), len(goodscans), namefilter, intentfilter)
     return goodscans
 

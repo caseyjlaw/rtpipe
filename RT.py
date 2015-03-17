@@ -330,6 +330,8 @@ def set_pipeline(filename, scan, paramfile='', **kwargs):
     print '\t Imaging in %d chunk%s using max of %d GB/segment' % (d['nchunk'], "s"[not d['nsegments']-1:], 8*(d['t_segment']/(d['inttime']*d['read_downsample']) * d['npixx'] * d['npixy'])/1024**3)
     print '\t Grand total memory usage: %d GB/segment' % ( (vismem0 * dtfactor) + 8*(d['t_segment']/(d['inttime']*d['read_downsample']) * d['npixx'] * d['npixy'])/1024**3)
 
+    return d
+
 def calc_nsegments(d):
     """ Estimate largest time span of a "segment".
     A segment is the maximal time span that can be have a single bg fringe subtracted and uv grid definition.
