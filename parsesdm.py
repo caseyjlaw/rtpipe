@@ -31,10 +31,8 @@ def get_metadata(filename, scan, spw=[], chans=[], params=''):
     if len(spw):
         d['spw'] = spw
 
-    # get workdir set
-    d['workdir'], d['filename'] = os.path.split(filename.rstrip('/'))
-    if len(d['workdir']):    # workdir may be cwd
-        os.chdir(d['workdir'])
+    # set workdir
+    d['workdir'], d['filename'] = os.path.split(os.path.abspath(filename))
 
     # define scan list
     scans, sources = sdmreader.read_metadata(d['filename'])
@@ -132,8 +130,6 @@ def read_bdf_segment(d, segment=-1):
     d defines pipeline state. assumes segmenttimes defined by RT.set_pipeline.
     """
 
-    sdmfile = d['workdir'] + d['filename']
-
     # define integration range
     if segment != -1:
         assert d.has_key('segmenttimes')
@@ -149,7 +145,7 @@ def read_bdf_segment(d, segment=-1):
         readints = 0
 
     # read (all) data
-    data = sdmreader.read_bdf(sdmfile, d['scan'], nskip=nskip, readints=readints).astype('complex64')
+    data = sdmreader.read_bdf(d['filename'], d['scan'], nskip=nskip, readints=readints).astype('complex64')
 
     # test that spw are in freq sorted order
     dfreq = n.array([d['spw_reffreq'][i+1] - d['spw_reffreq'][i] for i in range(len(d['spw_reffreq'])-1)])
@@ -178,8 +174,6 @@ def get_uvw_segment(d, segment=-1):
     d defines pipeline state. assumes segmenttimes defined by RT.set_pipeline.
     """
 
-    sdmfile = d['workdir'] + d['filename']
-
     # define times to read
     if segment != -1:
         assert d.has_key('segmenttimes')
@@ -192,7 +186,7 @@ def get_uvw_segment(d, segment=-1):
     else:
         datetime = 0
 
-    (u, v, w) = sdmreader.calc_uvw(sdmfile, d['scan'], datetime=datetime)
+    (u, v, w) = sdmreader.calc_uvw(d['filename'], d['scan'], datetime=datetime)
 
     # cast to units of lambda at first channel. -1 keeps consistent with ms reading convention
     u = u * d['freq_orig'][0] * (1e9/3e8) * (-1)     

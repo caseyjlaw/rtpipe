@@ -34,6 +34,8 @@ def pipeline(d, segment, msdata=False):
     ####    ####    ####    ####
     # 1) Read data
     ####    ####    ####    ####
+
+    os.chdir(d['workdir'])
     
     if d['dataformat'] == 'ms':   # CASA-based read
         segread = pm.readsegment(d, segment)
