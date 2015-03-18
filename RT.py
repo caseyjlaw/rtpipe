@@ -632,7 +632,7 @@ def noisepickle(d, data, u, v, w, chunk=200):
     chunk defines window for measurement. at least one measurement always made.
     """
 
-    noisefile = d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+    noisefile = 'noise_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
 
     nints = len(data)
     chunk = min(chunk, nints-1)  # ensure at least one measurement
@@ -651,7 +651,7 @@ def savecands(d, cands):
     """ Save all candidates in pkl file for later aggregation and filtering.
     """
 
-    candsfile = d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+    candsfile = 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
 
     pkl = open(candsfile, 'w')
     pickle.dump(d, pkl)

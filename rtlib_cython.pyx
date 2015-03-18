@@ -60,7 +60,7 @@ cpdef beamonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndi
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cpdef imgonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=2] v, n.ndarray[DTYPE_t, ndim=3] data, unsigned int npixx, unsigned int npixy, unsigned int uvres, verbose=1, nthreads=8):
+cpdef imgonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=2] v, n.ndarray[DTYPE_t, ndim=3] data, unsigned int npixx, unsigned int npixy, unsigned int uvres, verbose=1):
     # Same as imgallfullxy, but one flux scaled image
     # Defines uvgrid filter before loop
     # flips xy gridding!
@@ -83,7 +83,7 @@ cpdef imgonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim
     cdef n.ndarray[CTYPE_t, ndim=2] uu = n.round(u/uvres).astype(n.int)
     cdef n.ndarray[CTYPE_t, ndim=2] vv = n.round(v/uvres).astype(n.int)
 
-    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True, threads=nthreads)
+    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)
     
     ok = n.logical_and(n.abs(uu) < npixx/2, n.abs(vv) < npixy/2)
     uu = n.mod(uu, npixx)
@@ -124,8 +124,6 @@ cpdef imgallfullfilterxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t
     # flips xy gridding!
 
     # initial definitions
-    cdef unsigned int ndimx = n.round(1.*npixx).astype(n.int)
-    cdef unsigned int ndimy = n.round(1.*npixy).astype(n.int)
     shape = n.shape(data)
     cdef unsigned int len0 = shape[0]
     cdef unsigned int len1 = shape[1]
@@ -137,8 +135,8 @@ cpdef imgallfullfilterxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t
     cdef unsigned int p
     cdef unsigned int cellu
     cdef unsigned int cellv
-    cdef n.ndarray[DTYPE_t, ndim=3] grid = n.zeros((len0,ndimx,ndimy), dtype='complex64')
-    cdef arr = pyfftw.n_byte_align_empty((ndimx,ndimy), 16, dtype='complex64')
+    cdef n.ndarray[DTYPE_t, ndim=3] grid = n.zeros((len0,npixx,npixy), dtype='complex64')
+    cdef arr = pyfftw.n_byte_align_empty((npixx,npixy), 16, dtype='complex64')
     cdef float snr
 
     # put uv data on grid
@@ -147,9 +145,9 @@ cpdef imgallfullfilterxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t
 
     ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)
     
-    ok = n.logical_and(n.abs(uu) < ndimx/2, n.abs(vv) < ndimy/2)
-    uu = n.mod(uu, ndimx)
-    vv = n.mod(vv, ndimy)
+    ok = n.logical_and(n.abs(uu) < npixx/2, n.abs(vv) < npixy/2)
+    uu = n.mod(uu, npixx)
+    vv = n.mod(vv, npixy)
 
     # add uv data to grid
     for i in xrange(len1):
@@ -177,7 +175,7 @@ cpdef imgallfullfilterxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t
         if ( (abs(snr) > thresh) & n.any(data[t,:,len2/3:,:])):
             candints.append(t)
             candsnrs.append(snr)
-            candims.append(recenter(im, (ndimx/2,ndimy/2)))
+            candims.append(recenter(im, (npixx/2,npixy/2)))
 
 #    print 'Detected %d candidates with at least third the band.' % len(candints)
 #    print 'Pixel sizes (%.1f\", %.1f\"), Field size %.1f\"' % (3600*n.degrees(2./(npixx*res)), 3600*n.degrees(2./(npixy*res)), 3600*n.degrees(1./res))
@@ -192,8 +190,6 @@ cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float
     # counts nonzero data and properly normalizes fft to be on flux scale
 
     # initial definitions
-    cdef unsigned int ndimx = n.round(1.*npixx).astype(n.int)
-    cdef unsigned int ndimy = n.round(1.*npixy).astype(n.int)
     shape = n.shape(data)
     cdef unsigned int len0 = shape[0]
     cdef unsigned int len1 = shape[1]
@@ -206,8 +202,8 @@ cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float
     cdef unsigned int cellu
     cdef unsigned int cellv
     cdef unsigned int nonzeros = 0
-    cdef n.ndarray[DTYPE_t, ndim=3] grid = n.zeros((len0,ndimx,ndimy), dtype='complex64')
-    cdef arr = pyfftw.n_byte_align_empty((ndimx,ndimy), 16, dtype='complex64')
+    cdef n.ndarray[DTYPE_t, ndim=3] grid = n.zeros((len0,npixx,npixy), dtype='complex64')
+    cdef arr = pyfftw.n_byte_align_empty((npixx,npixy), 16, dtype='complex64')
     cdef float snr
 
     # put uv data on grid
@@ -216,9 +212,9 @@ cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float
 
     ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)
     
-    ok = n.logical_and(n.abs(uu) < ndimx/2, n.abs(vv) < ndimy/2)
-    uu = n.mod(uu, ndimx)
-    vv = n.mod(vv, ndimy)
+    ok = n.logical_and(n.abs(uu) < npixx/2, n.abs(vv) < npixy/2)
+    uu = n.mod(uu, npixx)
+    vv = n.mod(vv, npixy)
 
     # add uv data to grid
     for i in xrange(len1):
@@ -234,7 +230,7 @@ cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float
     candints = []; candims = []; candsnrs = []
     for t in xrange(len0):
         arr[:] = grid[t]
-        im = ifft(arr).real*int(ndimx*ndimy)
+        im = ifft(arr).real*int(npixx*npixy)
 
         # find most extreme pixel
         snrmax = im.max()/im.std()
@@ -256,13 +252,13 @@ cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float
 
             candints.append(t)
             candsnrs.append(snr)
-            candims.append(recenter(im/float(nonzeros), (ndimx/2,ndimy/2)))
+            candims.append(recenter(im/float(nonzeros), (npixx/2,npixy/2)))
 
     return candims,candsnrs,candints
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cpdef imgonefullw(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=2] v, n.ndarray[DTYPE_t, ndim=3] data, unsigned int npix, unsigned int uvres, blsets, uvkers, verbose=1, nthreads=16):
+cpdef imgonefullw(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=2] v, n.ndarray[DTYPE_t, ndim=3] data, unsigned int npix, unsigned int uvres, blsets, uvkers, verbose=1):
     # Same as imgallfullxy, but includes w term
 
     # initial definitions
