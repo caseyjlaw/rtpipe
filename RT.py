@@ -14,7 +14,7 @@ qa = casautil.tools.quanta()
 global data
 global data_resamp
 
-def pipeline(d, segment, msdata=False):
+def pipeline(d, segment):
     """ Transient search pipeline running on single node.
     Processes a single segment of data (where a single bgsub, (u,v,w), etc. can be used).
     Searches completely, independently, and saves candidates.
@@ -274,7 +274,10 @@ def set_pipeline(filename, scan, paramfile='', **kwargs):
     if d['npix'] == 0:
         d['npixx'] = d['npixx_full']
         d['npixy'] = d['npixy_full']
-    d['npix'] = max(d['npixx'], d['npixy'])
+        d['npix'] = max(d['npixx'], d['npixy'])
+    else:
+        d['npixx'] = d['npix']
+        d['npixy'] = d['npix']
 
     # define times for data to read
     d['t_overlap'] = rtlib.calc_delay(d['freq'], d['inttime'], max(d['dmarr'])).max()*d['inttime']   # time of overlap for total dm coverage at segment boundaries
