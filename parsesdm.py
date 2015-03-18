@@ -116,6 +116,7 @@ def get_metadata(filename, scan, spw=[], chans=[], params=''):
 
     # summarize metadata
     print 'Metadata summary:'
+    print '\t Data at %s in workdir %s' % (d['filename'], d['workdir'])
     print '\t Using scan %d' % (int(d['scan']))
     print '\t nants, nbl: %d, %d' % (d['nants'], d['nbl'])
     print '\t Freq range (%.3f -- %.3f). %d spw with %d chans.' % (d['freq'].min(), d['freq'].max(), d['nspw'], d['nchan'])

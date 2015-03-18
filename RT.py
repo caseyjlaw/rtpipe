@@ -7,7 +7,7 @@ import multiprocessing.sharedctypes as mps
 from contextlib import closing
 import numpy as n
 from scipy.special import erf
-import casautil, os, pickle
+import casautil, os, pickle, glob
 
 qa = casautil.tools.quanta()
 
@@ -65,12 +65,14 @@ def pipeline(d, segment):
     ####    ####    ####    ####
 
     # calibrate data
-    if d['gainfile']:
-        print 'Applying CASA calibration...'
+    try:
         sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
         sols.parsebp(d['bpfile'])
         sols.setselection(d['segmenttimes'][segment].mean(), d['freq']*1e9)
+        print 'Applying CASA calibration...'
         sols.apply(data, d['blarr'])
+    except IOError:
+        print 'Calibration file not found. Proceeding with no calibration applied.'
 
     # flag data
     dataflagall(data, d)
@@ -82,7 +84,7 @@ def pipeline(d, segment):
         print 'No mean time subtraction.'
 #        data = data.mean(axis=0)[None,:,:,:]  # test
 
-    if d['noisefile']:
+    if d['savenoise']:
         noisepickle(d, data, u, v, w)      # save noise pickle
 
     ####    ####    ####    ####
@@ -94,7 +96,7 @@ def pipeline(d, segment):
     ####    ####    ####    ####
     # 4) Save candidate info
     ####    ####    ####    ####
-    if d['candsfile']:
+    if d['savecands']:
         print 'Saving %d candidates...' % (len(cands))
         savecands(d, cands)
 
@@ -223,8 +225,9 @@ def search(d, data, u, v, w):
     print 'Found %d cands in segment %d of %s. ' % (len(cands), d['segment'], d['filename'])
     return cands
 
-def set_pipeline(filename, scan, paramfile='', **kwargs):
+def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     """ Function defines pipeline state for search. Takes data/scan as input.
+    fileroot is base name for associated products (cal files, noise, cands). if blank, it is set to filename.
     paramfile is name of file that defines all pipeline parameters (python-like syntax).
     kwargs used to overload paramfile definitions.
     Many parameters take 0 as default, which auto-defines ideal parameters. 
@@ -241,10 +244,11 @@ def set_pipeline(filename, scan, paramfile='', **kwargs):
         spw=kwargs['spw']
     else:
         spw = []
-    try:
+    # then get all metadata
+    if os.path.exists(os.path.join(filename, 'Antenna.xml')):
         d = ps.get_metadata(filename, scan, chans=chans, spw=spw, params=paramfile)   # can take file name or Params instance
         d['dataformat'] = 'sdm'
-    except:
+    else:
         d = pm.get_metadata(filename, scan, chans=chans, spw=spw, params=paramfile)
         d['dataformat'] = 'ms'
 
@@ -252,6 +256,26 @@ def set_pipeline(filename, scan, paramfile='', **kwargs):
     for key in kwargs.keys():
         print 'Setting %s to %s' % (key, kwargs[key])
         d[key] = kwargs[key]
+
+    # define rootname for in/out cal/products
+    if fileroot:
+        d['fileroot'] = fileroot
+    else:
+        d['fileroot'] = os.path.split(filename)[-1]
+
+    # autodetect calibration products
+    if not d['gainfile']:
+        filelist = glob.glob(d['fileroot'] + '.g?')
+        if len(filelist):
+            filelist.sort()
+            d['gainfile'] = filelist[-1]
+            print 'Autodetecting cal files... gainfile set to %s.' % d['gainfile']
+    if not d['bpfile']:
+        filelist = glob.glob(d['fileroot'] + '.b?')
+        if len(filelist):
+            filelist.sort()
+            d['bpfile'] = filelist[-1]
+            print 'Autodetecting cal files... bpfile set to %s.' % d['bpfile']
 
     # supported features: snr1, immax1, l1, m1
     if d['searchtype'] == 'image1':
@@ -301,14 +325,6 @@ def set_pipeline(filename, scan, paramfile='', **kwargs):
     d['segmenttimes'] = n.array(segmenttimes)
     d['t_segment'] = 24*3600*(d['segmenttimes'][0,1]-d['segmenttimes'][0,0])
 
-    # check on cal files, if defined
-    if d['gainfile']:
-        if not os.path.exists(d['gainfile']):
-            print 'Can\'t find gainfile %s' % d['gainfile']
-    if d['bpfile']:
-        if not os.path.exists(d['bpfile']):
-            print 'Can\'t find bpfile %s' % d['bpfile']
-
     # farm out work in pieces to use all threads well
     if d['nchunk'] == 0:
         d['nchunk'] = d['nthread']
@@ -322,6 +338,7 @@ def set_pipeline(filename, scan, paramfile='', **kwargs):
     nfalse = int(qfrac*ntrials)
 
     print 'Pipeline summary:'
+    print '\t Products saved with %s. Calibration files set to (%s, %s)' % (d['fileroot'], d['gainfile'], d['bpfile'])
     print '\t Using %d segment%s of %d ints (%.1f s) with overlap of %.1f s' % (d['nsegments'], "s"[not d['nsegments']-1:], d['t_segment']/(d['inttime']*d['read_downsample']), d['t_segment'], d['t_overlap'])
     if d['t_overlap'] > d['t_segment']/3.:
         print '\t\t **Inefficient search: Max DM sweep (%.1f s) close to segment size (%.1f s)**' % (d['t_overlap'], d['t_segment'])
@@ -615,7 +632,7 @@ def noisepickle(d, data, u, v, w, chunk=200):
     chunk defines window for measurement. at least one measurement always made.
     """
 
-    noisefile = d['noisefile'].rstrip('.pkl') + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+    noisefile = d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
 
     nints = len(data)
     chunk = min(chunk, nints-1)  # ensure at least one measurement
@@ -634,7 +651,7 @@ def savecands(d, cands):
     """ Save all candidates in pkl file for later aggregation and filtering.
     """
 
-    candsfile = d['candsfile'].rstrip('.pkl') + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+    candsfile = d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
 
     pkl = open(candsfile, 'w')
     pickle.dump(d, pkl)

@@ -14,9 +14,13 @@ class casa_sol():
     def __init__(self, gainfile, flagants=True):
         """ Initialize with a table of CASA gain solutions. Can later add BP.
         """
-
-        self.parsegain(gainfile)
-        self.flagants = flagants
+        
+        if os.path.exists(gainfile):
+            self.parsegain(gainfile)
+            self.flagants = flagants
+        else:
+            print 'Gainfile not found.'
+            raise IOError
 
     def parsegain(self, gainfile):
         """Takes .g1 CASA cal table and places values in numpy arrays.

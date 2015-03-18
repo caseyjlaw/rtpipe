@@ -21,8 +21,8 @@ class Params(object):
         self.l0 = 0.; self.m0 = 0.
         self.uvres = 0; self.npix = 0
         self.flagmode = ''; self.flagantsol = True
-        self.gainfile = ''; self.bpfile = ''
-        self.noisefile = ''; self.candsfile = ''
+        self.gainfile = ''; self.bpfile = ''; self.fileroot = ''
+        self.savenoise = False; self.savecands = False
                            
         # overload with the parameter file values, if provided
         if len(paramfile):
