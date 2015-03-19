@@ -184,7 +184,7 @@ def search(d, data, u, v, w):
         # open pool to run jobs
         with closing(mp.Pool(d['nthread'], initializer=initpool, initargs=(data_resamp,))) as pool:
             for dmind in xrange(len(d['dmarr'])):
-                print 'Dedispersing DM = %d (max %d)' % (d['dmarr'][dmind], d['dmarr'][-1])
+                print 'At DM %d/%d. Dedispersing...' % (d['dmarr'][dmind], d['dmarr'][-1]),
                 for dtind in xrange(len(d['dtarr'])):
                     data_resamp[dtind][:] = data_resamp[0][:]
 # failed attempt to parallelize dedispersion by channel
@@ -198,7 +198,7 @@ def search(d, data, u, v, w):
                     result.wait()
                 resultlist = []
 
-                print 'Imaging DM = %d (max %d)' % (d['dmarr'][dmind], d['dmarr'][-1])
+                print 'Imaging...'
                 for dtind in xrange(len(d['dtarr'])):
                     for chunk in range(d['nchunk']):
                         i0 = (nints/d['dtarr'][dtind])*chunk/d['nchunk']
