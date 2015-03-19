@@ -161,31 +161,32 @@ def plot_dmcount(d, times, dts, outroot):
     ax2 = {}
     for dtind in range(len(uniquedts)):
         good = n.where(dts == dtind)[0]
-        bins = n.round(times[good]).astype('int')
-        counts = n.bincount(bins - bins.min())
-
         ax2[dtind] = fig2.add_subplot(str(len(uniquedts)) + '1' + str(dtind+1))
-        ax2[dtind].scatter(mint+n.arange(len(counts)), counts, facecolor='none', alpha=0.5, clip_on=False)
-        ax2[dtind].axis( (mint, maxt, 0, 1.1*counts.max()) )
+        if len(good):
+            bins = n.round(times[good]).astype('int')
+            counts = n.bincount(bins - bins.min())
 
-        # label high points
-        high = n.where(counts > n.median(counts) + 20*counts.std())[0]
-        for ii in high:
-            print '%d candidates for dt=%d at %d s' % (counts[ii], d['dtarr'][dtind], ii)
-            ww = n.where(bins == ii)[0]
-#            print '\tFlag these:', times[good][ww]
-            print
+            ax2[dtind].scatter(mint+n.arange(len(counts)), counts, facecolor='none', alpha=0.5, clip_on=False)
+            ax2[dtind].axis( (mint, maxt, 0, 1.1*counts.max()) )
 
-        if dtind == uniquedts[-1]:
-            plt.setp(ax2[dtind].get_xticklabels(), visible=True)
-        elif (dtind == uniquedts[0]) or (dtind == len(uniquedts)/2):
-            ax2[dtind].xaxis.set_label_position('top')
-            ax2[dtind].xaxis.set_ticks_position('top')
+            # label high points
+            high = n.where(counts > n.median(counts) + 20*counts.std())[0]
+            for ii in high:
+                print '%d candidates for dt=%d at %d s' % (counts[ii], d['dtarr'][dtind], ii)
+                ww = n.where(bins == ii)[0]
+#                print '\tFlag these:', times[good][ww]
+                print
+
+            if dtind == uniquedts[-1]:
+                plt.setp(ax2[dtind].get_xticklabels(), visible=True)
+            elif (dtind == uniquedts[0]) or (dtind == len(uniquedts)/2):
+                ax2[dtind].xaxis.set_label_position('top')
+                ax2[dtind].xaxis.set_ticks_position('top')
 #            ax2[dtind].set_xticks(changepoints[::2]*d['nints']*d['inttime'])
 #            ax2[dtind].set_xticklabels(changepoints[::2])
-            plt.setp( ax2[dtind].xaxis.get_majorticklabels(), rotation=90, size='small')
-        else:
-            plt.setp( ax2[dtind].get_xticklabels(), visible=False)
+                plt.setp( ax2[dtind].xaxis.get_majorticklabels(), rotation=90, size='small')
+            else:
+                plt.setp( ax2[dtind].get_xticklabels(), visible=False)
 
     ax2[dtind].set_xlabel('Time (s)')
     ax2[dtind].set_ylabel('Count') 
