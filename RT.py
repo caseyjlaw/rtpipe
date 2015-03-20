@@ -382,10 +382,7 @@ def correct_dmdt(d, dmind, dtind):
 def calc_dmgrid(d, maxloss=0.05, dt=3000., mindm=0., maxdm=2000.):
     """ Function to calculate the DM values for a given maximum sensitivity loss.
     maxloss is sensitivity loss tolerated by dm bin width. dt is assumed pulse width.
-    This differs from Sarah's function by decimating final dm grid by factor of 2. **Need to check on this**
     """
-
-    print '**Still undergoing testing...**'
 
     # parameters
     tsamp = d['inttime']*1e6  # in microsec
@@ -400,17 +397,15 @@ def calc_dmgrid(d, maxloss=0.05, dt=3000., mindm=0., maxdm=2000.):
     loss = lambda dm, ddm: 1-n.sqrt(dt0(dm)/dt1(dm,ddm))
 
     # iterate over dmgrid to find optimal dm values. go higher than maxdm to be sure final list includes full range.
-    dmgrid = n.arange(mindm, maxdm*1.5, 0.05)
+    dmgrid = n.arange(mindm, maxdm, 0.05)
     dmgrid_final = [dmgrid[0]]
     for i in range(len(dmgrid)):
-        ddm = dmgrid[i] - dmgrid_final[-1]
+        ddm = (dmgrid[i] - dmgrid_final[-1])/2.
         ll = loss(dmgrid[i],ddm)
         if ll > maxloss:
             dmgrid_final.append(dmgrid[i])
 
-    dmgrid_final = n.array(dmgrid_final[::2])  # skip every other to get correct maxloss
-    # then trim list down below maxdm
-    return list(dmgrid_final[n.where(dmgrid_final < maxdm)])
+    return dmgrid_final
 
 def image1(d, i0, i1, u, v, w, dmind, dtind, beamnum):
     """ Parallelizable function for imaging a chunk of data for a single dm.
