@@ -28,6 +28,7 @@ class casa_sol():
 
         tb.open(gainfile)
         mjd = tb.getcol('TIME')/(24*3600)     # mjd days, as for telcal
+        field = tb.getcol('FIELD_ID')
         spw = tb.getcol('SPECTRAL_WINDOW_ID')
         gain = tb.getcol('CPARAM')    # dimensions of (npol, 1?, ntimes*nants)
         snr = tb.getcol('SNR')
@@ -36,6 +37,13 @@ class casa_sol():
         tb.open(gainfile + '/ANTENNA')
         antname = tb.getcol('NAME')   # ant number in order written to gain file
         antnum = n.array([int(antname[i][2:]) for i in range(len(antname))])
+        tb.close()
+        tb.open('12A-336_12dec18.g1/FIELD')
+        caldir = tb.getcol('PHASE_DIR')   # shape = (2 dirs, 1?, n sources)
+        calra = n.mod(caldir[0,0,:], 2*n.pi)
+        caldec = caldir[1,0,:]
+        self.radec = zip(calra, caldec)
+
         tb.close()
 
         # # need to find parent data MS to get some metadata
@@ -78,9 +86,11 @@ class casa_sol():
         self.spwlist = n.unique(spw)
         npol = len(gain)
 
-        # merge times less than 2s
+        # merge times less than some threshold
         nsol = 0
         newmjd = [n.unique(mjd)[0]]
+        uniquefield = [field[n.where(newmjd[0] == mjd)][0]]
+
         skip = []
         for i in range(1, len(n.unique(mjd))):
             if 24*3600*(n.unique(mjd)[i] - n.unique(mjd)[i-1]) < 30.:
@@ -88,8 +98,10 @@ class casa_sol():
                 continue
             else:
                 newmjd.append(n.unique(mjd)[i])
+                uniquefield.append(field[n.where(n.unique(mjd)[i] == mjd)[0][0]])
         
         self.uniquemjd = n.array(newmjd)
+        self.uniquefield = n.array(uniquefield)
         nsol = len(self.uniquemjd)
 
         print 'Parsed gain table solutions for %d solutions (skipping %d), %d ants, %d spw, and %d pols' % (nsol, len(skip), nants, nspw, npol)
@@ -165,10 +177,11 @@ class casa_sol():
 #        self.bpfreq = 1e9*n.concatenate( (frequenciesGHz[0], frequenciesGHz[nants]), axis=0)    # freq values at bp bins
 #        print 'Parsed bp table solutions for %d solutions, %d ants, %d spw, and %d pols' % (nUniqueTimesBP, nants, nSpws, nPolarizations)
 
-    def setselection(self, time, freqs, spws=[0,1], pols=[0,1], verbose=0):
+    def setselection(self, time, freqs, radec=(), dist=10., spws=[0,1], pols=[0,1], verbose=0):
         """ Set select parameter that defines time, spw, and pol solutions to apply.
         time defines the time to find solutions near in mjd.
         freqs defines frequencies to select bandpass solution
+        radec (radian tuple) and dist (deg) define optional location of source for filtering solutions.
         spws is list of min/max indices to be used (e.g., [0,1])
         pols is index of polarizations.
         pols/spws not yet implemented beyond 2sb, 2pol.
@@ -178,11 +191,22 @@ class casa_sol():
         self.spws = spws
         self.pols = pols
 
-        # select by smallest time distance for source
-        mjddist = n.abs(time - self.uniquemjd)
+        # select by smallest time distance for source within some angular region of target
+        if len(radec):
+            ra, dec = radec
+            calra = n.array([self.radec[i][0] for i in range(len(self.radec))])
+            caldec = n.array([self.radec[i][1] for i in range(len(self.radec))])
+            fields = n.where( (calra - ra < n.radians(dist)) & (caldec - dec < n.radians(dist)) )[0]
+        else:
+            fields = n.unique(self.uniquefield)
+
+        sel = []
+        for field in fields:
+            sel += list(n.where(field == self.uniquefield)[0])
+        mjddist = n.abs(time - self.uniquemjd[sel])
         closestgain = n.where(mjddist == mjddist.min())[0][0]
 
-        print 'Using gain solution at MJD %.5f, separated by %d min ' % (self.uniquemjd[closestgain], mjddist[closestgain]*24*60)
+        print 'Using gain solution for field %d at MJD %.5f, separated by %d min ' % (self.uniquefield[n.where(self.uniquemjd == self.uniquemjd[sel][closestgain])], self.uniquemjd[closestgain], mjddist[closestgain]*24*60)
         self.gain = self.gain[closestgain,:,spws[0]:spws[1]+1,pols[0]:pols[1]+1]
 
         if hasattr(self, 'bandpass'):

@@ -68,7 +68,7 @@ def pipeline(d, segment):
     try:
         sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
         sols.parsebp(d['bpfile'])
-        sols.setselection(d['segmenttimes'][segment].mean(), d['freq']*1e9)
+        sols.setselection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'])
         print 'Applying CASA calibration...'
         sols.apply(data, d['blarr'])
     except IOError:
@@ -234,6 +234,8 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     This definition does not yet consider memory/cpu/time limitations.
     nsegments defines how to break jobs in time. nchunk defines how each segment is split in time for imaging.
     """
+
+    assert os.path.exists(filename)
 
     # define metadata (state) dict. chans/spw is special because it goes in to get_metadata call
     if 'chans' in kwargs.keys(): 

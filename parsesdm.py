@@ -38,6 +38,10 @@ def get_metadata(filename, scan, spw=[], chans=[], params=''):
     scans, sources = sdmreader.read_metadata(d['filename'])
     d['scanlist'] = sorted(scans.keys())
 
+    # define source props
+    d['source'] = scans[scan]['source']
+    d['radec'] = [(prop['ra'], prop['dec']) for (sr,prop) in sources.iteritems() if prop['source'] == d['source']][0]
+
     # define spectral info
     sdm = sdmpy.SDM(d['filename'])
     d['spw_orig'] = [int(row.spectralWindowId.split('_')[1]) for row in sdm['SpectralWindow']]
@@ -98,7 +102,6 @@ def get_metadata(filename, scan, spw=[], chans=[], params=''):
     # define times
     d['starttime_mjd'] = scans[d['scan']]['startmjd']
     # assume inttime same for all scans
-    sdm['Main']
 
     for scan in sdm['Main']:
         interval = int(scan.interval)
