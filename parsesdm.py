@@ -32,7 +32,8 @@ def get_metadata(filename, scan, spw=[], chans=[], params=''):
         d['spw'] = spw
 
     # set workdir
-    d['workdir'], d['filename'] = os.path.split(os.path.abspath(filename))
+    d['filename'] = os.path.abspath(filename)
+    d['workdir'] = os.path.split(d['filename'])[0]
 
     # define scan list
     scans, sources = sdmreader.read_metadata(d['filename'])
