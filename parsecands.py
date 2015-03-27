@@ -71,7 +71,7 @@ def plot_cands(pkllist, outroot=''):
 
     # dmt plot
     print 'Plotting DM-time distribution...'
-    plot_dmt(times[pos], dms[pos], dts[pos], snrs[pos], outroot)
+    plot_dmt(d, times[pos], dms[pos], dts[pos], snrs[pos], outroot)
 
     # dmcount plot
     print 'Plotting DM count distribution...'
@@ -107,11 +107,11 @@ def int2mjd(d, loc):
     else:
         return n.array([])
 
-def plot_dmt(times, dms, dts, snrs, outroot):
+def plot_dmt(d, times, dms, dts, snrs, outroot):
     """ Plots DM versus time for each dt value.
     """
 
-    outname = outroot + '_dmt.png'
+    outname = os.path.join(d['workdir'], outroot + '_dmt.png')
 
     # allt = int2mjd(d, loc)
     mint = times.min(); maxt = times.max()
@@ -152,7 +152,7 @@ def plot_dmcount(d, times, dts, outroot):
     """ Count number of candidates per dm and dt. Big clusters often trace RFI.
     """
 
-    outname = outroot + '_dmcount.png'
+    outname = os.path.join(d['workdir'], outroot + '_dmcount.png')
 
     uniquedts = n.unique(dts)
     mint = times.min(); maxt = times.max()
@@ -198,7 +198,7 @@ def plot_normprob(d, snrs, outroot):
     Includes negative SNRs, too.
     """
 
-    outname = outroot + '_normprob.png'
+    outname = os.path.workdir(d['workdir'], outroot + '_normprob.png')
 
     # define norm quantile functions
     Z = lambda quan: n.sqrt(2)*erfinv( 2*quan - 1) 
@@ -240,7 +240,7 @@ def plot_lm(d, snrs, l1s, m1s, outroot):
     """ Plot the lm coordinates (relative to phase center) for all candidates.
     """
 
-    outname = outroot + '_impeak.png'
+    outname = os.path.join(d['workdir'], outroot + '_impeak.png')
 
     fig4 = plt.Figure(figsize=(10,10))
     ax4 = fig4.add_subplot(111)
@@ -260,7 +260,10 @@ def make_noisehists(pkllist, outroot, remove={}):
     """ Cumulative hist of image noise levels.
     """
 
-    outname = outroot + '_noisehist.png'
+    assert len(pkllist) > 0
+    workdir = os.path.split(pkllist[0])[0]
+
+    outname = os.path.join(workdir, outroot + '_noisehist.png')
 
     noises = []; minnoise = 1e8; maxnoise = 0
     print 'Reading %d noise files' % len(pkllist)
