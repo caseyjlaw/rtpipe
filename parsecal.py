@@ -265,7 +265,7 @@ class casa_sol():
 
 #        badgain = n.where(gamp < gamp.mean() - sig*gamp.std())
         badgain = n.where( (gamp < n.median(gamp) - sig*gamp.std()) | gamp.mask)
-        logging.info('Flagging low/bad gains for ant/spw/pol:', self.antnum[badgain[0]], badgain[1], badgain[2])
+        logging.info('Flagging low/bad gains for ant/spw/pol: %s %s %s' % (str(self.antnum[badgain[0]]), str(badgain[1]), str(badgain[2])))
 
         badants = badgain
         return badants

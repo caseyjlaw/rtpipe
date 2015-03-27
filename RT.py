@@ -14,6 +14,9 @@ qa = casautil.tools.quanta()
 global data
 global data_resamp
 
+def pipelinetest(d, segment):
+    return 0
+
 def pipeline(d, segment):
     """ Transient search pipeline running on single node.
     Processes a single segment of data (where a single bgsub, (u,v,w), etc. can be used).
@@ -221,7 +224,7 @@ def search(d, data, u, v, w):
     else:
         print 'Data for processing is zeros. Moving on...'
 
-    print 'Found %d cands in segment %d of %s. ' % (len(cands), d['segment'], d['filename'])
+    print 'Found %d cands in scan %d segment %d of %s. ' % (len(cands), d['scan'], d['segment'], d['filename'])
     return cands
 
 def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):

@@ -322,11 +322,13 @@ def merge_pkl(pkllist, fileroot=''):
 
     assert len(pkllist) > 0
 
+    workdir = os.path.split(pkllist[0])[0]
+
     if not fileroot:
         fileroot = '_'.join(pkllist[0].split('_')[1:3])   # assumes filename structure
 
     # aggregate cands over segments
-    if pkllist[0].split('_')[0] == 'cands':
+    if 'cands' in pkllist[0]:
         print 'Aggregating cands from %s' % pkllist
         cands = {}
         for cc in pkllist:
@@ -338,13 +340,13 @@ def merge_pkl(pkllist, fileroot=''):
             pkl.close()
 
         # write cands to single file
-        pkl = open('cands_' + fileroot + '.pkl', 'w')
+        pkl = open(os.path.join(workdir, 'cands_' + fileroot + '.pkl'), 'w')
         pickle.dump(state, pkl)
         pickle.dump(cands, pkl)
         pkl.close()
 
     # clean up noise files
-    elif pkllist[0].split('_')[0] == 'noise':
+    elif 'noise' in pkllist[0]:
         print 'Aggregating noise from %s' % pkllist
         # aggregate noise over segments
         noise = []
@@ -354,7 +356,7 @@ def merge_pkl(pkllist, fileroot=''):
             noise += result
 
         # write noise to single file
-        pkl = open('noise_' + fileroot + '.pkl', 'w')
+        pkl = open(os.path.join(workdir, 'noise_' + fileroot + '.pkl'), 'w')
         pickle.dump(noise, pkl)
         pkl.close()
 
