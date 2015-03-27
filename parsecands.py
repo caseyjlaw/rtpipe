@@ -198,7 +198,7 @@ def plot_normprob(d, snrs, outroot):
     Includes negative SNRs, too.
     """
 
-    outname = os.path.workdir(d['workdir'], outroot + '_normprob.png')
+    outname = os.path.join(d['workdir'], outroot + '_normprob.png')
 
     # define norm quantile functions
     Z = lambda quan: n.sqrt(2)*erfinv( 2*quan - 1) 
