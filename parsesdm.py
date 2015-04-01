@@ -22,18 +22,18 @@ def get_metadata(filename, scan, spw=[], chans=[], params=''):
     # create primary state dictionary
     d = {}
 
+    # set workdir
+    d['filename'] = os.path.abspath(filename)
+    d['workdir'] = os.path.split(d['filename'])[0]
+
     # define parameters of pipeline via Params object
-    params = pp.Params(params)
+    params = pp.Params(os.path.join(d['workdir'], params))
     for k in params.defined:   # fill in default params
         d[k] = params[k]
     if len(chans):
         d['chans'] = chans
     if len(spw):
         d['spw'] = spw
-
-    # set workdir
-    d['filename'] = os.path.abspath(filename)
-    d['workdir'] = os.path.split(d['filename'])[0]
 
     # define scan list
     scans, sources = sdmreader.read_metadata(d['filename'])

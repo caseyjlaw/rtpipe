@@ -14,9 +14,6 @@ qa = casautil.tools.quanta()
 global data
 global data_resamp
 
-def pipelinetest(d, segment):
-    return 0
-
 def pipeline(d, segment, reproducecand=()):
     """ Transient search pipeline running on single node.
     Processes a single segment of data (where a single bgsub, (u,v,w), etc. can be used).
@@ -287,7 +284,7 @@ def reproduce(d, data, u, v, w, candint, twindow=30):
 
         # rephase and trim interesting ints out
         print 'Rephasing to peak...'
-        pool.apply(rtlib.phaseshift_threaded, [data_resamp[0], d, l1, m1, u, v])
+        pool.apply(move_phasecenter, [d, l1, m1, u, v])
         minint = max(candint-twindow/2, 0)
         maxint = min(candint+twindow/2, len(data_resamp[0]))
         data = data_resamp[0][minint:maxint].copy()
@@ -314,6 +311,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         spw=kwargs['spw']
     else:
         spw = []
+
     # then get all metadata
     if os.path.exists(os.path.join(filename, 'Antenna.xml')):
         d = ps.get_metadata(filename, scan, chans=chans, spw=spw, params=paramfile)   # can take file name or Params instance
@@ -447,6 +445,13 @@ def correct_dmdt(d, dmind, dtind):
     datadt = data_resamp[dtind]
     dt = d['dtarr'][dtind]
     rtlib.dedisperse_resample(datadt, d['freq'], d['inttime'], d['dmarr'][dmind], dt, verbose=0)        # dedisperses data.
+
+def move_phasecenter(d, l1, m1, u, v):
+    """ Handler function for phaseshift_threaded
+    """
+
+    datadt = data_resamp[0]
+    rtlib.phaseshift_threaded(datadt, d, l1, m1, u, v)
 
 def calc_dmgrid(d, maxloss=0.05, dt=3000., mindm=0., maxdm=2000.):
     """ Function to calculate the DM values for a given maximum sensitivity loss.

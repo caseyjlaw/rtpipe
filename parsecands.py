@@ -11,8 +11,6 @@ def read_candidates(candsfile):
     Returns tuple of two numpy arrays (location, features).
     """
 
-    locs = []; props = []
-
     # read in pickle file of candidates
     print 'Reading cands from %s...' % candsfile
     with open(candsfile, 'rb') as pkl:
@@ -20,7 +18,7 @@ def read_candidates(candsfile):
         cands = pickle.load(pkl)
     if len(cands) == 0:
         print 'No cands found.'
-        return ([], [])
+        return (n.array([]), n.array([]))
 
     # select set of values 
     loc = []; prop = []
@@ -57,8 +55,16 @@ def merge_pkl(pkllist, fileroot=''):
 
     # aggregate cands over segments
     if 'cands' in pkllist[0]:
-        state = pkl.load(open(pkllist[0], 'r'))
-        cands = mergecands(pkllist)
+        state = pickle.load(open(pkllist[0], 'r'))
+        cands = {}
+        for cc in pkllist:
+            pkl = open(cc,'r')
+            state = pickle.load(pkl)
+            result = pickle.load(pkl)
+            for kk in result.keys():
+                cands[kk] = result[kk]
+            pkl.close()
+
         # write cands to single file
         pkl = open(os.path.join(workdir, 'cands_' + fileroot + '.pkl'), 'w')
         pickle.dump(state, pkl)
@@ -90,20 +96,30 @@ def mergecands(pkllist):
     pkllist.sort(key=lambda i: int(i.rstrip('.pkl').split('_sc')[1]))  # assumes filename structure
     print 'Aggregating cands from %s' % pkllist
 
-    scan = int(pkllist[0].rstrip('.pkl').split('_sc')[1])
-    loc, prop = read_candidates(pkllist[0])
-    loc = n.concatenate( (scan*n.ones(dtype=int, shape=(len(loc), 1)), loc.astype(int)), axis=1)
-    mergeloc = loc; mergeprop = prop
-    for pklfile in pkllist[1:]:
+    mergeloc = []; mergeprop = []
+    for pklfile in pkllist:
         scan = int(pklfile.rstrip('.pkl').split('_sc')[1])
-        loc, prop = read_candidates(pklfile)
-        loc = n.concatenate( (scan*n.ones(dtype=int, shape=(len(loc),1)), loc.astype(int)), axis=1)
-        mergeloc = n.concatenate( (mergeloc, loc), axis=0)
-        mergeprop = n.concatenate( (mergeprop, prop), axis=0)
+        locs, props = read_candidates(pklfile)
+        for i in range(len(locs)):
+            loc = list(locs[i])
+            loc.insert(0, scan)
+            prop = list(props[i])
+            mergeloc += [loc]
+            mergeprop += [prop]
 
-    return mergeloc, mergeprop
+    # locs, props = read_candidates(pkllist[0])
+    # loc = n.concatenate( (scan*n.ones(dtype=int, shape=(len(loc), 1)), loc.astype(int)), axis=1)
+    # mergeloc = loc; mergeprop = prop
+    # for pklfile in pkllist[1:]:
+    #     scan = int(pklfile.rstrip('.pkl').split('_sc')[1])
+    #     loc, prop = read_candidates(pklfile)
+    #     loc = n.concatenate( (scan*n.ones(dtype=int, shape=(len(loc),1)), loc.astype(int)), axis=1)
+    #     mergeloc = n.concatenate( (mergeloc, loc), axis=0)
+    #     mergeprop = n.concatenate( (mergeprop, prop), axis=0)
 
-def plot_cands(pkllist, outroot=''):
+    return n.array(mergeloc), n.array(mergeprop)
+
+def plot_summary(pkllist, outroot=''):
     """ Take merge file and produces comprehensive candidate screening plots.
     Starts as dm-t plots, includes dt and peak pixel location.
     """
@@ -139,11 +155,11 @@ def plot_cands(pkllist, outroot=''):
             m1s = n.concatenate( (m1s, prop[:, m1col]) )
 
     # select positive candidates for some plots
-    pos = n.where(snrs > 0)
+#    pos = n.where(snrs > 0)
 
     # dmt plot
     print 'Plotting DM-time distribution...'
-    plot_dmt(d, times[pos], dms[pos], dts[pos], snrs[pos], outroot)
+    plot_dmt(d, times, dms, dts, snrs, outroot)
 
     # dmcount plot
     print 'Plotting DM count distribution...'
@@ -155,7 +171,7 @@ def plot_cands(pkllist, outroot=''):
 
     # source location plot
     print 'Plotting (l,m) distribution...'
-    plot_lm(d, snrs[pos], l1s[pos], m1s[pos], outroot)
+    plot_lm(d, snrs, l1s, m1s, outroot)
 
 def plot_noise(pkllist, outroot='', remove={}):
     """ Takes merged noise pkl and visualizes it.
@@ -186,11 +202,12 @@ def plot_dmt(d, times, dms, dts, snrs, outroot):
     outname = os.path.join(d['workdir'], outroot + '_dmt.png')
 
     # allt = int2mjd(d, loc)
+    times = times - times.min()
     mint = times.min(); maxt = times.max()
     dtsunique = n.unique(dts)
     # dd = n.array(d['dmarr'])[loc[:,dmindcol]]
-    mindm = dms.min(); maxdm = dms.max()
-    snrmin = 0.9*min(d['sigma_image1'], d['sigma_image2'])
+    mindm = min(d['dmarr']); maxdm = max(d['dmarr'])
+    snrmin = 0.8*min(d['sigma_image1'], d['sigma_image2'])
 
     fig = plt.Figure(figsize=(15,10))
     ax = {}
@@ -203,7 +220,7 @@ def plot_dmt(d, times, dms, dts, snrs, outroot):
         # plot positive cands
         good = n.where( (dts == dtind) & (snrs < 0))[0]
         sizes = (n.abs(snrs[good])-snrmin)**5   # set scaling to give nice visual sense of SNR
-        ax[dtind].scatter(times[good], dms[good], s=sizes, marker='x', facecolor='none', alpha=0.3, clip_on=False)
+        ax[dtind].scatter(times[good], dms[good], s=sizes, marker='x', edgecolors='k', alpha=0.3, clip_on=False)
 
         ax[dtind].axis( (mint, maxt, mindm, maxdm) )
         ax[dtind].set_ylabel('DM (pc/cm3)')
@@ -319,7 +336,7 @@ def plot_lm(d, snrs, l1s, m1s, outroot):
 
     outname = os.path.join(d['workdir'], outroot + '_impeak.png')
 
-    snrmin = 0.9*min(d['sigma_image1'], d['sigma_image2'])
+    snrmin = 0.8*min(d['sigma_image1'], d['sigma_image2'])
     fig4 = plt.Figure(figsize=(10,10))
     ax4 = fig4.add_subplot(111)
 
@@ -332,7 +349,7 @@ def plot_lm(d, snrs, l1s, m1s, outroot):
     good = n.where(snrs < 0)
     sizes = (n.abs(snrs[good])-snrmin)**5   # set scaling to give nice visual sense of SNR
     xarr = 60*n.degrees(l1s[good]); yarr = 60*n.degrees(m1s[good])
-    ax4.scatter(xarr, yarr, s=sizes, facecolor='none', marker='x', alpha=0.5, clip_on=False)
+    ax4.scatter(xarr, yarr, s=sizes, marker='x', edgecolors='k', alpha=0.5, clip_on=False)
 
     ax4.set_xlabel('Dec Offset (amin)')
     ax4.set_ylabel('RA Offset (amin)')
@@ -518,7 +535,7 @@ def plot_psrrates(pkllist, outname=''):
 
     plt.savefig(outname)
 
-def candplot(pkllist, threshold=0, candnum=-1, outname=''):
+def plot_cand(pkllist, threshold=0, candnum=-1, outname=''):
     """ Create detailed plot of a single candidate.
     Thresholds (as minimum), then provides list of candidates to select with candnum.
     """
@@ -527,6 +544,8 @@ def candplot(pkllist, threshold=0, candnum=-1, outname=''):
     import RT as rt
 
     d = pickle.load(open(pkllist[0], 'r'))
+    if not os.path.split(d['filename'])[0]:
+        d['filename'] = os.path.join(d['workdir'], d['filename'])
     loc, prop = mergecands(pkllist)
     d['featureind'].insert(0, 'scan')
 
@@ -554,7 +573,7 @@ def candplot(pkllist, threshold=0, candnum=-1, outname=''):
         print 'Show candidates...'
         for i in range(len(loc)):
             print i, loc[i], prop[i, snrcol]
-#            print loc[prop[:,snrcol].argsort()]
+#            print loc[prop[:,snrcol].argsort()]   # could also sort by SNR
     else:
         print 'Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum])
         scan = loc[candnum, scancol]
@@ -578,21 +597,22 @@ def candplot(pkllist, threshold=0, candnum=-1, outname=''):
 
         # # first plot dm-t distribution beneath
         times0 = int2mjd(d, loc)
-        times = int2mjd(d, loc[candnum][None,:])
+        times0 = times0 - times0[0]
+        times = times0[candnum]
         dms0 = n.array(dmarrorig)[list(loc[:,dmindcol])]
         dms = dmarrorig[loc[candnum,dmindcol]]
         snr0 = prop[:, snrcol]
         snr = prop[candnum, snrcol]
-        snrmin = 0.9 * min(d['sigma_image1'], d['sigma_image2'])
+        snrmin = 0.8 * min(d['sigma_image1'], d['sigma_image2'])
         # plot positive
         good = n.where(snr0 > 0)
-        ax.scatter(times0[good]-times0[0], dms0[good], s=(snr0[good]-snrmin)**5, facecolor='none', linewidth=0.2, clip_on=False)
-        ax.scatter(times-times0[0], dms, s=(snr-snrmin)**5, facecolor='none', linewidth=2, clip_on=False)
+        ax.scatter(times0[good], dms0[good], s=(snr0[good]-snrmin)**5, facecolor='none', linewidth=0.2, clip_on=False)
+        ax.scatter(times, dms, s=(snr-snrmin)**5, facecolor='none', linewidth=2, clip_on=False)
         # plot negative
         good = n.where(snr0 < 0)
-        ax.scatter(times0[good]-times0[0], dms0[good], s=(n.abs(snr0)[good]-snrmin)**5, marker='x', facecolor='k', linewidth=0.2, clip_on=False)
+        ax.scatter(times0[good], dms0[good], s=(n.abs(snr0)[good]-snrmin)**5, marker='x', edgecolors='k', linewidth=0.2, clip_on=False)
         ax.set_ylim(dmarrorig[0], dmarrorig[-1])
-        ax.set_xlim(0, times0.max()-times0[0])
+        ax.set_xlim(times0.min(), times0.max())
         ax.set_xlabel('Time (s)')
         ax.set_ylabel('DM (pc/cm3)')
 
