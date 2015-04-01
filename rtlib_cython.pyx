@@ -452,14 +452,14 @@ cpdef make_triples(d):
     return triples
 
 @cython.profile(False)
-cdef n.ndarray[n.float32_t, ndim=2] fringe_rotation(float dl, float dm, n.ndarray[n.float32_t, ndim=1] u, n.ndarray[n.float32_t, ndim=1] v, n.ndarray[n.float32_t, ndim=1] freq): 
+cdef n.ndarray[DTYPE_t, ndim=2] fringe_rotation(float dl, float dm, n.ndarray[n.float32_t, ndim=1] u, n.ndarray[n.float32_t, ndim=1] v, n.ndarray[n.float32_t, ndim=1] freq): 
     return n.exp(-2j*3.1415*(dl*n.outer(u,freq) + dm*n.outer(v,freq)))
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-cpdef phaseshift(n.ndarray[DTYPE_t, ndim=4] data0, d, float l1, float m1, n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=2] v, verbose=0):
+cpdef phaseshift(n.ndarray[DTYPE_t, ndim=4] data, d, float l1, float m1, n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=2] v, verbose=0):
     """ Shift phase center to (l1, m1).
-    Assumes single uv over all times in data0. Reasonable for up to a second or so of data.
+    Assumes single uv over all times in data. Reasonable for up to a second or so of data.
     """
 
     cdef n.ndarray[complex, ndim=2] frot
@@ -472,7 +472,7 @@ cpdef phaseshift(n.ndarray[DTYPE_t, ndim=4] data0, d, float l1, float m1, n.ndar
     cdef unsigned int k
     cdef unsigned int l
 
-    shape = n.shape(data0)
+    shape = n.shape(data)
     cdef unsigned int len0 = shape[0]
     cdef unsigned int len1 = shape[1]
     cdef unsigned int len2 = shape[2]
@@ -484,7 +484,7 @@ cpdef phaseshift(n.ndarray[DTYPE_t, ndim=4] data0, d, float l1, float m1, n.ndar
             for i in xrange(len0):
                 for l in xrange(len3):    # iterate over pols
                     for k in xrange(len2):
-                        data0[i,j,k,l] = data0[i,j,k,l] * frot[j,k]
+                        data[i,j,k,l] = data[i,j,k,l] * frot[j,k]
     else:
         if verbose:
             print 'No phase rotation needed'
@@ -494,12 +494,12 @@ cpdef phaseshift(n.ndarray[DTYPE_t, ndim=4] data0, d, float l1, float m1, n.ndar
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-cpdef phaseshift_threaded(n.ndarray[DTYPE_t, ndim=4] data0, d, float l1, float m1, n.ndarray[n.float32_t, ndim=1] u, n.ndarray[n.float32_t, ndim=1] v, verbose=0):
+cpdef phaseshift_threaded(n.ndarray[DTYPE_t, ndim=4] data, d, float l1, float m1, n.ndarray[n.float32_t, ndim=1] u, n.ndarray[n.float32_t, ndim=1] v, verbose=0):
     """ Shift phase center to (l1, m1).
-    Assumes single uv over all times in data0. Reasonable for up to a second or so of data.
+    Assumes single uv over all times in data. Reasonable for up to a second or so of data.
     """
 
-    cdef n.ndarray[complex, ndim=2] frot
+    cdef n.ndarray[DTYPE_t, ndim=2] frot
     cdef n.ndarray[float, ndim=1] freq = d['freq']
     cdef n.ndarray[float, ndim=1] freq_orig = d['freq_orig']
     cdef float dl = l1 - d['l0']
@@ -509,7 +509,7 @@ cpdef phaseshift_threaded(n.ndarray[DTYPE_t, ndim=4] data0, d, float l1, float m
     cdef unsigned int k
     cdef unsigned int l
 
-    shape = n.shape(data0)
+    shape = n.shape(data)
     cdef unsigned int len0 = shape[0]
     cdef unsigned int len1 = shape[1]
     cdef unsigned int len2 = shape[2]
@@ -521,7 +521,7 @@ cpdef phaseshift_threaded(n.ndarray[DTYPE_t, ndim=4] data0, d, float l1, float m
             for i in xrange(len0):
                 for l in xrange(len3):    # iterate over pols
                     for k in xrange(len2):
-                        data0[i,j,k,l] = data0[i,j,k,l] * frot[j,k]
+                        data[i,j,k,l] = data[i,j,k,l] * frot[j,k]
     else:
         if verbose:
             print 'No phase rotation needed'
@@ -544,9 +544,9 @@ cpdef calc_resample(float chanwidth, float midfreq, float dm, float inttime):
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-cpdef dedisperse(n.ndarray[DTYPE_t, ndim=4, mode='c'] data0, d, float dm, int verbose=0):
+cpdef dedisperse(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, d, float dm, int verbose=0):
     """ dedisperse the data in place
-    replaces data0 in place. dm algorithm on only accurate if moving "up" in dm space.
+    replaces data in place. dm algorithm on only accurate if moving "up" in dm space.
     """
 
     cdef unsigned int i
@@ -561,14 +561,14 @@ cpdef dedisperse(n.ndarray[DTYPE_t, ndim=4, mode='c'] data0, d, float dm, int ve
     cdef unsigned int len1
     cdef unsigned int len2
     cdef unsigned int len3
-# making copy is slower, but returns actual roll of original data0. without, we can only move "up" in dm space.
-#    cdef n.ndarray[DTYPE_t, ndim=4] data1 = n.empty_like(data0)
+# making copy is slower, but returns actual roll of original data. without, we can only move "up" in dm space.
+#    cdef n.ndarray[DTYPE_t, ndim=4] data1 = n.empty_like(data)
 
     # calc relative delay per channel. only shift minimally
     cdef n.ndarray[short, ndim=1] newdelay = calc_delay(d['freq'], d['inttime'], dm)
     cdef n.ndarray[short, ndim=1] relativedelay = newdelay - d['datadelay']
 
-    shape = n.shape(data0)
+    shape = n.shape(data)
     len0 = shape[0]
     len1 = shape[1]
     len2 = shape[2]
@@ -586,15 +586,15 @@ cpdef dedisperse(n.ndarray[DTYPE_t, ndim=4, mode='c'] data0, d, float dm, int ve
                         iprime = i+shift
 #                    print i, iprime
                         if iprime >= 0 and iprime < len0:    # ignore edge cases
-                            data0[i,j,k,l] = data0[iprime,j,k,l]
+                            data[i,j,k,l] = data[iprime,j,k,l]
                         elif iprime >= len0:    # set nonsense shifted data to zero
-                            data0[i,j,k,l] = 0j
+                            data[i,j,k,l] = 0j
             elif shift < 0:
                 print 'negative delay found. this dedispersion algorithm only works for positive delays. ignoring...'
 
 # alternatives
-#                            data1[i,j,k,l] = data0[iprime,j,k,l]
-#            data0[:,:,indmin:indmax+1,:] = n.roll(data0.take(range(indmin,indmax+1), axis=2), -1*shift, axis=0)
+#                            data1[i,j,k,l] = data[iprime,j,k,l]
+#            data[:,:,indmin:indmax+1,:] = n.roll(data.take(range(indmin,indmax+1), axis=2), -1*shift, axis=0)
 
     if verbose != 0:
         print 'Dedispersed for DM=%d' % dm
@@ -605,7 +605,7 @@ cpdef dedisperse(n.ndarray[DTYPE_t, ndim=4, mode='c'] data0, d, float dm, int ve
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-cpdef dedisperse_resample(n.ndarray[DTYPE_t, ndim=4, mode='c'] data0, n.ndarray[float, ndim=1] freq, float inttime, float dm, unsigned int resample, int verbose=0):
+cpdef dedisperse_resample(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, n.ndarray[float, ndim=1] freq, float inttime, float dm, unsigned int resample, int verbose=0):
     """ dedisperse the data and resample in place. only fraction of array is useful data.
     dm algorithm on only accurate if moving "up" in dm space.
     assumes unshifted data.
@@ -621,7 +621,7 @@ cpdef dedisperse_resample(n.ndarray[DTYPE_t, ndim=4, mode='c'] data0, n.ndarray[
     cdef unsigned int indmin
     cdef unsigned int indmax
     cdef int shift
-    shape = n.shape(data0)
+    shape = n.shape(data)
     cdef unsigned int len0 = shape[0]
     cdef unsigned int len1 = shape[1]
     cdef unsigned int len2 = shape[2]
@@ -637,20 +637,20 @@ cpdef dedisperse_resample(n.ndarray[DTYPE_t, ndim=4, mode='c'] data0, n.ndarray[
                 for i in xrange(newlen0):
                     iprime = i*resample+shift
                     if iprime >= 0 and iprime < len0-(resample-1):    # if within bounds of unshifted data with resample stepping
-                        data0[i,j,k,l] = data0[iprime,j,k,l]
+                        data[i,j,k,l] = data[iprime,j,k,l]
                         if resample > 1:
                             for r in xrange(1,resample):
-                                data0[i,j,k,l] = data0[i,j,k,l] + data0[iprime+r,j,k,l]
-                            data0[i,j,k,l] = data0[i,j,k,l]/resample
+                                data[i,j,k,l] = data[i,j,k,l] + data[iprime+r,j,k,l]
+                            data[i,j,k,l] = data[i,j,k,l]/resample
                     elif iprime >= len0-(resample):    # set nonsense shifted data to zero
-                        data0[i,j,k,l] = 0j
+                        data[i,j,k,l] = 0j
 
     if verbose != 0:
         print 'Dedispersed for DM=%d' % dm
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-cpdef dedisperse_resample2(n.ndarray[DTYPE_t, ndim=4, mode='c'] data0, n.ndarray[float, ndim=1] freq, float inttime, float dm, unsigned int resample, int verbose=0):
+cpdef dedisperse_resample2(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, n.ndarray[float, ndim=1] freq, float inttime, float dm, unsigned int resample, int verbose=0):
     """ dedisperse the data and resample with fixed value in place. only fraction of array is useful data.
     dm algorithm on only accurate if moving "up" in dm space.
     assumes unshifted data.
@@ -665,7 +665,7 @@ cpdef dedisperse_resample2(n.ndarray[DTYPE_t, ndim=4, mode='c'] data0, n.ndarray
     cdef unsigned int indmin
     cdef unsigned int indmax
     cdef int shift
-    shape = n.shape(data0)
+    shape = n.shape(data)
     cdef unsigned int len0 = shape[0]
     cdef unsigned int len1 = shape[1]
     cdef unsigned int len2 = shape[2]
@@ -687,13 +687,13 @@ cpdef dedisperse_resample2(n.ndarray[DTYPE_t, ndim=4, mode='c'] data0, n.ndarray
                 for i in xrange(newlen0):
                     iprime = i*resample+shift
                     if iprime >= 0 and iprime < len0-(resample-1):    # if within bounds of unshifted data with resample stepping
-                        data0[i,j,k,l] = data0[iprime,j,k,l]
+                        data[i,j,k,l] = data[iprime,j,k,l]
                         if resample > 1:
                             for r in xrange(1,resample):
-                                data0[i,j,k,l] = data0[i,j,k,l] + data0[iprime+r,j,k,l]
-                            data0[i,j,k,l] = data0[i,j,k,l]/resample
+                                data[i,j,k,l] = data[i,j,k,l] + data[iprime+r,j,k,l]
+                            data[i,j,k,l] = data[i,j,k,l]/resample
                     elif iprime >= len0-resample:    # set nonsense shifted data to zero
-                        data0[i,j,k,l] = 0j
+                        data[i,j,k,l] = 0j
 
     if verbose != 0:
         print 'Dedispersed for DM=%d' % dm

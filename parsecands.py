@@ -31,6 +31,78 @@ def read_candidates(candsfile):
     print 'Found %d candidates.' % (len(loc))
     return n.array(loc).astype(int), n.array(prop)
 
+def read_noise(noisefile):
+    """ Function to read a noise file and parse columns.
+    """
+
+    f = open(noisefile,'r')
+    noises = pickle.load(f)
+    seg = []; noiseperbl = []; flagfrac = []; imnoise = []
+    for noise in noises:
+        seg.append(noise[0]); noiseperbl.append(noise[1])
+        flagfrac.append(noise[2]); imnoise.append(noise[3])
+    return (n.array(seg), n.array(noiseperbl), n.array(flagfrac), n.array(imnoise))
+
+def merge_pkl(pkllist, fileroot=''):
+    """ Merges cands/noise pkl files from input root name into single cands/noise file.
+    Output single pkl is used for visualizations.
+    """
+
+    assert len(pkllist) > 0
+
+    workdir = os.path.split(pkllist[0])[0]
+
+    if not fileroot:
+        fileroot = '_'.join(pkllist[0].split('_')[1:3])   # assumes filename structure
+
+    # aggregate cands over segments
+    if 'cands' in pkllist[0]:
+        state = pkl.load(open(pkllist[0], 'r'))
+        cands = mergecands(pkllist)
+        # write cands to single file
+        pkl = open(os.path.join(workdir, 'cands_' + fileroot + '.pkl'), 'w')
+        pickle.dump(state, pkl)
+        pickle.dump(cands, pkl)
+        pkl.close()
+
+    # clean up noise files
+    elif 'noise' in pkllist[0]:
+        print 'Aggregating noise from %s' % pkllist
+        # aggregate noise over segments
+        noise = []
+        for cc in pkllist:
+            pkl = open(cc,'r')
+            result = pickle.load(pkl)
+            noise += result
+
+        # write noise to single file
+        pkl = open(os.path.join(workdir, 'noise_' + fileroot + '.pkl'), 'w')
+        pickle.dump(noise, pkl)
+        pkl.close()
+
+def mergecands(pkllist):
+    """ Takes cands pkls from list and produces single loc/prop array
+    """
+
+    assert isinstance(pkllist, list)
+
+    pkllist = [pkllist[i] for i in range(len(pkllist)) if ('merge' not in pkllist[i]) and ('seg' not in pkllist[i])]
+    pkllist.sort(key=lambda i: int(i.rstrip('.pkl').split('_sc')[1]))  # assumes filename structure
+    print 'Aggregating cands from %s' % pkllist
+
+    scan = int(pkllist[0].rstrip('.pkl').split('_sc')[1])
+    loc, prop = read_candidates(pkllist[0])
+    loc = n.concatenate( (scan*n.ones(dtype=int, shape=(len(loc), 1)), loc.astype(int)), axis=1)
+    mergeloc = loc; mergeprop = prop
+    for pklfile in pkllist[1:]:
+        scan = int(pklfile.rstrip('.pkl').split('_sc')[1])
+        loc, prop = read_candidates(pklfile)
+        loc = n.concatenate( (scan*n.ones(dtype=int, shape=(len(loc),1)), loc.astype(int)), axis=1)
+        mergeloc = n.concatenate( (mergeloc, loc), axis=0)
+        mergeprop = n.concatenate( (mergeprop, prop), axis=0)
+
+    return mergeloc, mergeprop
+
 def plot_cands(pkllist, outroot=''):
     """ Take merge file and produces comprehensive candidate screening plots.
     Starts as dm-t plots, includes dt and peak pixel location.
@@ -118,16 +190,21 @@ def plot_dmt(d, times, dms, dts, snrs, outroot):
     dtsunique = n.unique(dts)
     # dd = n.array(d['dmarr'])[loc[:,dmindcol]]
     mindm = dms.min(); maxdm = dms.max()
-    # snrs = prop[:,snrcol]
-    snrmin = 0.9*snrs.min()
+    snrmin = 0.9*min(d['sigma_image1'], d['sigma_image2'])
 
     fig = plt.Figure(figsize=(15,10))
     ax = {}
     for dtind in range(len(dtsunique)):
         ax[dtind] = fig.add_subplot(str(len(dtsunique)) + '1' + str(dtind+1))
-        good = n.where(dts == dtind)[0]
+        # plot positive cands
+        good = n.where( (dts == dtind) & (snrs > 0))[0]
         sizes = (snrs[good]-snrmin)**5   # set scaling to give nice visual sense of SNR
         ax[dtind].scatter(times[good], dms[good], s=sizes, facecolor='none', alpha=0.3, clip_on=False)
+        # plot positive cands
+        good = n.where( (dts == dtind) & (snrs < 0))[0]
+        sizes = (n.abs(snrs[good])-snrmin)**5   # set scaling to give nice visual sense of SNR
+        ax[dtind].scatter(times[good], dms[good], s=sizes, marker='x', facecolor='none', alpha=0.3, clip_on=False)
+
         ax[dtind].axis( (mint, maxt, mindm, maxdm) )
         ax[dtind].set_ylabel('DM (pc/cm3)')
         ax[dtind].text(0.9*maxt, 0.9*maxdm, 'dt='+str(dtsunique[dtind]))
@@ -224,9 +301,9 @@ def plot_normprob(d, snrs, outroot):
     # plot
     fig3 = plt.Figure(figsize=(10,10))
     ax3 = fig3.add_subplot(111)
-    ax3.plot(snrsortpos, Zsortpos, 'r.')
+    ax3.plot(snrsortpos, Zsortpos, 'k.')
     if len(n.where(snrs < 0)[0]):
-        ax3.plot(snrsortneg, Zsortneg, 'b.')
+        ax3.plot(snrsortneg, Zsortneg, 'kx')
         refl = n.linspace(min(snrsortpos.min(), Zsortpos.min(), snrsortneg.min(), Zsortneg.min()), max(snrsortpos.max(), Zsortpos.max(), snrsortneg.max(), Zsortneg.max()), 2)
     else:
         refl = n.linspace(min(snrsortpos.min(), Zsortpos.min()), max(snrsortpos.max(), Zsortpos.max()), 2)
@@ -242,11 +319,20 @@ def plot_lm(d, snrs, l1s, m1s, outroot):
 
     outname = os.path.join(d['workdir'], outroot + '_impeak.png')
 
+    snrmin = 0.9*min(d['sigma_image1'], d['sigma_image2'])
     fig4 = plt.Figure(figsize=(10,10))
     ax4 = fig4.add_subplot(111)
-    sizes = (snrs-0.9*snrs.min())**5   # set scaling to give nice visual sense of SNR
-    xarr = 60*n.degrees(l1s); yarr = 60*n.degrees(m1s)
+
+    # plot positive
+    good = n.where(snrs > 0)
+    sizes = (snrs[good]-snrmin)**5   # set scaling to give nice visual sense of SNR
+    xarr = 60*n.degrees(l1s[good]); yarr = 60*n.degrees(m1s[good])
     ax4.scatter(xarr, yarr, s=sizes, facecolor='none', alpha=0.5, clip_on=False)
+    # plot negative
+    good = n.where(snrs < 0)
+    sizes = (n.abs(snrs[good])-snrmin)**5   # set scaling to give nice visual sense of SNR
+    xarr = 60*n.degrees(l1s[good]); yarr = 60*n.degrees(m1s[good])
+    ax4.scatter(xarr, yarr, s=sizes, facecolor='none', marker='x', alpha=0.5, clip_on=False)
 
     ax4.set_xlabel('Dec Offset (amin)')
     ax4.set_ylabel('RA Offset (amin)')
@@ -305,63 +391,6 @@ def make_noisehists(pkllist, outroot, remove={}):
 
     canvas = FigureCanvasAgg(fig)
     canvas.print_figure(outname)
-
-def read_noise(noisefile):
-    """ Function to read a noise file and parse columns.
-    """
-
-    f = open(noisefile,'r')
-    noises = pickle.load(f)
-    seg = []; noiseperbl = []; flagfrac = []; imnoise = []
-    for noise in noises:
-        seg.append(noise[0]); noiseperbl.append(noise[1])
-        flagfrac.append(noise[2]); imnoise.append(noise[3])
-    return (n.array(seg), n.array(noiseperbl), n.array(flagfrac), n.array(imnoise))
-
-def merge_pkl(pkllist, fileroot=''):
-    """ Merges cands/noise pkl files from input root name into single cands/noise file.
-    Output single pkl is used for visualizations.
-    """
-
-    assert len(pkllist) > 0
-
-    workdir = os.path.split(pkllist[0])[0]
-
-    if not fileroot:
-        fileroot = '_'.join(pkllist[0].split('_')[1:3])   # assumes filename structure
-
-    # aggregate cands over segments
-    if 'cands' in pkllist[0]:
-        print 'Aggregating cands from %s' % pkllist
-        cands = {}
-        for cc in pkllist:
-            pkl = open(cc,'r')
-            state = pickle.load(pkl)
-            result = pickle.load(pkl)
-            for kk in result.keys():
-                cands[kk] = result[kk]
-            pkl.close()
-
-        # write cands to single file
-        pkl = open(os.path.join(workdir, 'cands_' + fileroot + '.pkl'), 'w')
-        pickle.dump(state, pkl)
-        pickle.dump(cands, pkl)
-        pkl.close()
-
-    # clean up noise files
-    elif 'noise' in pkllist[0]:
-        print 'Aggregating noise from %s' % pkllist
-        # aggregate noise over segments
-        noise = []
-        for cc in pkllist:
-            pkl = open(cc,'r')
-            result = pickle.load(pkl)
-            noise += result
-
-        # write noise to single file
-        pkl = open(os.path.join(workdir, 'noise_' + fileroot + '.pkl'), 'w')
-        pickle.dump(noise, pkl)
-        pkl.close()
 
 def make_psrrates(pkllist, nbins=60, period=0.156):
     """ Visualize cands in set of pkl files from pulsar observations.
@@ -488,3 +517,135 @@ def plot_psrrates(pkllist, outname=''):
         print 'flux ratio (1/0, 2/0):', (r10[len(r20)-1], r20[-1])
 
     plt.savefig(outname)
+
+def candplot(pkllist, threshold=0, candnum=-1, outname=''):
+    """ Create detailed plot of a single candidate.
+    Thresholds (as minimum), then provides list of candidates to select with candnum.
+    """
+
+    assert len(pkllist) > 0
+    import RT as rt
+
+    d = pickle.load(open(pkllist[0], 'r'))
+    loc, prop = mergecands(pkllist)
+    d['featureind'].insert(0, 'scan')
+
+    # feature columns
+    if 'snr2' in d['features']:
+        snrcol = d['features'].index('snr2')
+    elif 'snr1' in d['features']:
+        snrcol = d['features'].index('snr1')
+    if 'l2' in d['features']:
+        lcol = d['features'].index('l2')
+    elif 'l1' in d['features']:
+        lcol = d['features'].index('l1')
+    if 'm2' in d['features']:
+        mcol = d['features'].index('m2')
+    elif 'm1' in d['features']:
+        mcol = d['features'].index('m1')
+        
+    scancol = d['featureind'].index('scan')
+    segmentcol = d['featureind'].index('segment')
+    intcol = d['featureind'].index('int')
+    dtindcol = d['featureind'].index('dtind')
+    dmindcol = d['featureind'].index('dmind')
+
+    if candnum < 0:
+        print 'Show candidates...'
+        for i in range(len(loc)):
+            print i, loc[i], prop[i, snrcol]
+#            print loc[prop[:,snrcol].argsort()]
+    else:
+        print 'Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum])
+        scan = loc[candnum, scancol]
+        segment = loc[candnum, segmentcol]
+        dmind = loc[candnum, dmindcol]
+        dtind = loc[candnum, dtindcol]
+        d = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False)
+        dmarrorig = d['dmarr']
+        dtarrorig = d['dtarr']
+        d['featureind'].insert(0, 'scan')
+        im, data = rt.pipeline(d, segment, (loc[candnum, intcol], dmind, dtind))  # with candnum, pipeline will return cand data
+
+        # plot it
+        print 'Plotting...'
+        fov = n.degrees(1./d['uvres'])*60.
+        xpix,ypix = im.shape
+        srcra,srcdec = n.where(im == im.max())
+
+        fig = plt.Figure(figsize=(8.5,8))
+        ax = fig.add_subplot(221, axisbg='white')
+
+        # # first plot dm-t distribution beneath
+        times0 = int2mjd(d, loc)
+        times = int2mjd(d, loc[candnum][None,:])
+        dms0 = n.array(dmarrorig)[list(loc[:,dmindcol])]
+        dms = dmarrorig[loc[candnum,dmindcol]]
+        snr0 = prop[:, snrcol]
+        snr = prop[candnum, snrcol]
+        snrmin = 0.9 * min(d['sigma_image1'], d['sigma_image2'])
+        # plot positive
+        good = n.where(snr0 > 0)
+        ax.scatter(times0[good]-times0[0], dms0[good], s=(snr0[good]-snrmin)**5, facecolor='none', linewidth=0.2, clip_on=False)
+        ax.scatter(times-times0[0], dms, s=(snr-snrmin)**5, facecolor='none', linewidth=2, clip_on=False)
+        # plot negative
+        good = n.where(snr0 < 0)
+        ax.scatter(times0[good]-times0[0], dms0[good], s=(n.abs(snr0)[good]-snrmin)**5, marker='x', facecolor='k', linewidth=0.2, clip_on=False)
+        ax.set_ylim(dmarrorig[0], dmarrorig[-1])
+        ax.set_xlim(0, times0.max()-times0[0])
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel('DM (pc/cm3)')
+
+        # # then add annotating info
+        ax.text(0.1, 0.9, d['fileroot']+'_sc'+str(scan), fontname='sans-serif', transform = ax.transAxes)
+        ax.text(0.1, 0.8, 'seg %d, int %d, DM %.1f, dt %d' % (segment, loc[candnum, intcol], dmarrorig[loc[candnum, dmindcol]], dtarrorig[loc[candnum,dtindcol]]), fontname='sans-serif', transform = ax.transAxes)
+        ax.text(0.1, 0.7, 'Peak: (' + str(n.round((xpix/2-srcra[0])*fov/xpix, 1)) + '\' ,' + str(n.round((ypix/2-srcdec[0])*fov/ypix, 1)) + '\'), SNR: ' + str(n.round(snr, 1)), fontname='sans-serif', transform = ax.transAxes)
+
+        # plot dynamic spectra
+        left, width = 0.6, 0.2
+        bottom, height = 0.2, 0.7
+        rect_dynsp = [left, bottom, width, height]
+        rect_lc = [left, bottom-0.1, width, 0.1]    
+        rect_sp = [left+width, bottom, 0.1, height]
+        ax_dynsp = fig.add_axes(rect_dynsp)
+        ax_lc = fig.add_axes(rect_lc)    
+        ax_sp = fig.add_axes(rect_sp)
+        spectra = n.swapaxes(data.real,0,1)      # seems that latest pickle actually contains complex values in spectra...
+        dd = n.concatenate( (spectra[...,0], n.zeros_like(spectra[...,0]), spectra[...,1]), axis=1)    # make array for display with white space between two pols
+        impl = ax_dynsp.imshow(dd, origin='lower', interpolation='nearest', aspect='auto', cmap=plt.get_cmap('Greys'))
+        ax_dynsp.text(0.5, 0.95, 'RR LL', horizontalalignment='center', verticalalignment='center', fontsize=16, color='w', transform = ax_dynsp.transAxes)
+        ax_dynsp.set_yticks(range(0,len(d['freq']),30))
+        ax_dynsp.set_yticklabels(d['freq'][::30])
+        ax_dynsp.set_ylabel('Freq (GHz)')
+        ax_dynsp.set_xlabel('Integration (rel)')
+        spectrum = spectra[:,len(spectra[0])/2].mean(axis=1)      # assume pulse in middle bin. get stokes I spectrum. **this is wrong in a minority of cases.**
+        ax_sp.plot(spectrum, range(len(spectrum)), 'k.')
+        ax_sp.plot(n.zeros(len(spectrum)), range(len(spectrum)), 'k:')
+        ax_sp.set_ylim(0, len(spectrum))
+        ax_sp.set_yticklabels([])
+        xmin,xmax = ax_sp.get_xlim()
+        ax_sp.set_xticks(n.linspace(xmin,xmax,3).round(2))
+        ax_sp.set_xlabel('Flux (Jy)')
+        lc = dd.mean(axis=0)
+        lenlc = n.where(lc == 0)[0][0]
+        ax_lc.plot(range(0,lenlc)+range(2*lenlc,3*lenlc), list(lc)[:lenlc] + list(lc)[-lenlc:], 'k.')
+        ax_lc.plot(range(0,lenlc)+range(2*lenlc,3*lenlc), list(n.zeros(lenlc)) + list(n.zeros(lenlc)), 'k:')
+        ax_lc.set_xlabel('Integration')
+        ax_lc.set_ylabel('Flux (Jy)')
+        ax_lc.set_xticks([0,0.5*lenlc,lenlc,1.5*lenlc,2*lenlc,2.5*lenlc,3*lenlc])
+        ax_lc.set_xticklabels(['0',str(lenlc/2),str(lenlc),'','0',str(lenlc/2),str(lenlc)])
+        ymin,ymax = ax_lc.get_ylim()
+        ax_lc.set_yticks(n.linspace(ymin,ymax,3).round(2))
+
+        # image
+        ax = fig.add_subplot(223)
+        ax.scatter(((xpix/2-srcra[0])-0.05*xpix)*fov/xpix, (ypix/2-srcdec[0])*fov/ypix, s=80, marker='<', facecolor='none')
+        ax.scatter(((xpix/2-srcra[0])+0.05*xpix)*fov/xpix, (ypix/2-srcdec[0])*fov/ypix, s=80, marker='>', facecolor='none')
+        impl = ax.imshow(im.transpose(), aspect='equal', origin='upper', interpolation='nearest', extent=[fov/2, -fov/2, -fov/2, fov/2], cmap=plt.get_cmap('Greys'), vmin=0, vmax=0.5*im.max())
+        ax.set_xlabel('RA Offset (arcmin)')
+        ax.set_ylabel('Dec Offset (arcmin)')
+
+        if not outname:
+            outname = os.path.join(d['workdir'], 'cands_%s_sc%dseg%di%ddm%ddt%d.png' % (d['fileroot'], scan, segment, loc[candnum, intcol], dmind, dtind))
+            canvas = FigureCanvasAgg(fig)
+            canvas.print_figure(outname)

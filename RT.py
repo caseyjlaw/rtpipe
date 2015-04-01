@@ -17,10 +17,11 @@ global data_resamp
 def pipelinetest(d, segment):
     return 0
 
-def pipeline(d, segment):
+def pipeline(d, segment, reproducecand=()):
     """ Transient search pipeline running on single node.
     Processes a single segment of data (where a single bgsub, (u,v,w), etc. can be used).
     Searches completely, independently, and saves candidates.
+    reproducecand is tuple of (candint, dmind, dtind) that params to reproduce/visualize candidate
 
     Stages:
     0) Take dictionary that defines metadata and search params
@@ -39,7 +40,7 @@ def pipeline(d, segment):
     ####    ####    ####    ####
 
     os.chdir(d['workdir'])
-    
+
     if d['dataformat'] == 'ms':   # CASA-based read
         segread = pm.readsegment(d, segment)
         nints = len(segread[0])
@@ -84,7 +85,6 @@ def pipeline(d, segment):
         rtlib.meantsub(data)
     else:
         print 'No mean time subtraction.'
-#        data = data.mean(axis=0)[None,:,:,:]  # test
 
     if d['savenoise']:
         noisepickle(d, data, u, v, w)      # save noise pickle
@@ -93,16 +93,28 @@ def pipeline(d, segment):
     # 3) Search using all threads
     ####    ####    ####    ####
     print 'Starting search...'
-    cands = search(d, data, u, v, w)
+    if len(reproducecand) == 0:
+#        cands = search(d, data, u, v, w)
+        data = search(d, data, u, v, w)
 
-    ####    ####    ####    ####
-    # 4) Save candidate info
-    ####    ####    ####    ####
-    if d['savecands']:
-        print 'Saving %d candidates...' % (len(cands))
-        savecands(d, cands)
+        ####    ####    ####    ####
+        # 4) Save candidate info
+        ####    ####    ####    ####
+        if d['savecands']:
+            print 'Saving %d candidates...' % (len(cands))
+            savecands(d, cands)
 
-    return len(cands)
+#        return len(cands)
+        return data
+
+    elif len(reproducecand) == 3:  # reproduce and visualize candidates
+        reproduceint, dmind, dtind = reproducecand
+        d['dmarr'] = [d['dmarr'][dmind]]
+        d['dtarr'] = [d['dtarr'][dtind]]
+        im, data = reproduce(d, data, u, v, w, reproduceint)
+        return im, data
+    else:
+        print 'reproducecand should be empty of length 3: %s' % reproducecand
 
 def dataflag(chans, pol, d, sig, mode, conv):
     return rtlib.dataflag(data, chans, pol, d, sig, mode, conv)
@@ -167,6 +179,12 @@ def search(d, data, u, v, w):
     cands = {}
     resultlist = []
 
+    if d['savecands']:
+        candsfile = 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+        if os.path.exists(candsfile):
+            print 'candsfile %s already exists' % candsfile
+            return cands
+
     nints = len(data)
     data_resamp_mem = [mps.RawArray(mps.ctypes.c_float, (nints*d['nbl']*d['nchan']*d['npol'])*2) for resamp in range(len(d['dtarr']))]    # simple shared array
     data_resamp = [numpyview(data_resamp_mem[resamp], 'complex64', (nints, d['nbl'], d['nchan'], d['npol'])) for resamp in range(len(d['dtarr']))]
@@ -225,7 +243,57 @@ def search(d, data, u, v, w):
         print 'Data for processing is zeros. Moving on...'
 
     print 'Found %d cands in scan %d segment %d of %s. ' % (len(cands), d['scan'], d['segment'], d['filename'])
-    return cands
+#    return cands
+    return data_resamp[3]
+
+def reproduce(d, data, u, v, w, candint, twindow=30):
+    """ Reproduce function, much like search.
+    Instead of returning cand count
+    Assumes shared memory system with single uvw grid for all images.
+    """
+
+    nints = len(data)
+    data_resamp_mem = [mps.RawArray(mps.ctypes.c_float, (nints*d['nbl']*d['nchan']*d['npol'])*2)]
+    data_resamp = [numpyview(data_resamp_mem[0], 'complex64', (nints, d['nbl'], d['nchan'], d['npol']))]
+    data_resamp[0][:] = data[:]
+    del data
+
+    dmind = 0; dtind = 0
+    with closing(mp.Pool(1, initializer=initpool, initargs=(data_resamp,))) as pool:
+        # dedisperse
+        print 'Dedispersing with DM=%.1f, dt=%d...' % (d['dmarr'][dmind], d['dtarr'][dtind])
+        pool.apply(correct_dmdt, [d, dmind, dtind])
+
+        # set up image
+        if d['searchtype'] == 'image1':
+            npixx = d['npixx']
+            npixy = d['npixy']
+        elif d['searchtype'] == 'image2':
+            npixx = d['npixx_full']
+            npixy = d['npixy_full']
+
+        # image
+        print 'Imaging int %d with %d %d pixels...' % (candint, npixx, npixy)
+#        print nints/d['dtarr'][dtind], candint/d['dtarr'][dtind]
+#        ims,snrs,candints = pool.apply(rtlib.imgallfullfilterxyflux, [n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[0][0:nints/d['dtarr'][dtind]], npixx, npixy, d['uvres'], d['sigma_image1']])
+#        print snrs, candints
+#        im = ims[candints.index(candint)]
+        im = pool.apply(rtlib.imgonefullxy, [n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[0][candint/d['dtarr'][dtind]], npixx, npixy, d['uvres'], 0])
+
+        print 'Made image with SNR min, max: %.1f, %.1f' % (im.min()/im.std(), im.max()/im.std())
+        peakl, peakm = n.where(im == im.max())
+        l1 = (float((npixx)/d['uvres'])/2. - peakl[0])/npixx
+        m1 = (float((npixy)/d['uvres'])/2. - peakm[0])/npixy
+
+        # rephase and trim interesting ints out
+        print 'Rephasing to peak...'
+        pool.apply(rtlib.phaseshift_threaded, [data_resamp[0], d, l1, m1, u, v])
+        minint = max(candint-twindow/2, 0)
+        maxint = min(candint+twindow/2, len(data_resamp[0]))
+        data = data_resamp[0][minint:maxint].copy()
+
+    return(im, data.mean(axis=1))
+
 
 def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     """ Function defines pipeline state for search. Takes data/scan as input.
@@ -379,7 +447,6 @@ def correct_dmdt(d, dmind, dtind):
     datadt = data_resamp[dtind]
     dt = d['dtarr'][dtind]
     rtlib.dedisperse_resample(datadt, d['freq'], d['inttime'], d['dmarr'][dmind], dt, verbose=0)        # dedisperses data.
-#    rtlib.dedisperse_resample(data[:,:,i0:i1], d['freq'][i0:i1], d['inttime'], d['dmarr'][dmind], dt, verbose=0)        # seems to not dedisperse
 
 def calc_dmgrid(d, maxloss=0.05, dt=3000., mindm=0., maxdm=2000.):
     """ Function to calculate the DM values for a given maximum sensitivity loss.
@@ -630,6 +697,11 @@ def noisepickle(d, data, u, v, w, chunk=200):
     """
 
     noisefile = 'noise_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+
+    if d['savenoise']:
+        if os.path.exists(noisefile):
+            print 'noisefile %s already exists' % noisefile
+            return
 
     nints = len(data)
     chunk = min(chunk, nints-1)  # ensure at least one measurement
