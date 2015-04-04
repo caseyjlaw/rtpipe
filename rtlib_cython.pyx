@@ -605,7 +605,7 @@ cpdef dedisperse(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, d, float dm, int ver
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-cpdef dedisperse_resample(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, n.ndarray[float, ndim=1] freq, float inttime, float dm, unsigned int resample, int verbose=0):
+cpdef dedisperse_resample(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, n.ndarray[float, ndim=1] freq, float inttime, float dm, unsigned int resample, blr, int verbose=0):
     """ dedisperse the data and resample in place. only fraction of array is useful data.
     dm algorithm on only accurate if moving "up" in dm space.
     assumes unshifted data.
@@ -630,7 +630,7 @@ cpdef dedisperse_resample(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, n.ndarray[f
     cdef n.ndarray[short, ndim=1] relativedelay = calc_delay(freq, inttime, dm)
     cdef unsigned int newlen0 = len0/resample
 
-    for j in xrange(len1):
+    for j in xrange(*blr):     # parallelized over blrange
         for l in xrange(len3):
             for k in xrange(len2):
                 shift = relativedelay[k]
@@ -698,7 +698,7 @@ cpdef dedisperse_resample2(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, n.ndarray[
     if verbose != 0:
         print 'Dedispersed for DM=%d' % dm
 
-cpdef meantsub(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal):
+cpdef meantsub(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, blr):
     """ Subtract mean visibility, ignoring zeros
     """
 
@@ -711,7 +711,7 @@ cpdef meantsub(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal):
     cdef complex sum
     cdef unsigned int count = 0
 
-    for j in xrange(nbl):
+    for j in xrange(*blr):
         for k in xrange(nchan):
             for l in xrange(npol):
                 sum = 0.
@@ -724,7 +724,7 @@ cpdef meantsub(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal):
                     for i in xrange(iterint):
                         datacal[i,j,k,l] = datacal[i,j,k,l] - sum/count
 
-cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacalfull, n.ndarray[n.int_t, ndim=1] chans, unsigned int pol, d, sigma=4, mode='', convergence=0.2, tripfrac=0.5):
+cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacalfull, n.ndarray[n.int_t, ndim=1] chans, unsigned int pol, d, sigma=4, mode='', convergence=0.2, tripfrac=0.4):
     """ Flagging function
     """
 

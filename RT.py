@@ -11,9 +11,6 @@ import casautil, os, pickle, glob
 
 qa = casautil.tools.quanta()
 
-global data
-global data_resamp
-
 def pipeline(d, segment, reproducecand=()):
     """ Transient search pipeline running on single node.
     Processes a single segment of data (where a single bgsub, (u,v,w), etc. can be used).
@@ -75,13 +72,10 @@ def pipeline(d, segment, reproducecand=()):
         print 'Calibration file not found. Proceeding with no calibration applied.'
 
     # flag data
-    dataflagall(data, d)
+    dataflagpool(data_mem, d)
 
-    if d['timesub'] == 'mean':
-        print 'Subtracting mean visibility in time...'
-        rtlib.meantsub(data)
-    else:
-        print 'No mean time subtraction.'
+    # mean t vis subtration
+    meantsubpool(data_mem, d)
 
     if d['savenoise']:
         noisepickle(d, data, u, v, w)      # save noise pickle
@@ -91,8 +85,7 @@ def pipeline(d, segment, reproducecand=()):
     ####    ####    ####    ####
     print 'Starting search...'
     if len(reproducecand) == 0:
-#        cands = search(d, data, u, v, w)
-        data = search(d, data, u, v, w)
+        cands = search(d, data, u, v, w)
 
         ####    ####    ####    ####
         # 4) Save candidate info
@@ -101,8 +94,7 @@ def pipeline(d, segment, reproducecand=()):
             print 'Saving %d candidates...' % (len(cands))
             savecands(d, cands)
 
-#        return len(cands)
-        return data
+        return len(cands)
 
     elif len(reproducecand) == 3:  # reproduce and visualize candidates
         reproduceint, dmind, dtind = reproducecand
@@ -113,17 +105,37 @@ def pipeline(d, segment, reproducecand=()):
     else:
         print 'reproducecand should be empty of length 3: %s' % reproducecand
 
-def dataflag(chans, pol, d, sig, mode, conv):
-    return rtlib.dataflag(data, chans, pol, d, sig, mode, conv)
+def meantsubpool(data_mem, d):
+    """ Parallelized mean t visibility subtraction.
+    """
 
-def dataflagall(data, d):
+    if d['timesub'] == 'mean':
+        print 'Subtracting mean visibility in time...'
+        blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
+        with closing(mp.Pool(d['nthread'], initializer=initpool2, initargs=(data_mem,))) as pool:
+            for blr in blranges:
+                pool.apply_async(meantsub, [blr, d])
+    else:
+        print 'No mean time subtraction.'
+
+def meantsub(blr, d):
+    """ Wrapper function for rtlib.meantsub
+    Assumes data_mem is global mps.RawArray
+    """
+    readints = len(data_mem)/(d['nbl']*d['nchan']*d['npol']*2)
+    data = numpyview(data_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
+
+    rtlib.meantsub(data, blr)
+
+def dataflagpool(data_mem, d):
     """ Parallelized flagging
     """
+
 
     if d['flagmode'] == 'standard':
         print 'Flagging data...'
         chperspw = len(d['freq_orig'])/len(d['spw'])
-        with closing(mp.Pool(d['nthread'], initializer=initpool2, initargs=(data,))) as pool:
+        with closing(mp.Pool(d['nthread'], initializer=initpool2, initargs=(data_mem,))) as pool:
             resultd = {}
             for pol in range(d['npol']):
                 for spw in range(d['nspw']):
@@ -166,6 +178,15 @@ def dataflagall(data, d):
     else:
         print 'No real-time flagging.'
 
+def dataflag(chans, pol, d, sig, mode, conv):
+    """ Wrapper function to get shared memory as numpy array into pool
+    Assumes data_mem is global mps.RawArray
+    """
+    readints = len(data_mem)/(d['nbl']*d['nchan']*d['npol']*2)
+    data = numpyview(data_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
+
+    return rtlib.dataflag(data, chans, pol, d, sig, mode, conv)
+
 def search(d, data, u, v, w):
     """ Search function.
     Queues all trials with multiprocessing.
@@ -183,10 +204,12 @@ def search(d, data, u, v, w):
             return cands
 
     nints = len(data)
-    data_resamp_mem = [mps.RawArray(mps.ctypes.c_float, (nints*d['nbl']*d['nchan']*d['npol'])*2) for resamp in range(len(d['dtarr']))]    # simple shared array
-    data_resamp = [numpyview(data_resamp_mem[resamp], 'complex64', (nints, d['nbl'], d['nchan'], d['npol'])) for resamp in range(len(d['dtarr']))]
-    data_resamp[0][:] = data[:]
-    del data
+#    data_resamp_mem = [mps.RawArray(mps.ctypes.c_float, (nints*d['nbl']*d['nchan']*d['npol'])*2) for resamp in range(len(d['dtarr']))]    # simple shared array
+#    data_resamp = [numpyview(data_resamp_mem[resamp], 'complex64', (nints, d['nbl'], d['nchan'], d['npol'])) for resamp in range(len(d['dtarr']))]
+#    data_resamp[0][:] = data[:]
+#    del data
+    data_resamp_mem = mps.RawArray(mps.ctypes.c_float, (nints*d['nbl']*d['nchan']*d['npol'])*2)
+    data_resamp = numpyview(data_resamp_mem, 'complex64', (nints, d['nbl'], d['nchan'], d['npol']))
 
     # make wterm kernels
     if d['searchtype'] == 'image2w':
@@ -195,28 +218,25 @@ def search(d, data, u, v, w):
         bls, uvkers = rtlib.genuvkernels(w, wres, npix, d['uvres'], thresh=0.05)
 
     # SUBMITTING THE LOOPS
-    if n.any(data_resamp[0]):
+    if n.any(data):
         print 'Searching in %d chunks with %d threads' % (d['nchunk'], d['nthread'])
 
         # open pool to run jobs
-        with closing(mp.Pool(d['nthread'], initializer=initpool, initargs=(data_resamp,))) as pool:
-            for dmind in xrange(len(d['dmarr'])):
-                print 'At DM %d/%d. Dedispersing...' % (d['dmarr'][dmind], d['dmarr'][-1]),
-                for dtind in xrange(len(d['dtarr'])):
-                    data_resamp[dtind][:] = data_resamp[0][:]
-# failed attempt to parallelize dedispersion by channel
-#                    for chunk in range(d['nchunk']):
-#                        ch0 = d['nchan']*chunk/d['nchunk']
-#                        ch1 = d['nchan']*(chunk+1)/d['nchunk']
-#                        result = pool.apply_async(correct_dmdt, [d, ch0, ch1, dmind, dtind])
-                    result = pool.apply_async(correct_dmdt, [d, dmind, dtind])
-                    resultlist.append(result)
-                for result in resultlist:
-                    result.wait()
-                resultlist = []
+        print 'Dedispering to max (DM, dt) of (%d, %d) ...' % (d['dmarr'][-1], d['dtarr'][-1]), 
+        for dmind in xrange(len(d['dmarr'])):
+            for dtind in xrange(len(d['dtarr'])):
+                print '(%d,%d)' % (d['dmarr'][dmind], d['dtarr'][dtind]),
+                data_resamp[:] = data[:]
+                blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
+                with closing(mp.Pool(d['nthread'], initializer=initpool, initargs=(data_resamp_mem,))) as pool:
+                    for blr in blranges:
+                        result = pool.apply_async(correct_dmdt, [d, dmind, dtind, blr])
+                        resultlist.append(result)
+                    for result in resultlist:
+                        result.wait()
+                    resultlist = []
 
-                print 'Imaging...'
-                for dtind in xrange(len(d['dtarr'])):
+                    print 'Imaging...',
                     for chunk in range(d['nchunk']):
                         i0 = (nints/d['dtarr'][dtind])*chunk/d['nchunk']
                         i1 = (nints/d['dtarr'][dtind])*(chunk+1)/d['nchunk']
@@ -230,18 +250,17 @@ def search(d, data, u, v, w):
                             result = pool.apply_async(image2w, [d, i0, i1, u, v, w, dmind, dtind, beamnum, bls, uvkers])
                             resultlist.append(result)
 
-                # COLLECTING THE RESULTS per DM loop. Clears the way for overwriting data_resamp
-                for result in resultlist:
-                    feat = result.get()
-                    for kk in feat.keys():
-                        cands[kk] = feat[kk]
-        pool.join()
+                    # COLLECTING THE RESULTS per DM loop. Clears the way for overwriting data_resamp
+                    for result in resultlist:
+                        feat = result.get()
+                        for kk in feat.keys():
+                            cands[kk] = feat[kk]
+#                pool.join()
     else:
         print 'Data for processing is zeros. Moving on...'
 
     print 'Found %d cands in scan %d segment %d of %s. ' % (len(cands), d['scan'], d['segment'], d['filename'])
-#    return cands
-    return data_resamp[3]
+    return cands
 
 def reproduce(d, data, u, v, w, candint, twindow=30):
     """ Reproduce function, much like search.
@@ -250,13 +269,13 @@ def reproduce(d, data, u, v, w, candint, twindow=30):
     """
 
     nints = len(data)
-    data_resamp_mem = [mps.RawArray(mps.ctypes.c_float, (nints*d['nbl']*d['nchan']*d['npol'])*2)]
-    data_resamp = [numpyview(data_resamp_mem[0], 'complex64', (nints, d['nbl'], d['nchan'], d['npol']))]
-    data_resamp[0][:] = data[:]
+    data_resamp_mem = mps.RawArray(mps.ctypes.c_float, (nints*d['nbl']*d['nchan']*d['npol'])*2)
+    data_resamp = [numpyview(data_resamp_mem, 'complex64', (nints, d['nbl'], d['nchan'], d['npol']))]
+    data_resamp[:] = data[:]
     del data
 
     dmind = 0; dtind = 0
-    with closing(mp.Pool(1, initializer=initpool, initargs=(data_resamp,))) as pool:
+    with closing(mp.Pool(1, initializer=initpool, initargs=(data_resamp_mem,))) as pool:
         # dedisperse
         print 'Dedispersing with DM=%.1f, dt=%d...' % (d['dmarr'][dmind], d['dtarr'][dtind])
         pool.apply(correct_dmdt, [d, dmind, dtind])
@@ -275,7 +294,7 @@ def reproduce(d, data, u, v, w, candint, twindow=30):
 #        ims,snrs,candints = pool.apply(rtlib.imgallfullfilterxyflux, [n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[0][0:nints/d['dtarr'][dtind]], npixx, npixy, d['uvres'], d['sigma_image1']])
 #        print snrs, candints
 #        im = ims[candints.index(candint)]
-        im = pool.apply(rtlib.imgonefullxy, [n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[0][candint/d['dtarr'][dtind]], npixx, npixy, d['uvres'], 0])
+        im = pool.apply(rtlib.imgonefullxy, [n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[candint/d['dtarr'][dtind]], npixx, npixy, d['uvres'], 0])
 
         print 'Made image with SNR min, max: %.1f, %.1f' % (im.min()/im.std(), im.max()/im.std())
         peakl, peakm = n.where(im == im.max())
@@ -286,11 +305,10 @@ def reproduce(d, data, u, v, w, candint, twindow=30):
         print 'Rephasing to peak...'
         pool.apply(move_phasecenter, [d, l1, m1, u, v])
         minint = max(candint-twindow/2, 0)
-        maxint = min(candint+twindow/2, len(data_resamp[0]))
-        data = data_resamp[0][minint:maxint].copy()
+        maxint = min(candint+twindow/2, len(data_resamp))
+        data = data_resamp[minint:maxint].copy()
 
     return(im, data.mean(axis=1))
-
 
 def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     """ Function defines pipeline state for search. Takes data/scan as input.
@@ -437,14 +455,15 @@ def calc_fringetime(d):
     fringetime = 0.5*(24*3600)/(2*n.pi*maxbl/25.)   # max fringe window in seconds
     return fringetime
 
-def correct_dmdt(d, dmind, dtind):
+def correct_dmdt(d, dmind, dtind, blr):
     """ Dedisperses and resamples data *in place*.
     Drops edges, since it assumes that data is read with overlapping chunks in time.
     """
 
-    datadt = data_resamp[dtind]
-    dt = d['dtarr'][dtind]
-    rtlib.dedisperse_resample(datadt, d['freq'], d['inttime'], d['dmarr'][dmind], dt, verbose=0)        # dedisperses data.
+    readints = len(data_resamp_mem)/(d['nbl']*d['nchan']*d['npol']*2)
+    data_resamp = numpyview(data_resamp_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
+
+    rtlib.dedisperse_resample(data_resamp, d['freq'], d['inttime'], d['dmarr'][dmind], d['dtarr'][dtind], blr, verbose=0)        # dedisperses data.
 
 def move_phasecenter(d, l1, m1, u, v):
     """ Handler function for phaseshift_threaded
@@ -488,7 +507,10 @@ def image1(d, i0, i1, u, v, w, dmind, dtind, beamnum):
     returns dictionary with keys of cand location and values as tuple of features
     """
 
-    ims,snr,candints = rtlib.imgallfullfilterxyflux(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[dtind][i0:i1], d['npixx'], d['npixy'], d['uvres'], d['sigma_image1'])
+    readints = len(data_resamp_mem)/(d['nbl']*d['nchan']*d['npol']*2)
+    data_resamp = numpyview(data_resamp_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
+
+    ims,snr,candints = rtlib.imgallfullfilterxyflux(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[i0:i1], d['npixx'], d['npixy'], d['uvres'], d['sigma_image1'])
 
     feat = {}
     for i in xrange(len(candints)):
@@ -526,12 +548,15 @@ def image2(d, i0, i1, u, v, w, dmind, dtind, beamnum):
     returns dictionary with keys of cand location and values as tuple of features
     """
 
-    ims,snr,candints = rtlib.imgallfullfilterxy(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[dtind][i0:i1], d['npixx'], d['npixy'], d['uvres'], d['sigma_image1'])
+    readints = len(data_resamp_mem)/(d['nbl']*d['nchan']*d['npol']*2)
+    data_resamp = numpyview(data_resamp_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
+
+    ims,snr,candints = rtlib.imgallfullfilterxy(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[i0:i1], d['npixx'], d['npixy'], d['uvres'], d['sigma_image1'])
 
     feat = {}
     for i in xrange(len(candints)):
         # reimage
-        im2 = rtlib.imgonefullxy(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[dtind][i0+candints[i]], d['npixx_full'], d['npixy_full'], d['uvres'], verbose=0)
+        im2 = rtlib.imgonefullxy(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[i0+candints[i]], d['npixx_full'], d['npixy_full'], d['uvres'], verbose=0)
 
         # find most extreme pixel
         snrmax = im2.max()/im2.std()
@@ -599,13 +624,16 @@ def image2w(d, i0, i1, u, v, w, dmind, dtind, beamnum, bls, uvkers):
     returns dictionary with keys of cand location and values as tuple of features
     """
 
-    ims,snr,candints = rtlib.imgallfullfilterxy(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[dtind][i0:i1], d['npixx'], d['npixy'], d['uvres'], d['sigma_image1'])
+    readints = len(data_resamp_mem)/(d['nbl']*d['nchan']*d['npol']*2)
+    data_resamp = numpyview(data_resamp_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
+
+    ims,snr,candints = rtlib.imgallfullfilterxy(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[i0:i1], d['npixx'], d['npixy'], d['uvres'], d['sigma_image1'])
 
     feat = {}
     for i in xrange(len(candints)):
         # reimage
         npix = max(d['npixx_full'], d['npixy_full'])
-        im2 = rtlib.imgonefullw(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[dtind][i0+candints[i]], npix, d['uvres'], bls, uvkers, verbose=1)
+        im2 = rtlib.imgonefullw(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[i0+candints[i]], npix, d['uvres'], bls, uvkers, verbose=1)
         print im2.shape
 
         # find most extreme pixel
@@ -733,16 +761,16 @@ def savecands(d, cands):
     pkl.close()
 
 def numpyview(arr, datatype, shape):
-    """ Takes mp.Array and returns numpy array with given shape.
+    """ Takes mp shared array and returns numpy array with given shape.
     """
 
 #    return n.frombuffer(arr.get_obj(), dtype=n.dtype(datatype)).view(n.dtype(datatype)).reshape(shape)  # for shared mp.Array
     return n.frombuffer(arr, dtype=n.dtype(datatype)).view(n.dtype(datatype)).reshape(shape)   # for shared mps.RawArray
 
 def initpool(shared_arr_):
-    global data_resamp
-    data_resamp = shared_arr_ # must be inhereted, not passed as an argument
+    global data_resamp_mem
+    data_resamp_mem = shared_arr_ # must be inhereted, not passed as an argument
 
 def initpool2(shared_arr_):
-    global data
-    data = shared_arr_ # must be inhereted, not passed as an argument
+    global data_mem
+    data_mem = shared_arr_ # must be inhereted, not passed as an argument

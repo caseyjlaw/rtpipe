@@ -88,6 +88,7 @@ def merge_pkl(pkllist, fileroot=''):
 
 def mergecands(pkllist):
     """ Takes cands pkls from list and produces single loc/prop array
+    Ignores segment cand files.
     """
 
     assert isinstance(pkllist, list)
@@ -580,7 +581,7 @@ def plot_cand(pkllist, threshold=0, candnum=-1, outname=''):
         segment = loc[candnum, segmentcol]
         dmind = loc[candnum, dmindcol]
         dtind = loc[candnum, dtindcol]
-        d = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False)
+        d = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False, nsegments=d['nsegments'])
         dmarrorig = d['dmarr']
         dtarrorig = d['dtarr']
         d['featureind'].insert(0, 'scan')
