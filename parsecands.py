@@ -5,6 +5,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import pickle, types, glob, os
+import rtpipe.RT as rt
 
 def read_candidates(candsfile):
     """ Reads candidate pkl file into numpy array.
@@ -536,13 +537,12 @@ def plot_psrrates(pkllist, outname=''):
 
     plt.savefig(outname)
 
-def plot_cand(pkllist, threshold=0, candnum=-1, outname=''):
+def plot_cand(pkllist, snrmin=None, candnum=-1, outname=''):
     """ Create detailed plot of a single candidate.
     Thresholds (as minimum), then provides list of candidates to select with candnum.
     """
 
     assert len(pkllist) > 0
-    import RT as rt
 
     d = pickle.load(open(pkllist[0], 'r'))
     if not os.path.split(d['filename'])[0]:
@@ -570,22 +570,31 @@ def plot_cand(pkllist, threshold=0, candnum=-1, outname=''):
     dtindcol = d['featureind'].index('dtind')
     dmindcol = d['featureind'].index('dmind')
 
+    # sort and prep candidate list
+    snrs = prop[:,snrcol]
+    if isinstance(snrmin, type(None)):
+        snrmin = min(snrs)
+    # sortord = snrs.argsort()
+    # snrinds = n.where(snrs[sortord] > snrmin)[0]
+    # loc = loc[sortord][snrinds]
+    # prop = prop[sortord][snrinds]
+
     if candnum < 0:
         print 'Show candidates...'
         for i in range(len(loc)):
             print i, loc[i], prop[i, snrcol]
-#            print loc[prop[:,snrcol].argsort()]   # could also sort by SNR
     else:
         print 'Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum])
         scan = loc[candnum, scancol]
         segment = loc[candnum, segmentcol]
         dmind = loc[candnum, dmindcol]
         dtind = loc[candnum, dtindcol]
-        d = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False, nsegments=d['nsegments'])
+        candint = loc[candnum, intcol]
         dmarrorig = d['dmarr']
         dtarrorig = d['dtarr']
-        d['featureind'].insert(0, 'scan')
-        im, data = rt.pipeline(d, segment, (loc[candnum, intcol], dmind, dtind))  # with candnum, pipeline will return cand data
+
+        d = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False)  #, nsegments=d['nsegments'])
+        im, data = rt.pipeline(d, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
 
         # plot it
         print 'Plotting...'

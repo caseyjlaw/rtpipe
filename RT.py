@@ -37,10 +37,10 @@ def pipeline(d, segment, reproducecand=()):
 
     if d['dataformat'] == 'ms':   # CASA-based read
         segread = pm.readsegment(d, segment)
-        nints = len(segread[0])
-        data = n.empty( (nints, d['nbl'], d['nchan'], d['npol']), dtype='complex64', order='C')
+        readints = len(segread[0])
+        data = n.empty( (readints, d['nbl'], d['nchan'], d['npol']), dtype='complex64', order='C')
         data[:] = segread[0]
-        (u, v, w) = (segread[1][nints/2], segread[2][nints/2], segread[3][nints/2])  # mid int good enough for segment. could extend this to save per chunk
+        (u, v, w) = (segread[1][readints/2], segread[2][readints/2], segread[3][readints/2])  # mid int good enough for segment. could extend this to save per chunk
         del segread
     elif d['dataformat'] == 'sdm':
         t0 = d['segmenttimes'][segment][0]
@@ -100,7 +100,7 @@ def pipeline(d, segment, reproducecand=()):
         reproduceint, dmind, dtind = reproducecand
         d['dmarr'] = [d['dmarr'][dmind]]
         d['dtarr'] = [d['dtarr'][dtind]]
-        im, data = reproduce(d, data, u, v, w, reproduceint)
+        im, data = reproduce(d, data_mem, u, v, w, reproduceint)
         return im, data
     else:
         print 'reproducecand should be empty of length 3: %s' % reproducecand
@@ -203,13 +203,13 @@ def search(d, data, u, v, w):
             print 'candsfile %s already exists' % candsfile
             return cands
 
-    nints = len(data)
-#    data_resamp_mem = [mps.RawArray(mps.ctypes.c_float, (nints*d['nbl']*d['nchan']*d['npol'])*2) for resamp in range(len(d['dtarr']))]    # simple shared array
-#    data_resamp = [numpyview(data_resamp_mem[resamp], 'complex64', (nints, d['nbl'], d['nchan'], d['npol'])) for resamp in range(len(d['dtarr']))]
+    readints = len(data)
+#    data_resamp_mem = [mps.RawArray(mps.ctypes.c_float, (readints*d['nbl']*d['nchan']*d['npol'])*2) for resamp in range(len(d['dtarr']))]    # simple shared array
+#    data_resamp = [numpyview(data_resamp_mem[resamp], 'complex64', (readints, d['nbl'], d['nchan'], d['npol'])) for resamp in range(len(d['dtarr']))]
 #    data_resamp[0][:] = data[:]
 #    del data
-    data_resamp_mem = mps.RawArray(mps.ctypes.c_float, (nints*d['nbl']*d['nchan']*d['npol'])*2)
-    data_resamp = numpyview(data_resamp_mem, 'complex64', (nints, d['nbl'], d['nchan'], d['npol']))
+    data_resamp_mem = mps.RawArray(mps.ctypes.c_float, (readints*d['nbl']*d['nchan']*d['npol'])*2)
+    data_resamp = numpyview(data_resamp_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
 
     # make wterm kernels
     if d['searchtype'] == 'image2w':
@@ -238,8 +238,8 @@ def search(d, data, u, v, w):
 
                     print 'Imaging...',
                     for chunk in range(d['nchunk']):
-                        i0 = (nints/d['dtarr'][dtind])*chunk/d['nchunk']
-                        i1 = (nints/d['dtarr'][dtind])*(chunk+1)/d['nchunk']
+                        i0 = (readints/d['dtarr'][dtind])*chunk/d['nchunk']
+                        i1 = (readints/d['dtarr'][dtind])*(chunk+1)/d['nchunk']
                         if d['searchtype'] == 'image1':
                             result = pool.apply_async(image1, [d, i0, i1, u, v, w, dmind, dtind, beamnum])
                             resultlist.append(result)
@@ -262,23 +262,20 @@ def search(d, data, u, v, w):
     print 'Found %d cands in scan %d segment %d of %s. ' % (len(cands), d['scan'], d['segment'], d['filename'])
     return cands
 
-def reproduce(d, data, u, v, w, candint, twindow=30):
+def reproduce(d, data_resamp_mem, u, v, w, candint, twindow=30):
     """ Reproduce function, much like search.
     Instead of returning cand count
     Assumes shared memory system with single uvw grid for all images.
     """
 
-    nints = len(data)
-    data_resamp_mem = mps.RawArray(mps.ctypes.c_float, (nints*d['nbl']*d['nchan']*d['npol'])*2)
-    data_resamp = [numpyview(data_resamp_mem, 'complex64', (nints, d['nbl'], d['nchan'], d['npol']))]
-    data_resamp[:] = data[:]
-    del data
-
     dmind = 0; dtind = 0
+    readints = len(data_resamp_mem)/(d['nbl']*d['nchan']*d['npol']*2)
+    data_resamp = numpyview(data_resamp_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
+
     with closing(mp.Pool(1, initializer=initpool, initargs=(data_resamp_mem,))) as pool:
         # dedisperse
         print 'Dedispersing with DM=%.1f, dt=%d...' % (d['dmarr'][dmind], d['dtarr'][dtind])
-        pool.apply(correct_dmdt, [d, dmind, dtind])
+        pool.apply(correct_dmdt, [d, dmind, dtind, (0,d['nbl'])])
 
         # set up image
         if d['searchtype'] == 'image1':
@@ -290,11 +287,11 @@ def reproduce(d, data, u, v, w, candint, twindow=30):
 
         # image
         print 'Imaging int %d with %d %d pixels...' % (candint, npixx, npixy)
-#        print nints/d['dtarr'][dtind], candint/d['dtarr'][dtind]
-#        ims,snrs,candints = pool.apply(rtlib.imgallfullfilterxyflux, [n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[0][0:nints/d['dtarr'][dtind]], npixx, npixy, d['uvres'], d['sigma_image1']])
+#        print readints/d['dtarr'][dtind], candint/d['dtarr'][dtind]
+#        ims,snrs,candints = pool.apply(rtlib.imgallfullfilterxyflux, [n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[0][0:readints/d['dtarr'][dtind]], npixx, npixy, d['uvres'], d['sigma_image1']])
 #        print snrs, candints
 #        im = ims[candints.index(candint)]
-        im = pool.apply(rtlib.imgonefullxy, [n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[candint/d['dtarr'][dtind]], npixx, npixy, d['uvres'], 0])
+        im = pool.apply(image1wrap, [d, u, v, w, npixx, npixy, candint/d['dtarr'][dtind]])
 
         print 'Made image with SNR min, max: %.1f, %.1f' % (im.min()/im.std(), im.max()/im.std())
         peakl, peakm = n.where(im == im.max())
@@ -306,9 +303,8 @@ def reproduce(d, data, u, v, w, candint, twindow=30):
         pool.apply(move_phasecenter, [d, l1, m1, u, v])
         minint = max(candint-twindow/2, 0)
         maxint = min(candint+twindow/2, len(data_resamp))
-        data = data_resamp[minint:maxint].copy()
 
-    return(im, data.mean(axis=1))
+    return(im, data_resamp[minint:maxint].mean(axis=1))
 
 def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     """ Function defines pipeline state for search. Takes data/scan as input.
@@ -400,6 +396,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
         d['nsegments'] = len(startdts)
     else:
+        print 'Warning: Forcing nsegments makes candidates hard to find later...'
         stopdts = n.linspace(d['nskip']*d['inttime']+d['t_overlap'], d['nints']*d['inttime'], d['nsegments']+1)[1:]
         startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
 
@@ -469,8 +466,10 @@ def move_phasecenter(d, l1, m1, u, v):
     """ Handler function for phaseshift_threaded
     """
 
-    datadt = data_resamp[0]
-    rtlib.phaseshift_threaded(datadt, d, l1, m1, u, v)
+    readints = len(data_resamp_mem)/(d['nbl']*d['nchan']*d['npol']*2)
+    data_resamp = numpyview(data_resamp_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
+
+    rtlib.phaseshift_threaded(data_resamp, d, l1, m1, u, v)
 
 def calc_dmgrid(d, maxloss=0.05, dt=3000., mindm=0., maxdm=2000.):
     """ Function to calculate the DM values for a given maximum sensitivity loss.
@@ -694,6 +693,19 @@ def image2w(d, i0, i1, u, v, w, dmind, dtind, beamnum, bls, uvkers):
             print 'Almost...  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f.' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2)
 
     return feat
+
+def image1wrap(d, u, v, w, npixx, npixy, candint):
+    """ Parallelizable function for imaging a chunk of data for a single dm.
+    Assumes data is dedispersed and resampled, so this just images each integration.
+    Simple one-stage imaging that returns dict of params.
+    returns dictionary with keys of cand location and values as tuple of features
+    """
+
+    readints = len(data_resamp_mem)/(d['nbl']*d['nchan']*d['npol']*2)
+    data_resamp = numpyview(data_resamp_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
+
+    image = rtlib.imgonefullxy(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[candint], npixx, npixy, d['uvres'], verbose=1)
+    return image
 
 def sample_image(d, data, u, v, w, i=-1, verbose=1, imager='xy', wres=100):
     """ Samples one integration and returns image
