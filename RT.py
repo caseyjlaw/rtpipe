@@ -131,7 +131,6 @@ def dataflagpool(data_mem, d):
     """ Parallelized flagging
     """
 
-
     if d['flagmode'] == 'standard':
         print 'Flagging data...'
         chperspw = len(d['freq_orig'])/len(d['spw'])
@@ -208,6 +207,10 @@ def search(d, data, u, v, w):
 #    data_resamp = [numpyview(data_resamp_mem[resamp], 'complex64', (readints, d['nbl'], d['nchan'], d['npol'])) for resamp in range(len(d['dtarr']))]
 #    data_resamp[0][:] = data[:]
 #    del data
+
+#    readints = len(data_mem)/(d['nbl']*d['nchan']*d['npol']*2)
+#    data = numpyview(data_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
+
     data_resamp_mem = mps.RawArray(mps.ctypes.c_float, (readints*d['nbl']*d['nchan']*d['npol'])*2)
     data_resamp = numpyview(data_resamp_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
 
@@ -220,7 +223,6 @@ def search(d, data, u, v, w):
     # SUBMITTING THE LOOPS
     if n.any(data):
         print 'Searching in %d chunks with %d threads' % (d['nchunk'], d['nthread'])
-
         # open pool to run jobs
         print 'Dedispering to max (DM, dt) of (%d, %d) ...' % (d['dmarr'][-1], d['dtarr'][-1]), 
         for dmind in xrange(len(d['dmarr'])):
@@ -295,14 +297,14 @@ def reproduce(d, data_resamp_mem, u, v, w, candint, twindow=30):
 
         print 'Made image with SNR min, max: %.1f, %.1f' % (im.min()/im.std(), im.max()/im.std())
         peakl, peakm = n.where(im == im.max())
-        l1 = (float((npixx)/d['uvres'])/2. - peakl[0])/npixx
-        m1 = (float((npixy)/d['uvres'])/2. - peakm[0])/npixy
+        l1 = (npixx/2. - peakl[0])/(npixx*d['uvres'])
+        m1 = (npixy/2. - peakm[0])/(npixy*d['uvres'])
 
         # rephase and trim interesting ints out
         print 'Rephasing to peak...'
         pool.apply(move_phasecenter, [d, l1, m1, u, v])
-        minint = max(candint-twindow/2, 0)
-        maxint = min(candint+twindow/2, len(data_resamp))
+        minint = max(candint/d['dtarr'][dtind]-twindow/2, 0)
+        maxint = min(candint/d['dtarr'][dtind]+twindow/2, len(data_resamp)/d['dtarr'][dtind])
 
     return(im, data_resamp[minint:maxint].mean(axis=1))
 

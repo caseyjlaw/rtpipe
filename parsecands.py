@@ -574,10 +574,10 @@ def plot_cand(pkllist, snrmin=None, candnum=-1, outname=''):
     snrs = prop[:,snrcol]
     if isinstance(snrmin, type(None)):
         snrmin = min(snrs)
-    # sortord = snrs.argsort()
-    # snrinds = n.where(snrs[sortord] > snrmin)[0]
-    # loc = loc[sortord][snrinds]
-    # prop = prop[sortord][snrinds]
+    sortord = snrs.argsort()
+    snrinds = n.where(snrs[sortord] > snrmin)[0]
+    loc = loc[sortord][snrinds]
+    prop = prop[sortord][snrinds]
 
     if candnum < 0:
         print 'Show candidates...'
@@ -593,7 +593,8 @@ def plot_cand(pkllist, snrmin=None, candnum=-1, outname=''):
         dmarrorig = d['dmarr']
         dtarrorig = d['dtarr']
 
-        d = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False)  #, nsegments=d['nsegments'])
+        d = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False)
+        d['featureind'].insert(0, 'scan')
         im, data = rt.pipeline(d, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
 
         # plot it
