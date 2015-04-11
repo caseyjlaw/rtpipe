@@ -724,7 +724,7 @@ cpdef meantsub(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, blr):
                     for i in xrange(iterint):
                         datacal[i,j,k,l] = datacal[i,j,k,l] - sum/count
 
-cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacalfull, n.ndarray[n.int_t, ndim=1] chans, unsigned int pol, d, sigma=4, mode='', convergence=0.2, tripfrac=0.4):
+cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, ndim=1] chans, unsigned int pol, d, sigma=4, mode='', convergence=0.2, tripfrac=0.4):
     """ Flagging function
     """
 
@@ -733,7 +733,7 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacalfull, n.ndarray[n.int
     cdef unsigned int badpol
     cdef unsigned int badbl
     cdef unsigned int chan
-    sh = datacalfull.shape
+    sh = datacal.shape
     cdef unsigned int iterint = sh[0]
     cdef unsigned int nbl = sh[1]
     cdef unsigned int nchan = sh[2]
@@ -741,13 +741,12 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacalfull, n.ndarray[n.int
     cdef n.ndarray[n.int_t, ndim=1] badbls
     cdef n.ndarray[n.int_t, ndim=1] badpols
     cdef float blstdmed, blstdstd
-    cdef n.ndarray[DTYPE_t, ndim=3, mode='c'] datacal
 
     flagged = 0
-    if n.any(datacalfull[:,:,chans,pol]):
+    if n.any(datacal[:,:,chans,pol]):
+
         if mode == 'blstd':
-            datacal = n.ma.masked_array(datacalfull[:,:,chans,pol].copy(), datacalfull[:,:,chans,pol].copy() == 0)
-            blstd = datacal.std(axis=1)
+            blstd = datacal[:,:,chans,pol].std(axis=1)
 
             # iterate to good median and std values
             blstdmednew = n.ma.median(blstd)
@@ -759,22 +758,19 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacalfull, n.ndarray[n.int
                 blstd = n.ma.masked_where( blstd > blstdmed + sigma*blstdstd, blstd, copy=False)
                 blstdmednew = n.ma.median(blstd)
                 blstdstdnew = blstd.std()
-            blstdstd = blstdstdnew
-            blstdmed = blstdmednew
 
             # flag blstd too high
             for i in xrange(iterint):
                 for chan in xrange(len(chans)):
-                    if blstd.data[i,chan] > blstdmed + sigma*blstdstd:     # then measure points to flag based on a third std threshold
+                    if blstd.data[i,chan] > blstdmednew + sigma*blstdstdnew:     # then measure points to flag based on a third std threshold
                         flagged += nbl
                         for j in xrange(nbl):
-                            datacalfull[i,j,chans[chan],pol] = 0j
+                            datacal[i,j,chans[chan],pol] = 0j
 
-            print 'Blstd flagging for (chans %d-%d, pol %d), %d sigma: %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, flagged/(0.5*datacalfull.size)*100)
+            print 'Blstd flagging for (chans %d-%d, pol %d), %.1f sigma: %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, flagged/(0.5*datacal.size)*100)
 
-        elif mode == 'badch':
-            datacal = n.ma.masked_array(datacalfull[:,:,chans,pol].copy(), datacalfull[:,:,chans,pol].copy() == 0)
-            meanamp = n.abs(datacal).mean(axis=1)
+        elif mode == 'badcht':
+            meanamp = n.abs(datacal[:,:,chans,pol].mean(axis=1))
 
             # iterate to good median and std values
             meanampmednew = n.ma.median(meanamp)
@@ -786,21 +782,42 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacalfull, n.ndarray[n.int
                 meanamp = n.ma.masked_where(meanamp > meanampmed + sigma*meanampstd, meanamp, copy=False)
                 meanampmednew = n.ma.median(meanamp)
                 meanampstdnew = meanamp.std()
-            meanampstd = meanampstdnew
-            meanampmed = meanampmednew
 
-            badch = chans[n.where( (meanamp.mean(axis=0) > meanampmed + sigma*meanampstd) | (meanamp.mean(axis=0).mask==True) )[0]]
+            badch = chans[n.where( (meanamp.mean(axis=0) > meanampmednew + sigma*meanampstdnew/n.sqrt(len(meanamp))) | (meanamp.mean(axis=0).mask==True) )[0]]
+            badt = n.where( (meanamp.mean(axis=1) > meanampmednew + sigma*meanampstdnew/n.sqrt(len(meanamp[0]))) | (meanamp.mean(axis=1).mask==True) )[0]
+
             for chan in badch:
                 flagged += iterint*nbl
                 for i in xrange(iterint):
                     for j in xrange(nbl):
-                        datacalfull[i,j,chan,pol] = 0j
+                        datacal[i,j,chan,pol] = 0j
 
-            print 'Bad channel flagging for (chans %d-%d, pol %d), %d sigma: %d chans, %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, len(badch), flagged/(0.5*datacalfull.size)*100)
+            for i in badt:
+                flagged += nchan*nbl
+                for chan in xrange(len(chans)):
+                    for j in xrange(nbl):
+                        datacal[i,j,chans[chan],pol] = 0j
+
+            print 'Bad chans/ints flagging for (chans %d-%d, pol %d), %1.f sigma: %d chans, %d ints, %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, len(badch), len(badt), flagged/(0.5*datacal.size)*100)
+
+        elif mode == 'ring':
+            spfft = n.abs(n.fft.ifft(datacal.mean(axis=0), axis=1))   # delay spectrum of mean data in time
+            spfft = n.ma.masked_array(spfft, spfft = 0)
+            badbls = n.where(spfft[:,len(chans)/2-1:len(chans)/2].mean(axis=1) > sigma*n.ma.median(spfft[:,1:], axis=1))[0]  # find bls with spectral power at max delay. ignore dc in case this is cal scan.
+            if len(badbls) > tripfrac*nbl:    # if many bls affected, flag all
+                print 'Ringing on %d/%d baselines. Flagging all data.' % (len(badbls), nbl)
+                badbls = n.arange(nbl)
+
+            for badbl in badbls:
+               flagged += iterint*len(chans)
+               for i in xrange(iterint):
+                   for chan in chans:
+                       datacal[i,badbl,chan,pol] = 0j
+
+            print 'Ringing flagging for (chans %d-%d, pol %d) at %.1f sigma: %d/%d bls, %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, len(badbls), nbl, flagged/(0.5*datacal.size)*100)
 
         elif mode == 'badap':
-            datacalfull2 = n.ma.masked_array(datacalfull[:,:,chans,:].copy(), datacalfull[:,:,chans,:].copy() == 0)
-            bpa = n.abs(datacalfull2).mean(axis=2).mean(axis=0)
+            bpa = n.abs(datacal[:,:,chans]).mean(axis=2).mean(axis=0)
             bpa_ant = n.array([ (bpa[n.where(n.any(d['blarr'] == i, axis=1))[0]]).mean(axis=0) for i in n.unique(d['blarr']) ])
             bpa_ant = n.ma.masked_invalid(bpa_ant)
             ww = n.where(bpa_ant > n.ma.median(bpa_ant) + sigma * bpa_ant.std())
@@ -816,26 +833,10 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacalfull, n.ndarray[n.int
                     flagged += iterint*len(chans)
                     for i in xrange(iterint):
                         for chan in chans:
-                            datacalfull[i,badbls[j],chan,badpols[j]] = 0j
+                            datacal[i,badbls[j],chan,badpols[j]] = 0j
 
-            print 'Bad basepol flagging for chans %d-%d at %d sigma: ants/pols %s/%s, %3.2f %% of total flagged' % (chans[0], chans[-1], sigma, badants, ww[1], flagged/(0.5*datacalfull.size)*100)
+            print 'Bad basepol flagging for chans %d-%d at %.1f sigma: ants/pols %s/%s, %3.2f %% of total flagged' % (chans[0], chans[-1], sigma, badants, ww[1], flagged/(0.5*datacal.size)*100)
 
-        elif mode == 'ring':
-            datacal = n.ma.masked_array(datacalfull[:,:,chans,pol].copy(), datacalfull[:,:,chans,pol].copy() == 0)
-            spfft = n.abs(n.fft.ifft(datacal.mean(axis=0), axis=1))   # delay spectrum of mean data in time
-            spfft = n.ma.masked_array(spfft, spfft = 0)
-            badbls = n.where(spfft[:,len(chans)/2-1:len(chans)/2].mean(axis=1) > sigma*n.ma.median(spfft[:,1:], axis=1))[0]  # find bls with spectral power at max delay. ignore dc in case this is cal scan.
-            if len(badbls) > tripfrac*nbl:    # if many bls affected, flag all
-                print 'Ringing on %d/%d baselines. Flagging all data.' % (len(badbls), nbl)
-                badbls = n.arange(nbl)
-
-            for badbl in badbls:
-               flagged += iterint*len(chans)
-               for i in xrange(iterint):
-                   for chan in chans:
-                       datacalfull[i,badbl,chan,pol] = 0j
-
-            print 'Ringing flagging for (chans %d-%d, pol %d) at %d sigma: %d/%d bls, %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, len(badbls), nbl, flagged/(0.5*datacalfull.size)*100)
         else:
             print 'Not a recognized flag mode.'
     else:

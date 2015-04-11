@@ -140,7 +140,7 @@ def dataflagpool(data_mem, d):
                 for spw in range(d['nspw']):
                     freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
                     chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                    resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 2.5, 'badch', 0.05])
+                    resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 6., 'badcht', 0.05])
             for kk in resultd.keys():
                 result = resultd[kk].get()
 #                print kk, result, result/(0.5*data.size)
@@ -159,7 +159,7 @@ def dataflagpool(data_mem, d):
                 for spw in range(d['nspw']):
                     freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
                     chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                    resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 4., 'blstd', 0.1])
+                    resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 3.0, 'blstd', 0.05])
             for kk in resultd.keys():
                 result = resultd[kk].get()
 #                print kk, result, result/(0.5*data.size)
@@ -183,6 +183,7 @@ def dataflag(chans, pol, d, sig, mode, conv):
     """
     readints = len(data_mem)/(d['nbl']*d['nchan']*d['npol']*2)
     data = numpyview(data_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
+    data = n.ma.masked_array(data, data==0)
 
     return rtlib.dataflag(data, chans, pol, d, sig, mode, conv)
 
@@ -295,18 +296,24 @@ def reproduce(d, data_resamp_mem, u, v, w, candint, twindow=30):
 #        im = ims[candints.index(candint)]
         im = pool.apply(image1wrap, [d, u, v, w, npixx, npixy, candint/d['dtarr'][dtind]])
 
-        print 'Made image with SNR min, max: %.1f, %.1f' % (im.min()/im.std(), im.max()/im.std())
-        peakl, peakm = n.where(im == im.max())
+        snrmin = im.min()/im.std()
+        snrmax = im.max()/im.std()
+        print 'Made image with SNR min, max: %.1f, %.1f' % (snrmin, snrmax()
+        if snrmax > -snrmin:
+            peakl, peakm = n.where(im == im.max())
+        else:
+            peakl, peakm = n.where(im == im.min())
         l1 = (npixx/2. - peakl[0])/(npixx*d['uvres'])
         m1 = (npixy/2. - peakm[0])/(npixy*d['uvres'])
 
         # rephase and trim interesting ints out
-        print 'Rephasing to peak...'
-        pool.apply(move_phasecenter, [d, l1, m1, u, v])
-        minint = max(candint/d['dtarr'][dtind]-twindow/2, 0)
-        maxint = min(candint/d['dtarr'][dtind]+twindow/2, len(data_resamp)/d['dtarr'][dtind])
+        # print 'Rephasing to peak...'
+        # pool.apply(move_phasecenter, [d, l1, m1, u, v])
+        # minint = max(candint/d['dtarr'][dtind]-twindow/2, 0)
+        # maxint = min(candint/d['dtarr'][dtind]+twindow/2, len(data_resamp)/d['dtarr'][dtind])
 
-    return(im, data_resamp[minint:maxint].mean(axis=1))
+#    return(im, data_resamp[minint:maxint].mean(axis=1))
+    return im, data_resamp
 
 def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     """ Function defines pipeline state for search. Takes data/scan as input.
@@ -394,13 +401,12 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     if d['nsegments'] == 0:
         fringetime = calc_fringetime(d)
-        stopdts = n.arange(d['nskip']*d['inttime']+d['t_overlap'], d['nints']*d['inttime'], fringetime-d['t_overlap'])[1:]
-        startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
-        d['nsegments'] = len(startdts)
-    else:
-        print 'Warning: Forcing nsegments makes candidates hard to find later...'
-        stopdts = n.linspace(d['nskip']*d['inttime']+d['t_overlap'], d['nints']*d['inttime'], d['nsegments']+1)[1:]
-        startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
+        d['nsegments'] = int(d['inttime']*(d['nints']-d['nskip'])/(fringetime-d['t_overlap']))
+#        stopdts = n.arange(d['nskip']*d['inttime']+d['t_overlap'], d['nints']*d['inttime'], fringetime-d['t_overlap'])[1:] # old way
+#        startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
+
+    stopdts = n.linspace(d['nskip']*d['inttime']+d['t_overlap'], d['nints']*d['inttime'], d['nsegments']+1)[1:]
+    startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
 
     segmenttimes = []
     for (startdt, stopdt) in zip(startdts, stopdts):

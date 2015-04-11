@@ -49,9 +49,6 @@ def get_metadata(filename, scan, spw=[], chans=[], params=''):
     d['spw_reffreq'] = [float(row.chanFreqStart) for row in sdm['SpectralWindow']]
     d['spw_nchan'] = [int(row.numChan) for row in sdm['SpectralWindow']]
     d['spw_chansize'] = [float(row.chanFreqStep) for row in sdm['SpectralWindow']]
-    if not len(spw):
-        spw = range(len(d['spw_orig']))
-    d['spw'] = n.sort(d['spw_orig'])[spw]
 
     spwch = []
     reffreq = d['spw_reffreq']; spectralwindow = d['spw_orig']; numchan = d['spw_nchan']; chansize = d['spw_chansize']
@@ -62,12 +59,7 @@ def get_metadata(filename, scan, spw=[], chans=[], params=''):
     d['freq_orig'] = n.array(spwch).astype('float32')/1e9
            
     d['nspw'] = len(d['spw'])
-    if len(chans):
-        d['freq'] = d['freq_orig'][chans]
-        d['chans'] = chans
-    else:
-        d['freq'] = d['freq_orig']
-        d['chans'] = range(len(d['freq']))
+    d['freq'] = d['freq_orig'][d['chans']]
     d['nchan'] = len(d['freq'])
 
     # define image params
