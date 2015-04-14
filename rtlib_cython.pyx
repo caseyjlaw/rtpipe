@@ -722,7 +722,8 @@ cpdef meantsub(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, blr):
                         count += 1
                 if count:
                     for i in xrange(iterint):
-                        datacal[i,j,k,l] = datacal[i,j,k,l] - sum/count
+                        if datacal[i,j,k,l] != 0j:   # ignore zeros
+                            datacal[i,j,k,l] = datacal[i,j,k,l] - sum/count
 
 cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, ndim=1] chans, unsigned int pol, d, sigma=4, mode='', convergence=0.2, tripfrac=0.4):
     """ Flagging function

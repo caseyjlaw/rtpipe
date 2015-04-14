@@ -13,12 +13,11 @@ def read_candidates(candsfile):
     """
 
     # read in pickle file of candidates
-    print 'Reading cands from %s...' % candsfile
     with open(candsfile, 'rb') as pkl:
         d = pickle.load(pkl)
         cands = pickle.load(pkl)
     if len(cands) == 0:
-        print 'No cands found.'
+        print 'No cands found from %s.' % candsfile
         return (n.array([]), n.array([]))
 
     # select set of values 
@@ -27,7 +26,7 @@ def read_candidates(candsfile):
         loc.append( list(kk) )
         prop.append( list(cands[kk]) )    #[snrcol], cands[kk][l1col], cands[kk][m1col]) )
 
-    print 'Found %d candidates.' % (len(loc))
+    print 'Read %d candidates from %s.' % (len(loc), candsfile)
     return n.array(loc).astype(int), n.array(prop)
 
 def read_noise(noisefile):
@@ -42,9 +41,9 @@ def read_noise(noisefile):
         flagfrac.append(noise[2]); imnoise.append(noise[3])
     return (n.array(seg), n.array(noiseperbl), n.array(flagfrac), n.array(imnoise))
 
-def merge_pkl(pkllist, fileroot=''):
-    """ Merges cands/noise pkl files from input root name into single cands/noise file.
-    Output single pkl is used for visualizations.
+def merge_segments(pkllist, fileroot=''):
+    """ Merges cands/noise pkl files from multiple segments to single cands/noise file.
+    Output single pkl per scan with root name fileroot.
     """
 
     assert len(pkllist) > 0
@@ -87,77 +86,132 @@ def merge_pkl(pkllist, fileroot=''):
         pickle.dump(noise, pkl)
         pkl.close()
 
-def mergecands(pkllist):
-    """ Takes cands pkls from list and produces single loc/prop array
+def merge_cands(pkllist, outroot='', remove=[]):
+    """ Takes cands pkls from list and filteres to write new single "merge" pkl.
     Ignores segment cand files.
+    remove is a list [t0,t1,t2,t3], where t0-t1, t2-t3 define the time ranges in seconds.
     """
 
-    assert isinstance(pkllist, list)
+    assert isinstance(pkllist, list), "pkllist must be list of file names"
+    if not outroot:
+        outroot = '_'.join(pkllist[0].split('_')[1:3])
+    mergepkl = 'cands_' + outroot + '_merge.pkl'
 
     pkllist = [pkllist[i] for i in range(len(pkllist)) if ('merge' not in pkllist[i]) and ('seg' not in pkllist[i])]
     pkllist.sort(key=lambda i: int(i.rstrip('.pkl').split('_sc')[1]))  # assumes filename structure
     print 'Aggregating cands from %s' % pkllist
 
-    mergeloc = []; mergeprop = []
+    # get sample state dict. not representative of all scans
+    mergeloc = []; mergeprop = []; mergetimes = []
+    segmenttimesdict = {}
     for pklfile in pkllist:
-        scan = int(pklfile.rstrip('.pkl').split('_sc')[1])
+
+        # get scan number and read candidates
+        d = pickle.load(open(pklfile, 'r'))
+        scan = int(pklfile.rstrip('.pkl').split('_sc')[1])   # parsing filename to get scan number
+        segmenttimesdict[scan] = d['segmenttimes']
+
         locs, props = read_candidates(pklfile)
+        times = int2mjd(d, n.array(locs))
+
+        # build merged loc,prop lists
         for i in range(len(locs)):
             loc = list(locs[i])
             loc.insert(0, scan)
             prop = list(props[i])
             mergeloc += [loc]
             mergeprop += [prop]
+            mergetimes.append(times[i])
 
-    # locs, props = read_candidates(pkllist[0])
-    # loc = n.concatenate( (scan*n.ones(dtype=int, shape=(len(loc), 1)), loc.astype(int)), axis=1)
-    # mergeloc = loc; mergeprop = prop
-    # for pklfile in pkllist[1:]:
-    #     scan = int(pklfile.rstrip('.pkl').split('_sc')[1])
-    #     loc, prop = read_candidates(pklfile)
-    #     loc = n.concatenate( (scan*n.ones(dtype=int, shape=(len(loc),1)), loc.astype(int)), axis=1)
-    #     mergeloc = n.concatenate( (mergeloc, loc), axis=0)
-    #     mergeprop = n.concatenate( (mergeprop, prop), axis=0)
+    mergeloc = n.array(mergeloc)
+    mergeprop = n.array(mergeprop)
+    mergetimes = n.array(mergetimes)
 
-    return n.array(mergeloc), n.array(mergeprop)
+    # filter by remove, if needed
+    if len(remove):
+        mergetimes -= mergetimes.min()
 
-def plot_summary(pkllist, outroot=''):
-    """ Take merge file and produces comprehensive candidate screening plots.
+        ww = n.ones(len(mergetimes), dtype=bool)  # initialize pass filter
+        nranges = len(remove)
+        for first in range(0,nranges,2):
+            badrange0 = remove[first]
+            badrange1 = remove[first+1]
+            ww = ww & n.where( (mergetimes < badrange0) | (mergetimes > badrange1), True, False )
+
+        mergeloc = mergeloc[ww]
+        mergeprop = mergeprop[ww]
+
+# **todo**
+    # if the scan has any candidates, add nints to count
+    # goodintcount = 0
+    # for scani in n.unique(dataloc):
+    #     if len(n.where(dataloc == scani)[0]):
+    #         goodintcount += d['nints']
+
+    # # correct int count by removed range
+    # for scan in remove.keys():
+    #     goodintcount -= remove[scan][1] - remove[scan][0]
+
+    # update metadata
+#    d['goodintcount'] = goodintcount
+    d['featureind'].insert(0, 'scan')
+    d['remove'] = remove
+    d['segmenttimesdict'] = segmenttimesdict
+
+    print 'Writing filtered set of %d candidates to %s' % (len(mergeloc), mergepkl)
+
+    # build and write up new dict
+    cands = {}
+    for i in range(len(mergeloc)):
+        cands[tuple(mergeloc[i])] = tuple(mergeprop[i])
+
+    pkl = open(os.path.join(d['workdir'], mergepkl), 'w')
+    pickle.dump(d, pkl)
+    pickle.dump(cands, pkl)
+    pkl.close()
+
+def plot_summary(pkllist, outroot='', remove=[]):
+    """ Take pkl list or merge file to produce comprehensive candidate screening plots.
     Starts as dm-t plots, includes dt and peak pixel location.
     """
 
-    if not outroot:
-        outroot = 'plot_' + '_'.join(pkllist[0].split('_')[1:3])
+    # if a list, merge them
+    if isinstance(pkllist, list):
+        if not outroot:
+            outroot = '_'.join(pkllist[0].split('_')[1:3])
+        merge_cands(pkllist, outroot=outroot, remove=remove)
+        mergepkl = 'cands_' + outroot + '_merge.pkl'
+    elif isinstance(pkllist, str):
+        print 'Assuming input is mergepkl'
+        if not outroot:
+            outroot = '_'.join(pkllist.split('_')[1:3])
+        mergepkl = pkllist
+    else:
+        print 'Not valid input.'
+
+    d = pickle.load(open(mergepkl, 'r'))
+    locs, props = read_candidates(mergepkl)
 
     # compile candidates over all pkls
-    times = n.empty(0); dts = n.empty(0); dms = n.empty(0); snrs = n.empty(0); l1s = n.empty(0); m1s = n.empty(0)
-    for candsfile in pkllist:
-        with open(candsfile, 'r') as pkl:
-            d = pickle.load(pkl)
-        loc, prop = read_candidates(candsfile)
-
-        # feature columns
-        if 'snr1' in d['features']:
-            snrcol = d['features'].index('snr1')
-        if 'l1' in d['features']:
-            l1col = d['features'].index('l1')
-        if 'm1' in d['features']:
-            m1col = d['features'].index('m1')
+    # feature columns
+    if 'snr1' in d['features']:
+        snrcol = d['features'].index('snr1')
+    if 'l1' in d['features']:
+        l1col = d['features'].index('l1')
+    if 'm1' in d['features']:
+        m1col = d['features'].index('m1')
         
-        dtindcol = d['featureind'].index('dtind')
-        dmindcol = d['featureind'].index('dmind')
+    dtindcol = d['featureind'].index('dtind')
+    dmindcol = d['featureind'].index('dmind')
 
-        # extract values for plotting
-        if len(loc):
-            times = n.concatenate( (times, int2mjd(d, loc)) )
-            dts = n.concatenate( (dts, loc[:,dtindcol]) )
-            dms = n.concatenate( (dms, n.array(d['dmarr'])[loc[:,dmindcol]]) )
-            snrs = n.concatenate( (snrs, prop[:,snrcol]) )
-            l1s = n.concatenate( (l1s, prop[:, l1col]) )
-            m1s = n.concatenate( (m1s, prop[:, m1col]) )
-
-    # select positive candidates for some plots
-#    pos = n.where(snrs > 0)
+    # extract values for plotting
+    times = int2mjd(d, locs)
+    times -= times.min()
+    dts = locs[:, dtindcol]
+    dms = n.array(d['dmarr'])[locs[:,dmindcol]]
+    snrs = props[:, snrcol]
+    l1s = props[:, l1col]
+    m1s = props[:, m1col]
 
     # dmt plot
     print 'Plotting DM-time distribution...'
@@ -175,7 +229,7 @@ def plot_summary(pkllist, outroot=''):
     print 'Plotting (l,m) distribution...'
     plot_lm(d, snrs, l1s, m1s, outroot)
 
-def plot_noise(pkllist, outroot='', remove={}):
+def plot_noise(pkllist, outroot='', remove=[]):
     """ Takes merged noise pkl and visualizes it.
     """
 
@@ -188,11 +242,16 @@ def int2mjd(d, loc):
     """ Function to convert segment+integration into mjd seconds.
     """
 
+    # needs to take merge pkl dict
+
     if len(loc):
         intcol = d['featureind'].index('int')
         segmentcol = d['featureind'].index('segment')
-        t0 = d['segmenttimes'][loc[:,segmentcol]][:,0]
-
+        if d.has_key('segmenttimesdict'):  # using merged pkl
+            scancol = d['featureind'].index('scan')
+            t0 = n.array([d['segmenttimesdict'][loc[i,scancol]][loc[i,segmentcol],0] for i in range(len(loc))])
+        else:
+            t0 = d['segmenttimes'][loc[:,segmentcol]][:,0]
         return (t0 + (d['inttime']/(24*3600.))*loc[:,intcol]) * 24*3600
     else:
         return n.array([])
@@ -201,13 +260,10 @@ def plot_dmt(d, times, dms, dts, snrs, outroot):
     """ Plots DM versus time for each dt value.
     """
 
-    outname = os.path.join(d['workdir'], outroot + '_dmt.png')
+    outname = os.path.join(d['workdir'], 'plot_' + outroot + '_dmt.png')
 
-    # allt = int2mjd(d, loc)
-    times = times - times.min()
     mint = times.min(); maxt = times.max()
     dtsunique = n.unique(dts)
-    # dd = n.array(d['dmarr'])[loc[:,dmindcol]]
     mindm = min(d['dmarr']); maxdm = max(d['dmarr'])
     snrmin = 0.8*min(d['sigma_image1'], d['sigma_image2'])
 
@@ -248,7 +304,7 @@ def plot_dmcount(d, times, dts, outroot):
     """ Count number of candidates per dm and dt. Big clusters often trace RFI.
     """
 
-    outname = os.path.join(d['workdir'], outroot + '_dmcount.png')
+    outname = os.path.join(d['workdir'], 'plot_' + outroot + '_dmcount.png')
 
     uniquedts = n.unique(dts)
     mint = times.min(); maxt = times.max()
@@ -260,18 +316,20 @@ def plot_dmcount(d, times, dts, outroot):
         ax2[dtind] = fig2.add_subplot(str(len(uniquedts)) + '1' + str(dtind+1))
         if len(good):
             bins = n.round(times[good]).astype('int')
-            counts = n.bincount(bins - bins.min())
+            counts = n.bincount(bins)
 
-            ax2[dtind].scatter(mint+n.arange(len(counts)), counts, facecolor='none', alpha=0.5, clip_on=False)
+            ax2[dtind].scatter(n.arange(n.amax(bins)+1), counts, facecolor='none', alpha=0.5, clip_on=False)
             ax2[dtind].axis( (mint, maxt, 0, 1.1*counts.max()) )
 
             # label high points
-            high = n.where(counts > n.median(counts) + 20*counts.std())[0]
+            high = n.where(counts > n.median(counts) + 5*counts.std())[0]
+            print
+            print 'Candidate clusters for dt=%d:' % (d['dtarr'][dtind])
+            print '\t(Counts, Times)'
             for ii in high:
-                print '%d candidates for dt=%d at %d s' % (counts[ii], d['dtarr'][dtind], ii)
+#                print 'For dt=%d, %d candidates at %d s' % (d['dtarr'][dtind], counts[ii], ii)
                 ww = n.where(bins == ii)[0]
-#                print '\tFlag these:', times[good][ww]
-                print
+                print counts[ii], times[good][ww][0]
 
             if dtind == uniquedts[-1]:
                 plt.setp(ax2[dtind].get_xticklabels(), visible=True)
@@ -294,7 +352,7 @@ def plot_normprob(d, snrs, outroot):
     Includes negative SNRs, too.
     """
 
-    outname = os.path.join(d['workdir'], outroot + '_normprob.png')
+    outname = os.path.join(d['workdir'], 'plot_' + outroot + '_normprob.png')
 
     # define norm quantile functions
     Z = lambda quan: n.sqrt(2)*erfinv( 2*quan - 1) 
@@ -336,7 +394,7 @@ def plot_lm(d, snrs, l1s, m1s, outroot):
     """ Plot the lm coordinates (relative to phase center) for all candidates.
     """
 
-    outname = os.path.join(d['workdir'], outroot + '_impeak.png')
+    outname = os.path.join(d['workdir'], 'plot_' + outroot + '_impeak.png')
 
     snrmin = 0.8*min(d['sigma_image1'], d['sigma_image2'])
     fig4 = plt.Figure(figsize=(10,10))
@@ -361,14 +419,14 @@ def plot_lm(d, snrs, l1s, m1s, outroot):
     canvas4 = FigureCanvasAgg(fig4)
     canvas4.print_figure(outname)
 
-def make_noisehists(pkllist, outroot, remove={}):
+def make_noisehists(pkllist, outroot, remove=[]):
     """ Cumulative hist of image noise levels.
     """
 
     assert len(pkllist) > 0
     workdir = os.path.split(pkllist[0])[0]
 
-    outname = os.path.join(workdir, outroot + '_noisehist.png')
+    outname = os.path.join(workdir, 'plot_' + outroot + '_noisehist.png')
 
     noises = []; minnoise = 1e8; maxnoise = 0
     print 'Reading %d noise files' % len(pkllist)
@@ -379,13 +437,13 @@ def make_noisehists(pkllist, outroot, remove={}):
         ii = seg  # or scan number? or int?
 
         scani = int(pkl.split('_sc')[1].split('.')[0])   # assumes scan name structure
-        if scani in remove.keys():
+        if scani in remove:
 #            print 'Removing some noise measurements from ', pkl
             nranges = len(remove[scani])
             wwa = []
             for first in range(0,nranges,2):
-                badrange0 = remove[scani][first]
-                badrange1 = remove[scani][first+1]
+                badrange0 = remove[first]
+                badrange1 = remove[first+1]
                 ww = list(n.where( (ii > badrange0) & (ii < badrange1) )[0])
                 if len(ww):
                     wwa += ww
@@ -542,13 +600,19 @@ def plot_cand(pkllist, snrmin=None, candnum=-1, outname=''):
     Thresholds (as minimum), then provides list of candidates to select with candnum.
     """
 
-    assert len(pkllist) > 0
-
-    d = pickle.load(open(pkllist[0], 'r'))
+    if isinstance(pkllist, list):
+        outroot = '_'.join(pkllist[0].split('_')[1:3])
+        merge_cands(pkllist, outroot=outroot)
+        mergepkl = 'cands_' + outroot + '_merge.pkl'
+    elif isinstance(pkllist, str):
+        print 'Assuming input is mergepkl'
+        mergepkl = pkllist
+        
+    d = pickle.load(open(mergepkl, 'r'))
+    loc, prop = read_candidates(mergepkl)
+    
     if not os.path.split(d['filename'])[0]:
         d['filename'] = os.path.join(d['workdir'], d['filename'])
-    loc, prop = mergecands(pkllist)
-    d['featureind'].insert(0, 'scan')
 
     # feature columns
     if 'snr2' in d['features']:
@@ -580,9 +644,10 @@ def plot_cand(pkllist, snrmin=None, candnum=-1, outname=''):
     prop = prop[sortord][snrinds]
 
     if candnum < 0:
-        print 'Show candidates...'
+        print 'Getting candidates...'
         for i in range(len(loc)):
             print i, loc[i], prop[i, snrcol]
+        return (loc, prop[:,snrcol])
     else:
         print 'Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum])
         scan = loc[candnum, scancol]
@@ -594,7 +659,6 @@ def plot_cand(pkllist, snrmin=None, candnum=-1, outname=''):
         dtarrorig = d['dtarr']
 
         d = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False)
-        d['featureind'].insert(0, 'scan')
         im, data = rt.pipeline(d, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
 
         # plot it

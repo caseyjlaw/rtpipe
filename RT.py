@@ -140,7 +140,7 @@ def dataflagpool(data_mem, d):
                 for spw in range(d['nspw']):
                     freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
                     chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                    resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 6., 'badcht', 0.05])
+                    resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 10., 'badcht', 0.05])
             for kk in resultd.keys():
                 result = resultd[kk].get()
 #                print kk, result, result/(0.5*data.size)
@@ -164,14 +164,23 @@ def dataflagpool(data_mem, d):
                 result = resultd[kk].get()
 #                print kk, result, result/(0.5*data.size)
 
-            resultd = {}
             for pol in range(d['npol']):
                 for spw in range(d['nspw']):
                     freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
                     chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                    resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 4., 'ring', 0.2])
+                    resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 7., 'badcht', 0.05])
             for kk in resultd.keys():
                 result = resultd[kk].get()
+#                print kk, result, result/(0.5*data.size)
+
+            # resultd = {}
+            # for pol in range(d['npol']):
+            #     for spw in range(d['nspw']):
+            #         freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
+            #         chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
+            #         resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 4., 'ring', 0.2])
+            # for kk in resultd.keys():
+            #     result = resultd[kk].get()
 #                print kk, result, result/(0.5*data.size)
 
     else:
@@ -298,8 +307,8 @@ def reproduce(d, data_resamp_mem, u, v, w, candint, twindow=30):
 
         snrmin = im.min()/im.std()
         snrmax = im.max()/im.std()
-        print 'Made image with SNR min, max: %.1f, %.1f' % (snrmin, snrmax()
-        if snrmax > -snrmin:
+        print 'Made image with SNR min, max: %.1f, %.1f' % (snrmin, snrmax)
+        if snrmax > -1*snrmin:
             peakl, peakm = n.where(im == im.max())
         else:
             peakl, peakm = n.where(im == im.min())
@@ -307,13 +316,13 @@ def reproduce(d, data_resamp_mem, u, v, w, candint, twindow=30):
         m1 = (npixy/2. - peakm[0])/(npixy*d['uvres'])
 
         # rephase and trim interesting ints out
-        # print 'Rephasing to peak...'
-        # pool.apply(move_phasecenter, [d, l1, m1, u, v])
-        # minint = max(candint/d['dtarr'][dtind]-twindow/2, 0)
-        # maxint = min(candint/d['dtarr'][dtind]+twindow/2, len(data_resamp)/d['dtarr'][dtind])
+        print 'Rephasing to peak...'
+        pool.apply(move_phasecenter, [d, l1, m1, u, v])
+        minint = max(candint/d['dtarr'][dtind]-twindow/2, 0)
+        maxint = min(candint/d['dtarr'][dtind]+twindow/2, len(data_resamp)/d['dtarr'][dtind])
 
-#    return(im, data_resamp[minint:maxint].mean(axis=1))
-    return im, data_resamp
+    return(im, data_resamp[minint:maxint].mean(axis=1))
+#    return im, data_resamp
 
 def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     """ Function defines pipeline state for search. Takes data/scan as input.
