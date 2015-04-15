@@ -51,7 +51,7 @@ def merge_segments(pkllist, fileroot=''):
     workdir = os.path.split(pkllist[0])[0]
 
     if not fileroot:
-        fileroot = '_'.join(pkllist[0].split('_')[1:3])   # assumes filename structure
+        fileroot = '_'.join(pkllist[0].split('seg')[0].split('_')[1:])   # assumes filename structure
 
     # aggregate cands over segments
     if 'cands' in pkllist[0]:
@@ -177,12 +177,14 @@ def plot_summary(pkllist, outroot='', remove=[]):
 
     # if a list, merge them
     if isinstance(pkllist, list):
+        workdir = os.path.split(pkllist[0])[0]
+
         if not outroot:
             outroot = '_'.join(pkllist[0].split('_')[1:3])
         merge_cands(pkllist, outroot=outroot, remove=remove)
-        mergepkl = 'cands_' + outroot + '_merge.pkl'
+        mergepkl = os.path.join(workdir, 'cands_' + outroot + '_merge.pkl')
     elif isinstance(pkllist, str):
-        print 'Assuming input is mergepkl'
+        print 'Assuming input is mergepkl. Not using remove!'
         if not outroot:
             outroot = '_'.join(pkllist.split('_')[1:3])
         mergepkl = pkllist
@@ -658,16 +660,22 @@ def plot_cand(mergepkl, snrmin=None, candnum=-1, outname='', **kwargs):
         candint = loc[candnum, intcol]
         dmarrorig = d['dmarr']
         dtarrorig = d['dtarr']
+        nsegments = len(d['segmenttimesdict'][scan])
 
-        d2 = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False, **kwargs)
+        d2 = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False, nsegments=nsegments, **kwargs)
         im, data = rt.pipeline(d2, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
+
+        # calc source location
+        peakl, peakm = n.where(im == im.max())
+        xpix,ypix = im.shape
+        l1 = (xpix/2. - peakl[0])/(xpix*d['uvres'])
+        m1 = (ypix/2. - peakm[0])/(ypix*d['uvres'])
+        pt_ra, pt_dec = d['radec']
+        src_ra, src_dec = source_location(pt_ra, pt_dec, l1, m1)
+        print 'Peak (RA, Dec):', src_ra, src_dec
 
         # plot it
         print 'Plotting...'
-        fov = n.degrees(1./d['uvres'])*60.
-        xpix,ypix = im.shape
-        srcra,srcdec = n.where(im == im.max())
-
         fig = plt.Figure(figsize=(8.5,8))
         ax = fig.add_subplot(221, axisbg='white')
 
@@ -695,11 +703,8 @@ def plot_cand(mergepkl, snrmin=None, candnum=-1, outname='', **kwargs):
         # # then add annotating info
         ax.text(0.1, 0.9, d['fileroot']+'_sc'+str(scan), fontname='sans-serif', transform = ax.transAxes)
         ax.text(0.1, 0.8, 'seg %d, int %d, DM %.1f, dt %d' % (segment, loc[candnum, intcol], dmarrorig[loc[candnum, dmindcol]], dtarrorig[loc[candnum,dtindcol]]), fontname='sans-serif', transform = ax.transAxes)
-        peakx = (xpix/2-srcra[0])*fov/xpix            
-        peaky = (ypix/2-srcdec[0])*fov/ypix
+
         ax.text(0.1, 0.7, 'Peak: (' + str(n.round(peakx, 1)) + '\' ,' + str(n.round(peaky, 1)) + '\'), SNR: ' + str(n.round(snr, 1)), fontname='sans-serif', transform = ax.transAxes)
-        pt_ra, pt_dec = d['radec']
-        source_location(pt_ra, pt_dec, peakx, peaky)
 
         # plot dynamic spectra
         left, width = 0.6, 0.2
@@ -739,6 +744,7 @@ def plot_cand(mergepkl, snrmin=None, candnum=-1, outname='', **kwargs):
 
         # image
         ax = fig.add_subplot(223)
+        fov = n.degrees(1./d['uvres'])*60.
         ax.scatter(((xpix/2-srcra[0])-0.05*xpix)*fov/xpix, (ypix/2-srcdec[0])*fov/ypix, s=80, marker='<', facecolor='none')
         ax.scatter(((xpix/2-srcra[0])+0.05*xpix)*fov/xpix, (ypix/2-srcdec[0])*fov/ypix, s=80, marker='>', facecolor='none')
         impl = ax.imshow(im.transpose(), aspect='equal', origin='upper', interpolation='nearest', extent=[fov/2, -fov/2, -fov/2, fov/2], cmap=plt.get_cmap('Greys'), vmin=0, vmax=0.5*im.max())
@@ -807,19 +813,30 @@ def inspect_cand(mergepkl, snrmin=None, candnum=-1, **kwargs):
         candint = loc[candnum, intcol]
         dmarrorig = d['dmarr']
         dtarrorig = d['dtarr']
+        nsegments = len(d['segmenttimesdict'][scan])
 
-        d2 = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False, **kwargs)
+        d2 = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False, nsegments=nsegments, **kwargs)
         im, data = rt.pipeline(d2, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
+
+        # calc source location
+        peakl, peakm = n.where(im == im.max())
+        xpix,ypix = im.shape
+        l1 = (xpix/2. - peakl[0])/(xpix*d['uvres'])
+        m1 = (ypix/2. - peakm[0])/(ypix*d['uvres'])
+        pt_ra, pt_dec = d['radec']
+        src_ra, src_dec = source_location(pt_ra, pt_dec, l1, m1)
+        print 'Peak (RA, Dec):', src_ra, src_dec
 
         print 'Returning candidate d, im, data'
         return d2, im, data
 
 def source_location(pt_ra, pt_dec, l1, m1):
-    """ Takes phase center and src l,m to get ra,dec of source.
+    """ Takes phase center and src l,m in radians to get ra,dec of source.
     """
+    import math
 
-    srcra = n.degrees(pt_ra+l1); srcdec = n.degrees(pt_dec+m1)
-    print deg2HMS(srcra, srcdec)
+    srcra = n.degrees(pt_ra + l1/math.cos(pt_dec)); srcdec = n.degrees(pt_dec + m1)
+    return deg2HMS(srcra, srcdec)
 
 def deg2HMS(ra='', dec='', round=False):
     """ quick and dirty coord conversion. googled to find bdnyc.org.
