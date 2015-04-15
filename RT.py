@@ -72,10 +72,16 @@ def pipeline(d, segment, reproducecand=()):
         print 'Calibration file not found. Proceeding with no calibration applied.'
 
     # flag data
-    dataflagpool(data_mem, d)
+    if d['flagmode'] == 'standard':
+        dataflagpool(data_mem, d)
+    else:
+        print 'No real-time flagging.'
 
     # mean t vis subtration
-    meantsubpool(data_mem, d)
+    if d['timesub'] == 'mean':
+        meantsubpool(data_mem, d)
+    else:
+        print 'No mean time subtraction.'
 
     if d['savenoise']:
         noisepickle(d, data, u, v, w)      # save noise pickle
@@ -109,14 +115,11 @@ def meantsubpool(data_mem, d):
     """ Parallelized mean t visibility subtraction.
     """
 
-    if d['timesub'] == 'mean':
-        print 'Subtracting mean visibility in time...'
-        blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
-        with closing(mp.Pool(d['nthread'], initializer=initpool2, initargs=(data_mem,))) as pool:
-            for blr in blranges:
-                pool.apply_async(meantsub, [blr, d])
-    else:
-        print 'No mean time subtraction.'
+    print 'Subtracting mean visibility in time...'
+    blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
+    with closing(mp.Pool(d['nthread'], initializer=initpool2, initargs=(data_mem,))) as pool:
+        for blr in blranges:
+            pool.apply_async(meantsub, [blr, d])
 
 def meantsub(blr, d):
     """ Wrapper function for rtlib.meantsub
@@ -131,47 +134,43 @@ def dataflagpool(data_mem, d):
     """ Parallelized flagging
     """
 
-    if d['flagmode'] == 'standard':
-        print 'Flagging data...'
-        chperspw = len(d['freq_orig'])/len(d['spw'])
-        with closing(mp.Pool(d['nthread'], initializer=initpool2, initargs=(data_mem,))) as pool:
-            resultd = {}
-            for pol in range(d['npol']):
-                for spw in range(d['nspw']):
-                    freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
-                    chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                    resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 10., 'badcht', 0.05])
-            for kk in resultd.keys():
-                result = resultd[kk].get()
-#                print kk, result, result/(0.5*data.size)
-
-            resultd = {}
+    print 'Flagging data...'
+    chperspw = len(d['freq_orig'])/len(d['spw'])
+    with closing(mp.Pool(d['nthread'], initializer=initpool2, initargs=(data_mem,))) as pool:
+        resultd = {}
+        for pol in range(d['npol']):
             for spw in range(d['nspw']):
                 freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
                 chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                resultd[spw] = pool.apply_async(dataflag, [chans, 0, d, 3., 'badap', 0.2]) # pol not used here
-            for kk in resultd.keys():
-                result = resultd[kk].get()
-#                print kk, result, result/(0.5*data.size)
+                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 10., 'badcht', 0.05])
+        for kk in resultd.keys():
+            result = resultd[kk].get()
 
-            resultd = {}
-            for pol in range(d['npol']):
-                for spw in range(d['nspw']):
-                    freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
-                    chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                    resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 3.0, 'blstd', 0.05])
-            for kk in resultd.keys():
-                result = resultd[kk].get()
-#                print kk, result, result/(0.5*data.size)
+        resultd = {}
+        for spw in range(d['nspw']):
+            freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
+            chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
+            resultd[spw] = pool.apply_async(dataflag, [chans, 0, d, 3., 'badap', 0.2]) # pol not used here
+        for kk in resultd.keys():
+            result = resultd[kk].get()
 
-            for pol in range(d['npol']):
-                for spw in range(d['nspw']):
-                    freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
-                    chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                    resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 7., 'badcht', 0.05])
-            for kk in resultd.keys():
-                result = resultd[kk].get()
-#                print kk, result, result/(0.5*data.size)
+        resultd = {}
+        for pol in range(d['npol']):
+            for spw in range(d['nspw']):
+                freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
+                chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
+                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 3.0, 'blstd', 0.05])
+        for kk in resultd.keys():
+            result = resultd[kk].get()
+
+        resultd = {}
+        for pol in range(d['npol']):
+            for spw in range(d['nspw']):
+                freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
+                chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
+                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 7., 'badcht', 0.05])
+        for kk in resultd.keys():
+            result = resultd[kk].get()
 
             # resultd = {}
             # for pol in range(d['npol']):
@@ -182,9 +181,6 @@ def dataflagpool(data_mem, d):
             # for kk in resultd.keys():
             #     result = resultd[kk].get()
 #                print kk, result, result/(0.5*data.size)
-
-    else:
-        print 'No real-time flagging.'
 
 def dataflag(chans, pol, d, sig, mode, conv):
     """ Wrapper function to get shared memory as numpy array into pool
@@ -321,8 +317,8 @@ def reproduce(d, data_resamp_mem, u, v, w, candint, twindow=30):
         minint = max(candint/d['dtarr'][dtind]-twindow/2, 0)
         maxint = min(candint/d['dtarr'][dtind]+twindow/2, len(data_resamp)/d['dtarr'][dtind])
 
-    return(im, data_resamp[minint:maxint].mean(axis=1))
-#    return im, data_resamp
+#    return(im, data_resamp[minint:maxint].mean(axis=1))
+    return im, data_resamp
 
 def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     """ Function defines pipeline state for search. Takes data/scan as input.
@@ -803,3 +799,4 @@ def initpool(shared_arr_):
 def initpool2(shared_arr_):
     global data_mem
     data_mem = shared_arr_ # must be inhereted, not passed as an argument
+

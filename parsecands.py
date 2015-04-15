@@ -234,7 +234,7 @@ def plot_noise(pkllist, outroot='', remove=[]):
     """
 
     if not outroot:
-        outroot = 'plot_' + '_'.join(pkllist[0].split('_')[1:3])
+        outroot = '_'.join(pkllist[0].split('_')[1:3])
 
     make_noisehists(pkllist, outroot, remove=remove)
 
@@ -595,19 +595,20 @@ def plot_psrrates(pkllist, outname=''):
 
     plt.savefig(outname)
 
-def plot_cand(pkllist, snrmin=None, candnum=-1, outname=''):
+def plot_cand(mergepkl, snrmin=None, candnum=-1, outname='', **kwargs):
     """ Create detailed plot of a single candidate.
     Thresholds (as minimum), then provides list of candidates to select with candnum.
+    kwargs passed to rt.set_pipeline
     """
 
-    if isinstance(pkllist, list):
-        outroot = '_'.join(pkllist[0].split('_')[1:3])
-        merge_cands(pkllist, outroot=outroot)
-        mergepkl = 'cands_' + outroot + '_merge.pkl'
-    elif isinstance(pkllist, str):
-        print 'Assuming input is mergepkl'
-        mergepkl = pkllist
-        
+    # if isinstance(pkllist, list):
+    #     outroot = '_'.join(pkllist[0].split('_')[1:3])
+    #     merge_cands(pkllist, outroot=outroot)
+    #     mergepkl = 'cands_' + outroot + '_merge.pkl'
+    # elif isinstance(pkllist, str):
+    #     print 'Assuming input is mergepkl'
+    #     mergepkl = pkllist
+
     d = pickle.load(open(mergepkl, 'r'))
     loc, prop = read_candidates(mergepkl)
     
@@ -658,8 +659,8 @@ def plot_cand(pkllist, snrmin=None, candnum=-1, outname=''):
         dmarrorig = d['dmarr']
         dtarrorig = d['dtarr']
 
-        d = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False)
-        im, data = rt.pipeline(d, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
+        d2 = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False, **kwargs)
+        im, data = rt.pipeline(d2, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
 
         # plot it
         print 'Plotting...'
@@ -694,7 +695,11 @@ def plot_cand(pkllist, snrmin=None, candnum=-1, outname=''):
         # # then add annotating info
         ax.text(0.1, 0.9, d['fileroot']+'_sc'+str(scan), fontname='sans-serif', transform = ax.transAxes)
         ax.text(0.1, 0.8, 'seg %d, int %d, DM %.1f, dt %d' % (segment, loc[candnum, intcol], dmarrorig[loc[candnum, dmindcol]], dtarrorig[loc[candnum,dtindcol]]), fontname='sans-serif', transform = ax.transAxes)
-        ax.text(0.1, 0.7, 'Peak: (' + str(n.round((xpix/2-srcra[0])*fov/xpix, 1)) + '\' ,' + str(n.round((ypix/2-srcdec[0])*fov/ypix, 1)) + '\'), SNR: ' + str(n.round(snr, 1)), fontname='sans-serif', transform = ax.transAxes)
+        peakx = (xpix/2-srcra[0])*fov/xpix            
+        peaky = (ypix/2-srcdec[0])*fov/ypix
+        ax.text(0.1, 0.7, 'Peak: (' + str(n.round(peakx, 1)) + '\' ,' + str(n.round(peaky, 1)) + '\'), SNR: ' + str(n.round(snr, 1)), fontname='sans-serif', transform = ax.transAxes)
+        pt_ra, pt_dec = d['radec']
+        source_location(pt_ra, pt_dec, peakx, peaky)
 
         # plot dynamic spectra
         left, width = 0.6, 0.2
@@ -744,3 +749,105 @@ def plot_cand(pkllist, snrmin=None, candnum=-1, outname=''):
             outname = os.path.join(d['workdir'], 'cands_%s_sc%dseg%di%ddm%ddt%d.png' % (d['fileroot'], scan, segment, loc[candnum, intcol], dmind, dtind))
             canvas = FigureCanvasAgg(fig)
             canvas.print_figure(outname)
+
+        return ([],[])
+
+def inspect_cand(mergepkl, snrmin=None, candnum=-1, **kwargs):
+    """ Create detailed plot of a single candidate.
+    Thresholds (as minimum), then provides list of candidates to select with candnum.
+    kwargs passed to rt.set_pipeline
+    """
+
+    d = pickle.load(open(mergepkl, 'r'))
+    loc, prop = read_candidates(mergepkl)
+    
+    if not os.path.split(d['filename'])[0]:
+        d['filename'] = os.path.join(d['workdir'], d['filename'])
+
+    # feature columns
+    if 'snr2' in d['features']:
+        snrcol = d['features'].index('snr2')
+    elif 'snr1' in d['features']:
+        snrcol = d['features'].index('snr1')
+    if 'l2' in d['features']:
+        lcol = d['features'].index('l2')
+    elif 'l1' in d['features']:
+        lcol = d['features'].index('l1')
+    if 'm2' in d['features']:
+        mcol = d['features'].index('m2')
+    elif 'm1' in d['features']:
+        mcol = d['features'].index('m1')
+        
+    scancol = d['featureind'].index('scan')
+    segmentcol = d['featureind'].index('segment')
+    intcol = d['featureind'].index('int')
+    dtindcol = d['featureind'].index('dtind')
+    dmindcol = d['featureind'].index('dmind')
+
+    # sort and prep candidate list
+    snrs = prop[:,snrcol]
+    if isinstance(snrmin, type(None)):
+        snrmin = min(snrs)
+    sortord = snrs.argsort()
+    snrinds = n.where(snrs[sortord] > snrmin)[0]
+    loc = loc[sortord][snrinds]
+    prop = prop[sortord][snrinds]
+
+    if candnum < 0:
+        for i in range(len(loc)):
+            print i, loc[i], prop[i, snrcol]
+        print 'Returning candidate (loc, snr) ...'
+        return (loc, prop[:,snrcol])
+    else:
+        print 'Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum])
+        scan = loc[candnum, scancol]
+        segment = loc[candnum, segmentcol]
+        dmind = loc[candnum, dmindcol]
+        dtind = loc[candnum, dtindcol]
+        candint = loc[candnum, intcol]
+        dmarrorig = d['dmarr']
+        dtarrorig = d['dtarr']
+
+        d2 = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False, **kwargs)
+        im, data = rt.pipeline(d2, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
+
+        print 'Returning candidate d, im, data'
+        return d2, im, data
+
+def source_location(pt_ra, pt_dec, l1, m1):
+    """ Takes phase center and src l,m to get ra,dec of source.
+    """
+
+    srcra = n.degrees(pt_ra+l1); srcdec = n.degrees(pt_dec+m1)
+    print deg2HMS(srcra, srcdec)
+
+def deg2HMS(ra='', dec='', round=False):
+    """ quick and dirty coord conversion. googled to find bdnyc.org.
+    """
+    RA, DEC, rs, ds = '', '', '', ''
+    if dec:
+        if str(dec)[0] == '-':
+            ds, dec = '-', abs(dec)
+        deg = int(dec)
+        decM = abs(int((dec-deg)*60))
+        if round:
+            decS = int((abs((dec-deg)*60)-decM)*60)
+        else:
+            decS = (abs((dec-deg)*60)-decM)*60
+        DEC = '{0}{1} {2} {3}'.format(ds, deg, decM, decS)
+  
+    if ra:
+        if str(ra)[0] == '-':
+            rs, ra = '-', abs(ra)
+        raH = int(ra/15)
+        raM = int(((ra/15)-raH)*60)
+        if round:
+            raS = int(((((ra/15)-raH)*60)-raM)*60)
+        else:
+            raS = ((((ra/15)-raH)*60)-raM)*60
+        RA = '{0}{1} {2} {3}'.format(rs, raH, raM, raS)
+  
+    if ra and dec:
+        return (RA, DEC)
+    else:
+        return RA or DEC
