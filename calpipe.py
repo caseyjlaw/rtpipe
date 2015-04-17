@@ -87,7 +87,34 @@ class pipe(object):
             self.fluxname_full = ''
             self.band = ''
 
-    def run(self, refant=[], antsel=[], uvrange='', fluxname='', fluxname_full='', band='', spw0='', spw1='', flags=[]):
+    def flagdata(self, msfile, flagfile='', flaglist=[]):
+        """ Use flagfile (first) or flaglist (alternately) to run CASA flagging tool.
+        """
+
+        if not flagfile:
+            # write flag data to text file
+            flagfile = os.path.join(self.workdir, 'flags.txt')
+            print 'Writing flaglist to %s.' % flagfile
+
+            if len(flaglist):
+                flfile = open(flagfile, 'w')
+                for flag in flags:
+                    flfile.write(flag + '\n')
+                flfile.close()
+            else:
+                print 'No flagfile or flaglist provided. No flagging will be done.'
+        else:
+            print 'Reading flags from %s.' % flagfile
+
+        print 'Flagging with these commands:'
+        for ff in enumerate(open(flagfile)): print ff[1].rstrip()
+
+        cfg = tl.FlaglistConfig()  # configure split
+        cfg.vis = msfile
+        cfg.inpfile = flagfile
+        tl.flaglist(cfg)  # run task
+
+    def run(self, refant=[], antsel=[], uvrange='', fluxname='', fluxname_full='', band='', spw0='', spw1='', flaglist=[]):
         """ Run calibration pipeline. Assumes L-band.
         refant is list of antenna name strings (e.g., ['ea10']). default is to calculate based on distance from array center.
         antsel is list of ants to use (or reject) (e.g., ['!ea08'])
@@ -95,7 +122,7 @@ class pipe(object):
         fluxname, fluxname_full, and band are used to find flux calibrator info (e.g., '3C48', '0137+331=3C48', 'L').
         spw0 is spw selection for gain cal before bp cal (e.g., '0~1:60~75')
         spw1 is spw selection for gain cal after bp cal (e.g., '0~1:6~122')
-        flags is the list of flag commands (e.g., ["mode='unflag'", "mode='shadow'", "mode='manual' antenna='ea11'"])
+        flaglist is the list of flag commands (e.g., ["mode='unflag'", "mode='shadow'", "mode='manual' antenna='ea11'"])
         """
 
         os.chdir(self.workdir)
@@ -127,22 +154,11 @@ class pipe(object):
         # set up MS file
         msfile = self.genms()
 
-        # flag data via text file
-        flfile = open('flags.txt','w')
-        for flag in flags:
-            flfile.write(flag + '\n')
-        flfile.close()
-
-        print 'Flagging with these commands:'
-        for ff in enumerate(open('flags.txt')): print ff[1].rstrip()
-
-        cfg = tl.FlaglistConfig()  # configure split
-        cfg.vis = msfile
-        cfg.inpfile = "flags.txt"
-        tl.flaglist(cfg)  # run task
-
-        # clean up
-        os.remove('flags.txt')
+        # flag data
+        if len(flaglist):
+            self.flagdata(msfile, flaglist=flaglist)
+        else:
+            self.flagdata(msfile, flagfile=os.path.join(self.workdir, 'flags.txt'))
 
         # Calibrate!
         if fluxmodel:

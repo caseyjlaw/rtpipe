@@ -371,8 +371,9 @@ def plot_normprob(d, snrs, outroot):
     ntrials = npix*nints*ndms*dtfactor
 
     # calc normal quantile
-    snrsortpos = n.array(sorted(snrs[n.where(snrs > 0)], reverse=True))     # high-res snr
-    Zsortpos = n.array([Z(quan(ntrials, j+1)) for j in range(len(snrsortpos))])
+    if len(n.where(snrs > 0)[0]):
+        snrsortpos = n.array(sorted(snrs[n.where(snrs > 0)], reverse=True))     # high-res snr
+        Zsortpos = n.array([Z(quan(ntrials, j+1)) for j in range(len(snrsortpos))])
     if len(n.where(snrs < 0)[0]):
         snrsortneg = n.array(sorted(n.abs(snrs[n.where(snrs < 0)]), reverse=True))     # high-res snr
         Zsortneg = n.array([Z(quan(ntrials, j+1)) for j in range(len(snrsortneg))])
@@ -380,12 +381,14 @@ def plot_normprob(d, snrs, outroot):
     # plot
     fig3 = plt.Figure(figsize=(10,10))
     ax3 = fig3.add_subplot(111)
-    ax3.plot(snrsortpos, Zsortpos, 'k.')
-    if len(n.where(snrs < 0)[0]):
+    if len(n.where(snrs < 0)[0]) and len(n.where(snrs > 0)[0]):
+        ax3.plot(snrsortpos, Zsortpos, 'k.')
         ax3.plot(snrsortneg, Zsortneg, 'kx')
         refl = n.linspace(min(snrsortpos.min(), Zsortpos.min(), snrsortneg.min(), Zsortneg.min()), max(snrsortpos.max(), Zsortpos.max(), snrsortneg.max(), Zsortneg.max()), 2)
-    else:
+    elif len(n.where(snrs > 0)[0]):
         refl = n.linspace(min(snrsortpos.min(), Zsortpos.min()), max(snrsortpos.max(), Zsortpos.max()), 2)
+    elif len(n.where(snrs < 0)[0]):
+        refl = n.linspace(min(snrsortneg.min(), Zsortneg.min()), max(snrsortneg.max(), Zsortneg.max()), 2)
     ax3.plot(refl, refl, 'k--')
     ax3.set_xlabel('SNR')
     ax3.set_ylabel('Normal quantile SNR')
