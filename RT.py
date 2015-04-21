@@ -46,12 +46,11 @@ def pipeline(d, segment, reproducecand=()):
         t0 = d['segmenttimes'][segment][0]
         t1 = d['segmenttimes'][segment][1]
         readints = n.round(24*3600*(t1 - t0)/d['inttime'], 0).astype(int)/d['read_downsample']
+        assert readints > 0
 
         # for shared mem
         data_mem = mps.RawArray(mps.ctypes.c_float, long(readints*d['nbl']*d['nchan']*d['npol'])*2)  # 'long' type needed to hold whole (2 min, 5 ms) scans
         data = numpyview(data_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
-        # for non shared mem
-#        data = n.empty( (readints, d['nbl'], d['nchan'], d['npol']), dtype='complex64', order='C')
 
         data[:] = ps.read_bdf_segment(d, segment)
         (u,v,w) = ps.get_uvw_segment(d, segment)
