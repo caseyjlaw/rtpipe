@@ -26,7 +26,10 @@ class Params(object):
                            
         # overload with the parameter file values, if provided
         if len(paramfile):
-            self.parse(paramfile)
+            try:
+                self.parse(paramfile)
+            except:
+                print 'Not parsing paramfile.'
 
     def parse(self, paramfile):
         """ Read parameter file and set parameter values.

@@ -768,7 +768,7 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
                         for j in xrange(nbl):
                             datacal[i,j,chans[chan],pol] = 0j
 
-            print 'Blstd flagging for (chans %d-%d, pol %d), %.1f sigma: %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, flagged/(0.5*datacal.size)*100)
+            print 'Blstd flagging for (chans %d-%d, pol %d), %.1f sigma: %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, float(flagged)/(datacal.size*100.))
 
         elif mode == 'badcht':
             meanamp = n.abs(datacal[:,:,chans,pol].mean(axis=1))
@@ -799,7 +799,7 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
                     for j in xrange(nbl):
                         datacal[i,j,chans[chan],pol] = 0j
 
-            print 'Bad chans/ints flagging for (chans %d-%d, pol %d), %1.f sigma: %d chans, %d ints, %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, len(badch), len(badt), flagged/(0.5*datacal.size)*100)
+            print 'Bad chans/ints flagging for (chans %d-%d, pol %d), %1.f sigma: %d chans, %d ints, %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, len(badch), len(badt), float(flagged)/(datacal.size*100.))
 
         elif mode == 'ring':
             spfft = n.abs(n.fft.ifft(datacal.mean(axis=0), axis=1))   # delay spectrum of mean data in time
@@ -815,7 +815,7 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
                    for chan in chans:
                        datacal[i,badbl,chan,pol] = 0j
 
-            print 'Ringing flagging for (chans %d-%d, pol %d) at %.1f sigma: %d/%d bls, %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, len(badbls), nbl, flagged/(0.5*datacal.size)*100)
+            print 'Ringing flagging for (chans %d-%d, pol %d) at %.1f sigma: %d/%d bls, %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, len(badbls), nbl, float(flagged)/(datacal.size*100.))
 
         elif mode == 'badap':
             bpa = n.abs(datacal[:,:,chans]).mean(axis=2).mean(axis=0)
@@ -836,7 +836,7 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
                         for chan in chans:
                             datacal[i,badbls[j],chan,badpols[j]] = 0j
 
-            print 'Bad basepol flagging for chans %d-%d at %.1f sigma: ants/pols %s/%s, %3.2f %% of total flagged' % (chans[0], chans[-1], sigma, badants, ww[1], flagged/(0.5*datacal.size)*100)
+            print 'Bad basepol flagging for chans %d-%d at %.1f sigma: ants/pols %s/%s, %3.2f %% of total flagged' % (chans[0], chans[-1], sigma, badants, ww[1], float(flagged)/(datacal.size*100.))
 
         else:
             print 'Not a recognized flag mode.'

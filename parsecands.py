@@ -194,6 +194,10 @@ def plot_summary(pkllist, outroot='', remove=[]):
     d = pickle.load(open(mergepkl, 'r'))
     locs, props = read_candidates(mergepkl)
 
+    if not len(locs):
+        print 'No candidates in mergepkl.'
+        return
+
     # compile candidates over all pkls
     # feature columns
     if 'snr1' in d['features']:

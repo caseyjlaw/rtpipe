@@ -30,10 +30,6 @@ def get_metadata(filename, scan, spw=[], chans=[], params=''):
     params = pp.Params(os.path.join(d['workdir'], params))
     for k in params.defined:   # fill in default params
         d[k] = params[k]
-    if len(chans):
-        d['chans'] = chans
-    if len(spw):
-        d['spw'] = spw
 
     # define scan list
     scans, sources = sdmreader.read_metadata(d['filename'])
@@ -50,6 +46,12 @@ def get_metadata(filename, scan, spw=[], chans=[], params=''):
     d['spw_nchan'] = [int(row.numChan) for row in sdm['SpectralWindow']]
     d['spw_chansize'] = [float(row.chanFreqStep) for row in sdm['SpectralWindow']]
 
+    # select spw. note that spw selection not fully supported yet.
+    if len(spw):
+        d['spw'] = spw
+    else:
+        d['spw'] = d['spw_orig']
+
     spwch = []
     reffreq = d['spw_reffreq']; spectralwindow = d['spw_orig']; numchan = d['spw_nchan']; chansize = d['spw_chansize']
     for freq in sorted(d['spw_reffreq']):
@@ -57,7 +59,13 @@ def get_metadata(filename, scan, spw=[], chans=[], params=''):
         if spectralwindow[ii] in d['spw']:
             spwch.extend(list(n.linspace(reffreq[ii], reffreq[ii]+(numchan[ii]-1)*chansize[ii], numchan[ii])))  # spacing of channel *centers*
     d['freq_orig'] = n.array(spwch).astype('float32')/1e9
-           
+
+    # select subset of channels
+    if len(chans):
+        d['chans'] = chans
+    else:
+        d['chans'] = range(len(d['freq_orig']))
+
     d['nspw'] = len(d['spw'])
     d['freq'] = d['freq_orig'][d['chans']]
     d['nchan'] = len(d['freq'])
@@ -167,7 +175,7 @@ def read_bdf_segment(d, segment=-1):
     return data.take(d['chans'], axis=2)
 
 def get_uvw_segment(d, segment=-1):
-    """ Calculates uvw for each baseline in a given segment.
+    """ Calculates uvw for each baseline at mid time of a given segment.
     d defines pipeline state. assumes segmenttimes defined by RT.set_pipeline.
     """
 

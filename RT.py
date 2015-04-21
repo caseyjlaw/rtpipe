@@ -320,6 +320,68 @@ def reproduce(d, data_resamp_mem, u, v, w, candint, twindow=30):
 #    return(im, data_resamp[minint:maxint].mean(axis=1))
     return im, data_resamp
 
+def lightcurve(d, l1, m1):
+    """ Makes lightcurve at given (l1, m1)
+    """
+
+    ####    ####    ####    ####
+    # 1) Read data
+    ####    ####    ####    ####
+
+    os.chdir(d['workdir'])
+
+#    for segment in range(d['nsegments']):
+    for segment in [0,1]:
+        t0 = d['segmenttimes'][segment][0]
+        t1 = d['segmenttimes'][segment][1]
+        readints = n.round(24*3600*(t1 - t0)/d['inttime'], 0).astype(int)/d['read_downsample']
+        data_mem = mps.RawArray(mps.ctypes.c_float, long(readints*d['nbl']*d['nchan']*d['npol'])*2)  # 'long' type needed to hold whole (2 min, 5 ms) scans
+        data = numpyview(data_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
+
+        data[:] = ps.read_bdf_segment(d, segment)
+        (u,v,w) = ps.get_uvw_segment(d, segment)
+
+    ####    ####    ####    ####
+    # 2) Prepare data
+    ####    ####    ####    ####
+
+        # calibrate data
+        try:
+            sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
+            sols.parsebp(d['bpfile'])
+            sols.setselection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'])
+            sols.apply(data, d['blarr'])
+        except IOError:
+            print 'Calibration file not found. Proceeding with no calibration applied.'
+
+        # flag data
+        if d['flagmode'] == 'standard':
+            dataflagpool(data_mem, d)
+        else:
+            print 'No real-time flagging.'
+
+        # mean t vis subtration
+        if d['timesub'] == 'mean':
+            meantsubpool(data_mem, d)
+        else:
+            print 'No mean time subtraction.'
+
+        # no dedispersion yet
+
+        # only returns significant images for now
+        vals = rtlib.imgallfullfilterxyflux(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data, d['npixx'], d['npixy'], d['uvres'], d['sigma_image1'])
+
+        rtlib.phaseshift_threaded(data, d, l1, m1, u, v)
+
+        if segment == 0:
+            phaseddata = n.ma.masked_array(data, data==0j).mean(axis=1)
+            images = vals[0]
+        else:
+            phaseddata = n.concatenate( (phaseddata, n.ma.masked_array(data, data==0j).mean(axis=1)), axis=0)
+            images = images+vals[0]
+
+    return images, phaseddata
+    
 def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     """ Function defines pipeline state for search. Takes data/scan as input.
     fileroot is base name for associated products (cal files, noise, cands). if blank, it is set to filename.
@@ -474,6 +536,21 @@ def correct_dmdt(d, dmind, dtind, blr):
     data_resamp = numpyview(data_resamp_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
 
     rtlib.dedisperse_resample(data_resamp, d['freq'], d['inttime'], d['dmarr'][dmind], d['dtarr'][dtind], blr, verbose=0)        # dedisperses data.
+
+def calc_lm(d, im, pix=()):
+    """ Helper function to calculate location of image pixel in (l,m) coords.
+    Assumes peak pixel, but input can be provided in pixel units.
+    """
+
+    if len(pix) == 0:
+        peakl, peakm = n.where(im == im.max())
+        peakl = peakl[0]; peakm = peakm[0]
+    elif len(pix) == 2:
+        peakl, peakm = pix
+    npixx, npixy = im.shape
+    l1 = (npixx/2. - peakl)/(npixx*d['uvres'])
+    m1 = (npixy/2. - peakm)/(npixy*d['uvres'])
+    return l1, m1
 
 def move_phasecenter(d, l1, m1, u, v):
     """ Handler function for phaseshift_threaded
