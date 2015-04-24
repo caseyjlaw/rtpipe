@@ -256,8 +256,6 @@ cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float
 
     return candims,candsnrs,candints
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
 cpdef imgonefullw(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=2] v, n.ndarray[DTYPE_t, ndim=3] data, unsigned int npix, unsigned int uvres, blsets, uvkers, verbose=1):
     # Same as imgallfullxy, but includes w term
 
@@ -275,7 +273,6 @@ cpdef imgonefullw(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=
     cdef n.ndarray[n.int_t, ndim=1] bls
     cdef int keru
     cdef int kerv
-#    cdef n.ndarray[DTYPE_t, ndim=2] grido = n.zeros((npix,npix), dtype='complex64')
     cdef n.ndarray[DTYPE_t, ndim=2] grid = n.zeros((npix,npix), dtype='complex64')
     cdef arr = pyfftw.n_byte_align_empty((npix,npix), 16, dtype='complex64')
 
@@ -332,7 +329,8 @@ cpdef genuvkernels(n.ndarray[n.float32_t, ndim=1] w, wres, unsigned int npix, un
     cdef n.ndarray[DTYPE_t, ndim=2] uvker
     cdef lmker = pyfftw.n_byte_align_empty( (npix, npix), 16, dtype='complex64')
 
-    ifft = pyfftw.builders.ifft2(lmker, overwrite_input=True, auto_align_input=True, auto_contiguous=True, threads=nthreads)
+#    ifft = pyfftw.builders.ifft2(lmker, overwrite_input=True, auto_align_input=True, auto_contiguous=True, threads=nthreads)
+    ifft = pyfftw.builders.ifft2(lmker)
 
     # set up w planes
     sqrt_w = n.sqrt(n.abs(w)) * n.sign(w)
@@ -363,6 +361,8 @@ cpdef genuvkernels(n.ndarray[n.float32_t, ndim=1] w, wres, unsigned int npix, un
 
     return blsets, uvkers
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
 cpdef get_lmkernel(npix, res, avg_w):
     l, m = get_lm(npix, res)
     sqrtn = n.sqrt(1 - l**2 - m**2).astype(n.float32)
@@ -373,6 +373,8 @@ cpdef get_lmkernel(npix, res, avg_w):
     G[:,1:] = n.fliplr(G[:,1:]).copy()
     return G / G.size
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
 cpdef get_lm(npix, res, center=(0,0)):
     m,l = n.indices((npix,npix))
     l,m = n.where(l > npix/2, npix-l, -l), n.where(m > npix/2, m-npix, m)

@@ -141,6 +141,7 @@ def dataflagpool(data_mem, d):
             for spw in range(d['nspw']):
                 freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
                 chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
+#                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 15., 'badcht', 0.1])
                 resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 10., 'badcht', 0.05])
         for kk in resultd.keys():
             result = resultd[kk].get()
@@ -158,6 +159,7 @@ def dataflagpool(data_mem, d):
             for spw in range(d['nspw']):
                 freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
                 chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
+#                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 10.0, 'blstd', 0.2])
                 resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 3.0, 'blstd', 0.05])
         for kk in resultd.keys():
             result = resultd[kk].get()
@@ -167,7 +169,8 @@ def dataflagpool(data_mem, d):
             for spw in range(d['nspw']):
                 freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
                 chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 7., 'badcht', 0.05])
+#                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 12., 'badcht', 0.1])
+                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 7., 'badcht', 0.1])
         for kk in resultd.keys():
             result = resultd[kk].get()
 
