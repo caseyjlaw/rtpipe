@@ -15,7 +15,7 @@ def pipeline(d, segment, reproducecand=()):
     """ Transient search pipeline running on single node.
     Processes a single segment of data (where a single bgsub, (u,v,w), etc. can be used).
     Searches completely, independently, and saves candidates.
-    reproducecand is tuple of (candint, dmind, dtind) that params to reproduce/visualize candidate
+    reproducecand is tuple of (dmind, dtind) or (candint, dmind, dtind). Former returns corrected data, latter images and phases data.
 
     Stages:
     0) Take dictionary that defines metadata and search params
@@ -101,14 +101,22 @@ def pipeline(d, segment, reproducecand=()):
 
         return len(cands)
 
-    elif len(reproducecand) == 3:  # reproduce and visualize candidates
+    elif len(reproducecand) == 2:  # reproduce data
+        dmind, dtind = reproducecand
+        d['dmarr'] = [d['dmarr'][dmind]]
+        d['dtarr'] = [d['dtarr'][dtind]]
+        data = reproduce(d, data_mem, u, v, w)
+        return data
+
+    elif len(reproducecand) == 3:  # reproduce candidate image and data
         reproduceint, dmind, dtind = reproducecand
         d['dmarr'] = [d['dmarr'][dmind]]
         d['dtarr'] = [d['dtarr'][dtind]]
         im, data = reproduce(d, data_mem, u, v, w, reproduceint)
         return im, data
+
     else:
-        print 'reproducecand should be empty of length 3: %s' % reproducecand
+        print 'reproducecand not in expected format: %s' % reproducecand
 
 def meantsubpool(data_mem, d):
     """ Parallelized mean t visibility subtraction.
@@ -272,10 +280,9 @@ def search(d, data, u, v, w):
     print 'Found %d cands in scan %d segment %d of %s. ' % (len(cands), d['scan'], d['segment'], d['filename'])
     return cands
 
-def reproduce(d, data_resamp_mem, u, v, w, candint, twindow=30):
+def reproduce(d, data_resamp_mem, u, v, w, candint=-1, twindow=30):
     """ Reproduce function, much like search.
-    Instead of returning cand count
-    Assumes shared memory system with single uvw grid for all images.
+    If no candint is given, it returns resampled data. Otherwise, returns image and rephased data.
     """
 
     dmind = 0; dtind = 0
@@ -295,32 +302,30 @@ def reproduce(d, data_resamp_mem, u, v, w, candint, twindow=30):
             npixx = d['npixx_full']
             npixy = d['npixy_full']
 
-        # image
-        print 'Imaging int %d with %d %d pixels...' % (candint, npixx, npixy)
-#        print readints/d['dtarr'][dtind], candint/d['dtarr'][dtind]
-#        ims,snrs,candints = pool.apply(rtlib.imgallfullfilterxyflux, [n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[0][0:readints/d['dtarr'][dtind]], npixx, npixy, d['uvres'], d['sigma_image1']])
-#        print snrs, candints
-#        im = ims[candints.index(candint)]
-        im = pool.apply(image1wrap, [d, u, v, w, npixx, npixy, candint/d['dtarr'][dtind]])
+        if candint > -1:
+            # image
+            print 'Imaging int %d with %d %d pixels...' % (candint, npixx, npixy)
+            im = pool.apply(image1wrap, [d, u, v, w, npixx, npixy, candint/d['dtarr'][dtind]])
 
-        snrmin = im.min()/im.std()
-        snrmax = im.max()/im.std()
-        print 'Made image with SNR min, max: %.1f, %.1f' % (snrmin, snrmax)
-        if snrmax > -1*snrmin:
-            peakl, peakm = n.where(im == im.max())
+            snrmin = im.min()/im.std()
+            snrmax = im.max()/im.std()
+            print 'Made image with SNR min, max: %.1f, %.1f' % (snrmin, snrmax)
+            if snrmax > -1*snrmin:
+                peakl, peakm = n.where(im == im.max())
+            else:
+                peakl, peakm = n.where(im == im.min())
+            l1 = (npixx/2. - peakl[0])/(npixx*d['uvres'])
+            m1 = (npixy/2. - peakm[0])/(npixy*d['uvres'])
+
+            # rephase and trim interesting ints out
+            print 'Rephasing to peak...'
+            pool.apply(move_phasecenter, [d, l1, m1, u, v])
+            minint = max(candint/d['dtarr'][dtind]-twindow/2, 0)
+            maxint = min(candint/d['dtarr'][dtind]+twindow/2, len(data_resamp)/d['dtarr'][dtind])
+
+            return(im, data_resamp[minint:maxint].mean(axis=1))
         else:
-            peakl, peakm = n.where(im == im.min())
-        l1 = (npixx/2. - peakl[0])/(npixx*d['uvres'])
-        m1 = (npixy/2. - peakm[0])/(npixy*d['uvres'])
-
-        # rephase and trim interesting ints out
-        print 'Rephasing to peak...'
-        pool.apply(move_phasecenter, [d, l1, m1, u, v])
-        minint = max(candint/d['dtarr'][dtind]-twindow/2, 0)
-        maxint = min(candint/d['dtarr'][dtind]+twindow/2, len(data_resamp)/d['dtarr'][dtind])
-
-#    return(im, data_resamp[minint:maxint].mean(axis=1))
-    return im, data_resamp
+            return data_resamp
 
 def lightcurve(d, l1, m1):
     """ Makes lightcurve at given (l1, m1)
@@ -810,8 +815,12 @@ def sample_image(d, data, u, v, w, i=-1, verbose=1, imager='xy', wres=100):
     if imager == 'xy':
         image = rtlib.imgonefullxy(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data[i], d['npixx'], d['npixy'], d['uvres'], verbose=verbose)
     elif imager == 'w':
-        bls, uvkers = rtlib.genuvkernels(w, wres, d['npix'], d['uvres'], thresh=0.05)
-        image = rtlib.imgonefullw(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data[i], d['npix'], d['uvres'], bls, uvkers, verbose=verbose)
+        npix = max(d['npixx'], d['npixy'])
+        bls, uvkers = rtlib.genuvkernels(w, wres, npix, d['uvres'], ksize=21, oversample=1)
+        image = rtlib.imgonefullw(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data[i], npix, d['uvres'], bls, uvkers, verbose=verbose)
+
+#        bls, lmkers = rtlib.genlmkernels(w, wres, npix, d['uvres'])
+#        image = rtlib.imgonefullw(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data[i], npix, d['uvres'], [bls[0]], [lmkers[0]], verbose=verbose)
 
     return image
 

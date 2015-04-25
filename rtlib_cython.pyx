@@ -256,7 +256,7 @@ cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float
 
     return candims,candsnrs,candints
 
-cpdef imgonefullw(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=2] v, n.ndarray[DTYPE_t, ndim=3] data, unsigned int npix, unsigned int uvres, blsets, uvkers, verbose=1):
+cpdef imgonefullw(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=2] v, n.ndarray[DTYPE_t, ndim=3] data, unsigned int npix, unsigned int uvres, blsets, kers, verbose=1):
     # Same as imgallfullxy, but includes w term
 
     # initial definitions
@@ -274,63 +274,63 @@ cpdef imgonefullw(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=
     cdef int keru
     cdef int kerv
     cdef n.ndarray[DTYPE_t, ndim=2] grid = n.zeros((npix,npix), dtype='complex64')
+#    cdef n.ndarray[DTYPE_t, ndim=2] gridacc = n.zeros((npix,npix), dtype='complex64')
     cdef arr = pyfftw.n_byte_align_empty((npix,npix), 16, dtype='complex64')
 
     # put uv data on grid
     cdef n.ndarray[CTYPE_t, ndim=2] uu = n.round(u/uvres).astype(n.int)
     cdef n.ndarray[CTYPE_t, ndim=2] vv = n.round(v/uvres).astype(n.int)
-    cdef n.ndarray[DTYPE_t, ndim=2] uvker
+    cdef n.ndarray[DTYPE_t, ndim=2] ker
     cdef int ksize
 
-#    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True, threads=nthreads)
     ifft = pyfftw.builders.ifft2(arr)
+#    fft = pyfftw.builders.fft2(arr)
     
-#    ok = n.logical_and(n.abs(uu) < npix/2, n.abs(vv) < npix/2)
-#    uu = n.mod(uu, npix)
-#    vv = n.mod(vv, npix)
-
-    ksizemax = n.max([len(uvkers[i]) for i in range(len(uvkers))])
-    ok = n.logical_and(n.abs(uu) < (npix-ksizemax)/2, n.abs(vv) < (npix-ksizemax)/2)
     uu = n.mod(uu, npix)
     vv = n.mod(vv, npix)
 
     # add uv data to grid
-    for kernum in xrange(len(uvkers)):
+    for kernum in xrange(len(kers)):
         bls = blsets[kernum]
-        uvker = uvkers[kernum]
-        ksize = len(uvker)
-#        ok = n.logical_and(n.abs(uu) < (npix-ksize)/2, n.abs(vv) < (npix-ksize)/2)
+        ker = kers[kernum]
+        ksize = len(ker)
+        ok = n.logical_and(uu < (npix-ksize), vv < (npix-ksize))
         for i in bls:
             for j in xrange(len1):
                 if ok[i,j]:
                     cellu = uu[i,j]
                     cellv = vv[i,j]
                     for p in xrange(len2):
-#                        grido[cellu, cellv] = data[i,j,p] + grido[cellu, cellv]  # no conv gridding
-                        for keru in xrange(ksize):
-                            for kerv in xrange(ksize):
-                                grid[cellu+keru-ksize/2, cellv+kerv-ksize/2] = uvker[keru,kerv]*data[i,j,p] + grid[cellu+keru-ksize/2, cellv+kerv-ksize/2]
+# option 0) no w-term correction
+#                        grid[cellu, cellv] = data[i,j,p] + grid[cellu, cellv]  # no conv gridding
+#                        gridacc[cellu, cellv] = data[i,j,p] + gridacc[cellu, cellv]  # no conv gridding
+# option 1) conv gridding
+                         for keru in xrange(ksize):
+                             for kerv in xrange(ksize):
+                                 grid[cellu+keru-ksize/2, cellv+kerv-ksize/2] = ker[keru,kerv]*data[i,j,p] + grid[cellu+keru-ksize/2, cellv+kerv-ksize/2]
+# option 2) fourier kernel (not working)
+#        print 'kernum:', kernum
+#        arr[:] = gridacc[:]
+#        imacc = fft()
+#        arr[:] = (imacc*ker)[:]   
+#        grid[:] += ifft()[:]
 
     # make images and filter based on threshold
-#    arr[:] = grido[:]
-#    imo = ifft().real
-#    imo = recenter(imo, (npix/2,npix/2))
     arr[:] = grid[:]
     im = ifft().real
     im = recenter(im, (npix/2,npix/2))
 
     if verbose:
         print 'Pixel size %.1f\". Field size %.1f\"' % (3600*n.degrees(2./(npix*uvres)), 3600*n.degrees(1./uvres))
-#    return imo, im
     return im
 
-cpdef genuvkernels(n.ndarray[n.float32_t, ndim=1] w, wres, unsigned int npix, unsigned int uvres, float thresh=0.05, nthreads=16):
-    cdef unsigned int ksize
+cpdef genuvkernels(n.ndarray[n.float32_t, ndim=1] w, wres, unsigned int npix, unsigned int uvres, float thresh=0.99, unsigned int oversample=2, unsigned int ksize=0):
     cdef n.ndarray[DTYPE_t, ndim=2] uvker
+    npix = npix*oversample
+    uvres = uvres/oversample
     cdef lmker = pyfftw.n_byte_align_empty( (npix, npix), 16, dtype='complex64')
 
-#    ifft = pyfftw.builders.ifft2(lmker, overwrite_input=True, auto_align_input=True, auto_contiguous=True, threads=nthreads)
-    ifft = pyfftw.builders.ifft2(lmker)
+    fft = pyfftw.builders.fft2(lmker)
 
     # set up w planes
     sqrt_w = n.sqrt(n.abs(w)) * n.sign(w)
@@ -344,22 +344,52 @@ cpdef genuvkernels(n.ndarray[n.float32_t, ndim=1] w, wres, unsigned int npix, un
         blw = n.where( (sqrt_w > wgrid[i]) & (sqrt_w <= wgrid[i+1]) )
         blsets.append(blw[0])
         avg_w = n.average(w[blw])
-        print 'Added %d/%d baselines for avg_w %.1f' % (len(blw[0]), len(w), avg_w)
+        print 'w %.1f to %.1f: Added %d/%d baselines' % (n.sign(wgrid[i])*wgrid[i]**2, n.sign(wgrid[i+1])*wgrid[i+1]**2, len(blw[0]), len(w))
 
-        # get image extent
-        lmker[:] = get_lmkernel(npix, uvres, avg_w).astype(DTYPE)
+        if len(blw[0]):
+            # get image extent
+            lmker[:] = get_lmkernel(npix, uvres, avg_w).astype(DTYPE)
 
-        # uv kernel from inv fft of lm kernel
-        im = ifft()
-        uvker = recenter(im, (npix/2,npix/2))
+            # uv kernel from inv fft of lm kernel
+            im = fft()
+            uvker = recenter(im, (npix/2,npix/2))
 
-        # keep uvker above a fraction (thresh) of peak amp
-        largey, largex = n.where(n.abs(uvker) > thresh*n.abs(uvker).max())
-        ksize = max(largey.max()-largey.min(), largex.max()-largex.min())                # take range of high values to define kernel size
-        uvker = uvker[npix/2-ksize/2:npix/2+ksize/2+1, npix/2-ksize/2:npix/2+ksize/2+1]
-        uvkers.append((uvker/uvker.sum()).astype(DTYPE))
+            if ksize == 0:
+                # keep uvker above a fraction (thresh) of peak amp
+                largey, largex = n.where(n.abs(uvker) > thresh*n.abs(uvker).max())
+                ksize = max(largey.max()-largey.min(), largex.max()-largex.min())                # take range of high values to define kernel size
+                uvker = uvker[npix/2-ksize/2:npix/2+ksize/2+1, npix/2-ksize/2:npix/2+ksize/2+1]
+                uvkers.append((uvker/uvker.sum()).astype(DTYPE))
+            else:
+                uvker = uvker[npix/2-ksize/2:npix/2+ksize/2+1, npix/2-ksize/2:npix/2+ksize/2+1]
+                uvkers.append((uvker/uvker.sum()).astype(DTYPE))
+        else:
+            uvkers.append([])
 
     return blsets, uvkers
+
+cpdef genlmkernels(n.ndarray[n.float32_t, ndim=1] w, wres, unsigned int npix, unsigned int uvres):
+
+    # set up w planes
+    sqrt_w = n.sqrt(n.abs(w)) * n.sign(w)
+    numw = n.ceil(1.1*(sqrt_w.max()-sqrt_w.min())/wres).astype(int)  # number of w bins (round up)
+    wgrid = n.linspace(sqrt_w.min()*1.05, sqrt_w.max()*1.05, numw)
+
+    # Grab a chunk of uvw's that grid w to same point.
+    lmkers = []; blsets = []
+    for i in range(len(wgrid)-1):
+        # get baselines in this wgrid bin
+        blw = n.where( (sqrt_w > wgrid[i]) & (sqrt_w <= wgrid[i+1]) )
+        blsets.append(blw[0])
+        avg_w = n.average(w[blw])
+        print 'w %.1f to %.1f: Added %d/%d baselines' % (n.sign(wgrid[i])*wgrid[i]**2, n.sign(wgrid[i+1])*wgrid[i+1]**2, len(blw[0]), len(w))
+
+        if len(blw[0]):
+            lmkers.append(get_lmkernel(npix, uvres, avg_w).astype(DTYPE))
+        else:
+            lmkers.append([])
+
+    return blsets, lmkers
 
 @cython.boundscheck(False)
 @cython.wraparound(False)

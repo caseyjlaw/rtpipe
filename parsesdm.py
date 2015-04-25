@@ -78,7 +78,7 @@ def get_metadata(filename, scan, spw=[], chans=[], params=''):
     v = v * d['freq_orig'][0] * (1e9/3e8) * (-1)     
     d['urange'][d['scan']] = u.max() - u.min()
     d['vrange'][d['scan']] = v.max() - v.min()
-    d['uvres_full'] = n.round(25./(3e-1/d['freq'].max())/2).astype('int')    # full VLA field of view. assumes freq in GHz
+    d['uvres_full'] = n.round(25./(3e-1/d['freq'].min())/2).astype('int')    # delay beam larger than VLA field of view at all freqs. assumes freq in GHz.
     # **this may let vis slip out of bounds. should really define grid out to 2*max(abs(u)) and 2*max(abs(v)). in practice, very few are lost.**
 
     urange = d['urange'][d['scan']]*(d['freq'].max()/d['freq_orig'][0])   # uvw from get_uvw already in lambda at ch0
