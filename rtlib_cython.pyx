@@ -18,8 +18,6 @@ cpdef beamonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndi
     # on flux scale (counts nonzero data)
 
     # initial definitions
-    cdef unsigned int ndimx = n.round(1.*npixx).astype(n.int)
-    cdef unsigned int ndimy = n.round(1.*npixy).astype(n.int)
     shape = n.shape(data)
     cdef unsigned int len0 = shape[0]
     cdef unsigned int len1 = shape[1]
@@ -30,15 +28,18 @@ cpdef beamonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndi
     cdef int cellu
     cdef int cellv
     cdef unsigned int nonzeros = 0
-    cdef n.ndarray[DTYPE_t, ndim=2] grid = n.zeros( (ndimx,ndimy), dtype='complex64')
+    cdef n.ndarray[DTYPE_t, ndim=2] grid = n.zeros( (npixx,npixy), dtype='complex64')
+    cdef arr = pyfftw.n_byte_align_empty((npixx,npixy), 16, dtype='complex64')
 
     # put uv data on grid
     cdef n.ndarray[CTYPE_t, ndim=2] uu = n.round(u/res).astype(n.int)
     cdef n.ndarray[CTYPE_t, ndim=2] vv = n.round(v/res).astype(n.int)
 
-    ok = n.logical_and(n.abs(uu) < ndimx/2, n.abs(vv) < ndimy/2)
-    uu = n.mod(uu, ndimx)
-    vv = n.mod(vv, ndimy)
+    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)
+
+    ok = n.logical_and(n.abs(uu) < npixx/2, n.abs(vv) < npixy/2)
+    uu = n.mod(uu, npixx)
+    vv = n.mod(vv, npixy)
 
     # add uv data to grid
     for i in xrange(len0):
@@ -51,10 +52,12 @@ cpdef beamonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndi
                         grid[cellu, cellv] = 1 + grid[cellu, cellv] 
                         nonzeros = nonzeros + 1
 
-    im = fft.ifft2(grid).real*int(ndimx*ndimy)/float(nonzeros)
-    im = recenter(im, (ndimx/2,ndimy/2))
+    # make images and filter based on threshold
+    arr[:] = grid[:]
+    im = ifft(arr).real*int(npixx*npixy)/float(nonzeros)
+    im = recenter(im, (npixx/2,npixy/2))
 
-    print 'Gridded %.3f of data. Scaling fft by = %.1f' % (float(ok.sum())/ok.size, int(ndimx*ndimy)/float(nonzeros))
+    print 'Gridded %.3f of data. Scaling fft by = %.1f' % (float(ok.sum())/ok.size, int(npixx*npixy)/float(nonzeros))
     print 'Pixel sizes (%.1f\", %.1f\"), Field size %.1f\"' % (3600*n.degrees(2./(npixx*res)), 3600*n.degrees(2./(npixy*res)), 3600*n.degrees(1./res))
     return im
 
@@ -104,7 +107,7 @@ cpdef imgonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim
     arr[:] = grid[:]
     im = ifft(arr).real*int(npixx*npixy)
     im = recenter(im, (npixx/2,npixy/2))
-
+    
     if nonzeros > 0:
         im = im/float(nonzeros)
         if verbose:
@@ -803,7 +806,7 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
             print 'Blstd flagging for (chans %d-%d, pol %d), %.1f sigma: %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, 100.*flagged/datacal.size)
 
         elif mode == 'badcht':
-            meanamp = n.abs(datacal[:,:,chans,pol].mean(axis=1))
+            meanamp = n.abs(datacal[:,:,chans,pol]).mean(axis=1)
 
             # iterate to good median and std values
             meanampmednew = n.ma.median(meanamp)
@@ -824,7 +827,6 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
                 for i in xrange(iterint):
                     for j in xrange(nbl):
                         datacal[i,j,chan,pol] = 0j
-
             for i in badt:
                 flagged += nchan*nbl
                 for chan in xrange(len(chans)):

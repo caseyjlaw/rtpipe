@@ -45,7 +45,7 @@ def pipeline(d, segment, reproducecand=()):
     elif d['dataformat'] == 'sdm':
         t0 = d['segmenttimes'][segment][0]
         t1 = d['segmenttimes'][segment][1]
-        readints = n.round(24*3600*(t1 - t0)/d['inttime'], 0).astype(int)/d['read_downsample']
+        readints = n.round(24*3600*(t1 - t0)/d['inttime'], 0).astype(int)/d['read_tdownsample']
         assert readints > 0
 
         # for shared mem
@@ -85,11 +85,16 @@ def pipeline(d, segment, reproducecand=()):
     if d['savenoise']:
         noisepickle(d, data, u, v, w)      # save noise pickle
 
+    # optionally phase to new location
+    if any([d['l0'], d['m0']]):
+        print 'Rephasing data to (l, m)=(%.3f, %.3f).' % (d['l0'], d['m0'])
+        rtlib.phaseshift_threaded(data, d, d['l0'], d['m0'], u, v)
+
     ####    ####    ####    ####
     # 3) Search using all threads
     ####    ####    ####    ####
-    print 'Starting search...'
     if len(reproducecand) == 0:
+        print 'Starting search...'
         cands = search(d, data, u, v, w)
 
         ####    ####    ####    ####
@@ -102,6 +107,7 @@ def pipeline(d, segment, reproducecand=()):
         return len(cands)
 
     elif len(reproducecand) == 2:  # reproduce data
+        print 'Reproducing data...'
         dmind, dtind = reproducecand
         d['dmarr'] = [d['dmarr'][dmind]]
         d['dtarr'] = [d['dtarr'][dtind]]
@@ -109,6 +115,7 @@ def pipeline(d, segment, reproducecand=()):
         return data
 
     elif len(reproducecand) == 3:  # reproduce candidate image and data
+        print 'Reproducing candidate...'
         reproduceint, dmind, dtind = reproducecand
         d['dmarr'] = [d['dmarr'][dmind]]
         d['dtarr'] = [d['dtarr'][dtind]]
@@ -149,8 +156,8 @@ def dataflagpool(data_mem, d):
             for spw in range(d['nspw']):
                 freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
                 chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-#                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 15., 'badcht', 0.1])
-                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 10., 'badcht', 0.05])
+                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 20., 'badcht', 0.3])
+#                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 10., 'badcht', 0.05])
         for kk in resultd.keys():
             result = resultd[kk].get()
 
@@ -177,8 +184,8 @@ def dataflagpool(data_mem, d):
             for spw in range(d['nspw']):
                 freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
                 chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-#                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 12., 'badcht', 0.1])
-                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 7., 'badcht', 0.1])
+                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 15., 'badcht', 0.3])
+#                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 7., 'badcht', 0.1])
         for kk in resultd.keys():
             result = resultd[kk].get()
 
@@ -198,7 +205,7 @@ def dataflag(chans, pol, d, sig, mode, conv):
     """
     readints = len(data_mem)/(d['nbl']*d['nchan']*d['npol']*2)
     data = numpyview(data_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
-    data = n.ma.masked_array(data, data==0)
+#    data = n.ma.masked_array(data, data==0j)  # this causes massive overflagging on 14sep03 data
 
     return rtlib.dataflag(data, chans, pol, d, sig, mode, conv)
 
@@ -341,7 +348,7 @@ def lightcurve(d, l1, m1):
     for segment in [0,1]:
         t0 = d['segmenttimes'][segment][0]
         t1 = d['segmenttimes'][segment][1]
-        readints = n.round(24*3600*(t1 - t0)/d['inttime'], 0).astype(int)/d['read_downsample']
+        readints = n.round(24*3600*(t1 - t0)/d['inttime'], 0).astype(int)/d['read_tdownsample']
         data_mem = mps.RawArray(mps.ctypes.c_float, long(readints*d['nbl']*d['nchan']*d['npol'])*2)  # 'long' type needed to hold whole (2 min, 5 ms) scans
         data = numpyview(data_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
 
@@ -408,14 +415,20 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         spw=kwargs['spw']
     else:
         spw = []
+    if 'read_fdownsample' in kwargs.keys(): 
+        rfd=kwargs['read_fdownsample']
+    else:
+        rfd = 1
 
     # then get all metadata
     if os.path.exists(os.path.join(filename, 'Antenna.xml')):
-        d = ps.get_metadata(filename, scan, chans=chans, spw=spw, params=paramfile)   # can take file name or Params instance
+        d = ps.get_metadata(filename, scan, chans=chans, spw=spw, read_fdownsample=rfd, params=paramfile)   # can take file name or Params instance
         d['dataformat'] = 'sdm'
     else:
-        d = pm.get_metadata(filename, scan, chans=chans, spw=spw, params=paramfile)
-        d['dataformat'] = 'ms'
+        print 'Not a valid SDM file? MS format not fully supported yet.'
+        return {}
+#        d = pm.get_metadata(filename, scan, chans=chans, spw=spw, params=paramfile)
+#        d['dataformat'] = 'ms'
 
     # overload with provided kwargs
     for key in kwargs.keys():
@@ -460,6 +473,19 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     # set imaging parameters to use
     if d['uvres'] == 0:
         d['uvres'] = d['uvres_full']
+    else:
+        urange = d['urange'][scan]*(d['freq'].max()/d['freq_orig'][0])   # uvw from get_uvw already in lambda at ch0
+        vrange = d['vrange'][scan]*(d['freq'].max()/d['freq_orig'][0])
+        powers = n.fromfunction(lambda i,j: 2**i*3**j, (14,10), dtype='int')   # power array for 2**i * 3**j
+        rangex = n.round(urange).astype('int')
+        rangey = n.round(vrange).astype('int')
+        largerx = n.where(powers-rangex/d['uvres'] > 0, powers, powers[-1,-1])
+        p2x, p3x = n.where(largerx == largerx.min())
+        largery = n.where(powers-rangey/d['uvres'] > 0, powers, powers[-1,-1])
+        p2y, p3y = n.where(largery == largery.min())
+        d['npixx_full'] = (2**p2x * 3**p3x)[0]
+        d['npixy_full'] = (2**p2y * 3**p3y)[0]
+
     if d['npix'] == 0:
         d['npixx'] = d['npixx_full']
         d['npixy'] = d['npixy_full']
@@ -475,7 +501,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     if d['nsegments'] == 0:
         fringetime = calc_fringetime(d)
-        d['nsegments'] = int(d['inttime']*(d['nints']-d['nskip'])/(fringetime-d['t_overlap']))
+        d['nsegments'] = max(1, int(d['inttime']*(d['nints']-d['nskip'])/(fringetime-d['t_overlap'])))
 #        stopdts = n.arange(d['nskip']*d['inttime']+d['t_overlap'], d['nints']*d['inttime'], fringetime-d['t_overlap'])[1:] # old way
 #        startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
 
@@ -498,16 +524,16 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     dtfactor = n.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
 
     # calculate number of thermal noise candidates per segment
-    ntrials = d['t_segment']/(d['inttime']*d['read_downsample']) * dtfactor * len(d['dmarr']) * d['npixx'] * d['npixy']
+    ntrials = d['t_segment']/(d['inttime']*d['read_tdownsample']) * dtfactor * len(d['dmarr']) * d['npixx'] * d['npixy']
     qfrac = 1 - (erf(d['sigma_image1']/n.sqrt(2)) + 1)/2.
     nfalse = int(qfrac*ntrials)
 
     print 'Pipeline summary:'
     print '\t Products saved with %s. Calibration files set to (%s, %s)' % (d['fileroot'], d['gainfile'], d['bpfile'])
-    print '\t Using %d segment%s of %d ints (%.1f s) with overlap of %.1f s' % (d['nsegments'], "s"[not d['nsegments']-1:], d['t_segment']/(d['inttime']*d['read_downsample']), d['t_segment'], d['t_overlap'])
+    print '\t Using %d segment%s of %d ints (%.1f s) with overlap of %.1f s' % (d['nsegments'], "s"[not d['nsegments']-1:], d['t_segment']/(d['inttime']*d['read_tdownsample']), d['t_segment'], d['t_overlap'])
     if d['t_overlap'] > d['t_segment']/3.:
         print '\t\t **Inefficient search: Max DM sweep (%.1f s) close to segment size (%.1f s)**' % (d['t_overlap'], d['t_segment'])
-    print '\t Downsampling by %d and skipping %d ints from start of scan.' % (d['read_downsample'], d['nskip'])
+    print '\t Downsampling in time/freq by %d/%d and skipping %d ints from start of scan.' % (d['read_tdownsample'], d['read_fdownsample'], d['nskip'])
     print '\t Excluding ants %s' % (d['excludeants'])
     print
 
@@ -516,10 +542,10 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     print '\t Expect %d thermal false positives per segment.' % nfalse
 
     print
-    vismem0 = (8*(d['t_segment']/(d['inttime']*d['read_downsample']) * d['nbl'] * d['nchan'] * d['npol'])/1024**3)
+    vismem0 = (8*(d['t_segment']/(d['inttime']*d['read_tdownsample']) * d['nbl'] * d['nchan'] * d['npol'])/1024**3)
     print '\t Visibility memory usage is %d GB/segment' % vismem0 * dtfactor
-    print '\t Imaging in %d chunk%s using max of %d GB/segment' % (d['nchunk'], "s"[not d['nsegments']-1:], 8*(d['t_segment']/(d['inttime']*d['read_downsample']) * d['npixx'] * d['npixy'])/1024**3)
-    print '\t Grand total memory usage: %d GB/segment' % ( (vismem0 * dtfactor) + 8*(d['t_segment']/(d['inttime']*d['read_downsample']) * d['npixx'] * d['npixy'])/1024**3)
+    print '\t Imaging in %d chunk%s using max of %d GB/segment' % (d['nchunk'], "s"[not d['nsegments']-1:], 8*(d['t_segment']/(d['inttime']*d['read_tdownsample']) * d['npixx'] * d['npixy'])/1024**3)
+    print '\t Grand total memory usage: %d GB/segment' % ( (vismem0 * dtfactor) + 8*(d['t_segment']/(d['inttime']*d['read_tdownsample']) * d['npixx'] * d['npixy'])/1024**3)
 
     return d
 

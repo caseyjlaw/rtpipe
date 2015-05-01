@@ -598,9 +598,11 @@ def plot_psrrates(pkllist, outname=''):
 
     # find typical ratio. avoid pulsar period saturation and low-count regimes (high and low ends)
     if len(rates) == 4:
-        print 'flux ratio (1/0, 2/0, 3/0):', (r10[len(r30)-1], r20[len(r30)-1], r30[-1])
+        print 'flux ratio, lowest common (1/0, 2/0, 3/0):', (r10[len(r30)-1], r20[len(r30)-1], r30[-1])
+        print 'flux ratio, high end (1/0, 2/0, 3/0):', (r10[-1], r20[-1], r30[-1])
     elif len(rates) == 3:
-        print 'flux ratio (1/0, 2/0):', (r10[len(r20)-1], r20[-1])
+        print 'flux ratio, lowest common (1/0, 2/0):', (r10[len(r20)-1], r20[-1])
+        print 'flux ratio, high end (1/0, 2/0):', (r10[-1], r20[-1])
 
     plt.savefig(outname)
 
@@ -765,9 +767,10 @@ def plot_cand(mergepkl, snrmin=None, candnum=-1, outname='', **kwargs):
 
         return ([],[])
 
-def inspect_cand(mergepkl, snrmin=None, candnum=-1, **kwargs):
+def inspect_cand(mergepkl, snrmin=None, candnum=-1, scan=0, **kwargs):
     """ Create detailed plot of a single candidate.
     Thresholds (as minimum), then provides list of candidates to select with candnum.
+    scan can be used to define scan number with pre-merge pkl file.
     kwargs passed to rt.set_pipeline
     """
 
@@ -791,7 +794,8 @@ def inspect_cand(mergepkl, snrmin=None, candnum=-1, **kwargs):
     elif 'm1' in d['features']:
         mcol = d['features'].index('m1')
         
-    scancol = d['featureind'].index('scan')
+    if not scan:
+        scancol = d['featureind'].index('scan')
     segmentcol = d['featureind'].index('segment')
     intcol = d['featureind'].index('int')
     dtindcol = d['featureind'].index('dtind')
@@ -813,14 +817,17 @@ def inspect_cand(mergepkl, snrmin=None, candnum=-1, **kwargs):
         return (loc, prop[:,snrcol])
     else:
         print 'Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum])
-        scan = loc[candnum, scancol]
+        if not scan:
+            scan = loc[candnum, scancol]
+            nsegments = len(d['segmenttimesdict'][scan])
+        else:
+            nsegments = len(d['segmenttimes'])
         segment = loc[candnum, segmentcol]
         dmind = loc[candnum, dmindcol]
         dtind = loc[candnum, dtindcol]
         candint = loc[candnum, intcol]
         dmarrorig = d['dmarr']
         dtarrorig = d['dtarr']
-        nsegments = len(d['segmenttimesdict'][scan])
 
         d2 = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False, nsegments=nsegments, **kwargs)
         im, data = rt.pipeline(d2, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data

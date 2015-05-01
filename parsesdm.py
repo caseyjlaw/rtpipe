@@ -12,7 +12,7 @@ import rtpipe.parseparams as pp
 qa = casautil.tools.quanta()
 me = casautil.tools.measures()
 
-def get_metadata(filename, scan, spw=[], chans=[], params=''):
+def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, params=''):
     """ Parses sdm file to define metadata for observation, including scan info, image grid parameters, pipeline memory usage, etc.
     Mirrors parsems.get_metadata(), though not all metadata set here yet.
     If params defined, it will use it (filename or RT.Params instance ok).
@@ -25,6 +25,8 @@ def get_metadata(filename, scan, spw=[], chans=[], params=''):
     # set workdir
     d['filename'] = os.path.abspath(filename)
     d['workdir'] = os.path.split(d['filename'])[0]
+
+    d['read_fdownsample'] = read_fdownsample
 
     # define parameters of pipeline via Params object
     params = pp.Params(os.path.join(d['workdir'], params))
@@ -58,7 +60,9 @@ def get_metadata(filename, scan, spw=[], chans=[], params=''):
         ii = reffreq.index(freq)
         if spectralwindow[ii] in d['spw']:
             spwch.extend(list(n.linspace(reffreq[ii], reffreq[ii]+(numchan[ii]-1)*chansize[ii], numchan[ii])))  # spacing of channel *centers*
-    d['freq_orig'] = n.array(spwch).astype('float32')/1e9
+
+    d['freq_orig'] = n.array([n.mean(spwch[i:i+d['read_fdownsample']]) for i in range(0, len(spwch), d['read_fdownsample'])], dtype='float32')/1e9
+#    d['freq_orig'] = n.array(spwch, dtype='float32')/1e9  # without downsample
 
     # select subset of channels
     if len(chans):
@@ -81,17 +85,18 @@ def get_metadata(filename, scan, spw=[], chans=[], params=''):
     d['uvres_full'] = n.round(25./(3e-1/d['freq'].min())/2).astype('int')    # delay beam larger than VLA field of view at all freqs. assumes freq in GHz.
     # **this may let vis slip out of bounds. should really define grid out to 2*max(abs(u)) and 2*max(abs(v)). in practice, very few are lost.**
 
-    urange = d['urange'][d['scan']]*(d['freq'].max()/d['freq_orig'][0])   # uvw from get_uvw already in lambda at ch0
-    vrange = d['vrange'][d['scan']]*(d['freq'].max()/d['freq_orig'][0])
-    powers = n.fromfunction(lambda i,j: 2**i*3**j, (14,10), dtype='int')   # power array for 2**i * 3**j
-    rangex = n.round(urange).astype('int')
-    rangey = n.round(vrange).astype('int')
-    largerx = n.where(powers-rangex/d['uvres_full'] > 0, powers, powers[-1,-1])
-    p2x, p3x = n.where(largerx == largerx.min())
-    largery = n.where(powers-rangey/d['uvres_full'] > 0, powers, powers[-1,-1])
-    p2y, p3y = n.where(largery == largery.min())
-    d['npixx_full'] = (2**p2x * 3**p3x)[0]
-    d['npixy_full'] = (2**p2y * 3**p3y)[0]
+    if not all([d.has_key('npixx_full'), d.has_key('npixy_full')]):
+        urange = d['urange'][d['scan']]*(d['freq'].max()/d['freq_orig'][0])   # uvw from get_uvw already in lambda at ch0
+        vrange = d['vrange'][d['scan']]*(d['freq'].max()/d['freq_orig'][0])
+        powers = n.fromfunction(lambda i,j: 2**i*3**j, (14,10), dtype='int')   # power array for 2**i * 3**j
+        rangex = n.round(urange).astype('int')
+        rangey = n.round(vrange).astype('int')
+        largerx = n.where(powers-rangex/d['uvres_full'] > 0, powers, powers[-1,-1])
+        p2x, p3x = n.where(largerx == largerx.min())
+        largery = n.where(powers-rangey/d['uvres_full'] > 0, powers, powers[-1,-1])
+        p2y, p3y = n.where(largery == largery.min())
+        d['npixx_full'] = (2**p2x * 3**p3x)[0]
+        d['npixy_full'] = (2**p2y * 3**p3y)[0]
 
     # define ants/bls
     d['ants'] = [int(ant.name.lstrip('ea')) for ant in sdm['Antenna']]
@@ -163,13 +168,19 @@ def read_bdf_segment(d, segment=-1):
         data = n.roll(data, rollch, axis=2)
 
     # optionally integrate (downsample)
-    if d['read_downsample'] > 1:
-        print 'Downsampling by factor of %d' % d['read_downsample']
-        newsize = len(data)/d['read_downsample']
+    if ((d['read_tdownsample'] > 1) or (d['read_fdownsample'] > 1)):
         sh = data.shape
-        data2 = n.zeros( (newsize, sh[1], sh[2], sh[3]) )
-        for i in range(newsize):
-            data2[i] = data[i*d['read_downsample']:(i+1)*d['read_downsample']].mean(axis=0)
+        tsize = sh[0]/d['read_tdownsample']
+        fsize = sh[2]/d['read_fdownsample']
+        data2 = n.zeros( (tsize, sh[1], fsize, sh[3]), dtype='complex64')
+        if d['read_tdownsample'] > 1:
+            print 'Downsampling in time by %d' % d['read_tdownsample']
+            for i in range(tsize):
+                data2[i] = data[i*d['read_tdownsample']:(i+1)*d['read_tdownsample']].mean(axis=0)
+        if d['read_fdownsample'] > 1:
+            print 'Downsampling in frequency by %d' % d['read_fdownsample']
+            for i in range(fsize):
+                data2[:,:,i,:] = data[:,:,i*d['read_fdownsample']:(i+1)*d['read_fdownsample']].mean(axis=2)
         data = data2
 
     return data.take(d['chans'], axis=2)

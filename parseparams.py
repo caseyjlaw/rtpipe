@@ -14,7 +14,7 @@ class Params(object):
         # default values
         self.chans = []; self.spw = []
         self.dmarr = [0]; self.dtarr = [1]
-        self.nskip = 0; self.excludeants = []; self.read_downsample = 1
+        self.nskip = 0; self.excludeants = []; self.read_tdownsample = 1; self.read_fdownsample = 1
         self.nthread = 8; self.nchunk = 0; self.nsegments = 0
         self.timesub = ''
         self.searchtype = 'image1'; self.sigma_image1 = 7.; self.sigma_image2 = 7.

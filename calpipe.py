@@ -5,10 +5,13 @@ import sdmreader, sdmpy
 from collections import OrderedDict
 
 class pipe(object):
-    def __init__(self, sdmfile, fileroot):
+    def __init__(self, sdmfile, fileroot, workdir=''):
         self.fileroot = fileroot
         self.sdmfile = os.path.abspath(sdmfile)
-        self.workdir = os.path.split(self.sdmfile)[0]
+        if not workdir:
+            self.workdir = os.path.split(self.sdmfile)[0]
+        else:
+            self.workdir = workdir
 
         self.scans, self.sources = sdmreader.read_metadata(sdmfile)
         self.gainscans = [sc for sc in self.scans.keys() if 'PHASE' in self.scans[sc]['intent']]   # get all cal fields
