@@ -44,9 +44,15 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, params=''
     # define spectral info
     sdm = sdmpy.SDM(d['filename'])
     d['spw_orig'] = [int(row.spectralWindowId.split('_')[1]) for row in sdm['SpectralWindow']]
-    d['spw_reffreq'] = [float(row.chanFreqStart) for row in sdm['SpectralWindow']]
     d['spw_nchan'] = [int(row.numChan) for row in sdm['SpectralWindow']]
-    d['spw_chansize'] = [float(row.chanFreqStep) for row in sdm['SpectralWindow']]
+    try:
+        d['spw_reffreq'] = [float(row.chanFreqStart) for row in sdm['SpectralWindow']]   # nominal
+    except:
+        d['spw_reffreq'] = [float(row.chanFreqArray.strip().split(' ')[2]) for row in sdm['SpectralWindow']]  # GMRT uses array of all channel starts
+    try:
+        d['spw_chansize'] = [float(row.chanFreqStep) for row in sdm['SpectralWindow']]   # nominal
+    except:
+        d['spw_chansize'] = [float(row.chanWidthArray.strip().split(' ')[2]) for row in sdm['SpectralWindow']]   # GMRT uses array of all channel starts
 
     # select spw. note that spw selection not fully supported yet.
     if len(spw):
@@ -82,15 +88,16 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, params=''
     v = v * d['freq_orig'][0] * (1e9/3e8) * (-1)     
     d['urange'][d['scan']] = u.max() - u.min()
     d['vrange'][d['scan']] = v.max() - v.min()
-    d['uvres_full'] = n.round(25./(3e-1/d['freq'].min())/2).astype('int')    # delay beam larger than VLA field of view at all freqs. assumes freq in GHz.
+    d['dishdiameter'] = float(sdm['Antenna'][0].dishDiameter.strip())  # should be in meters
+    d['uvres_full'] = n.round(d['dishdiameter']/(3e-1/d['freq'].min())/2).astype('int')    # delay beam larger than VLA field of view at all freqs. assumes freq in GHz.
     # **this may let vis slip out of bounds. should really define grid out to 2*max(abs(u)) and 2*max(abs(v)). in practice, very few are lost.**
 
     if not all([d.has_key('npixx_full'), d.has_key('npixy_full')]):
         urange = d['urange'][d['scan']]*(d['freq'].max()/d['freq_orig'][0])   # uvw from get_uvw already in lambda at ch0
         vrange = d['vrange'][d['scan']]*(d['freq'].max()/d['freq_orig'][0])
         powers = n.fromfunction(lambda i,j: 2**i*3**j, (14,10), dtype='int')   # power array for 2**i * 3**j
-        rangex = n.round(urange).astype('int')
-        rangey = n.round(vrange).astype('int')
+        rangex = n.round(d['uvoversample']*urange).astype('int')
+        rangey = n.round(d['uvoversample']*vrange).astype('int')
         largerx = n.where(powers-rangex/d['uvres_full'] > 0, powers, powers[-1,-1])
         p2x, p3x = n.where(largerx == largerx.min())
         largery = n.where(powers-rangey/d['uvres_full'] > 0, powers, powers[-1,-1])
@@ -99,7 +106,11 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, params=''
         d['npixy_full'] = (2**p2y * 3**p3y)[0]
 
     # define ants/bls
-    d['ants'] = [int(ant.name.lstrip('ea')) for ant in sdm['Antenna']]
+    # hacking here to fit observatory-specific use of antenna names
+    if 'VLA' in sdm['ExecBlock'][0]['telescopeName']:
+        d['ants'] = [int(ant.name.lstrip('ea')) for ant in sdm['Antenna']]
+    elif 'GMRT' in sdm['ExecBlock'][0]['telescopeName']:        
+        d['ants'] = [int(ant.antennaId.split('_')[1]) for ant in sdm['Antenna']]
     d['nants'] = len(d['ants'])
 #    d['blarr'] = n.array([[d['ants'][i],d['ants'][j]] for i in range(d['nants'])  for j in range(i+1, d['nants'])])
     d['blarr'] = n.array([[d['ants'][i],d['ants'][j]] for j in range(d['nants']) for i in range(0,j)])
@@ -112,15 +123,20 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, params=''
     for scan in sdm['Main']:
         interval = int(scan.interval)
         nints = int(scan.numIntegration)
-        inttime = 1e-9*interval/nints
-        scannum = int(scan.scanNumber)
+        # get inttime in seconds
+        if 'VLA' in sdm['ExecBlock'][0]['telescopeName']:
+            inttime = 1e-9*interval/nints          # VLA uses interval as scan duration
+            scannum = int(scan.scanNumber)
+        elif 'GMRT' in sdm['ExecBlock'][0]['telescopeName']:        
+            inttime = 1e-9*interval                # GMRT uses interval as the integration duration
+            scannum = int(scan.subscanNumber)
         if scannum == d['scan']:
             d['inttime'] = inttime
             d['nints'] = nints
 
     # define pols
-    pols = [pol.corrType for pol in sdm['Polarization'] if pol in ['XX', 'YY', 'XY', 'YX', 'RR', 'LL', 'RL', 'LR']]
-    d['npol'] = int(pol.numCorr)
+    pols = [pol for pol in sdm['Polarization'][0].corrType.strip().split(' ') if pol in ['XX', 'YY', 'XY', 'YX', 'RR', 'LL', 'RL', 'LR']]
+    d['npol'] = int(sdm['Polarization'][0].numCorr)
     d['pols'] = pols
 
     # summarize metadata
@@ -249,10 +265,15 @@ def filter_scans(sdmfile, namefilter='', intentfilter=''):
     goodscans = {}
     # find scans
     sdm = sdmpy.SDM(sdmfile)
-    scans = [ (int(scan.scanNumber), str(scan.sourceName), str(scan.scanIntent)) for scan in sdm['Scan'] ]
+
+    if 'VLA' in sdm['ExecBlock'][0]['telescopeName']:
+        scans = [ (int(scan.scanNumber), str(scan.sourceName), str(scan.scanIntent)) for scan in sdm['Scan'] ]
+    elif 'GMRT' in sdm['ExecBlock'][0]['telescopeName']:        
+        scans = [ (int(scan.scanNumber), str(scan.sourceName), str(scan.scanIntent)) for scan in sdm['Subscan'] ]
+
     # set total number of integrations
     scanint = [int(scan.numIntegration) for scan in sdm['Main']]
-    bdfnum = [int(scan.dataUID).split('/')[-1] for scan in sdm['Main']]
+    bdfnum = [scan.dataUID.split('/')[-1] for scan in sdm['Main']]
     for i in range(len(scans)):
         if intentfilter in scans[i][2]:
             if namefilter in scans[i][1]:

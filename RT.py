@@ -38,10 +38,13 @@ def pipeline(d, segment, reproducecand=()):
     if d['dataformat'] == 'ms':   # CASA-based read
         segread = pm.readsegment(d, segment)
         readints = len(segread[0])
-        data = n.empty( (readints, d['nbl'], d['nchan'], d['npol']), dtype='complex64', order='C')
+#        data = n.empty( (readints, d['nbl'], d['nchan'], d['npol']), dtype='complex64', order='C')  # orig
+        data_mem = mps.RawArray(mps.ctypes.c_float, long(readints*d['nbl']*d['nchan']*d['npol'])*2)  # 'long' type needed to hold whole (2 min, 5 ms) scans
+        data = numpyview(data_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']))
         data[:] = segread[0]
         (u, v, w) = (segread[1][readints/2], segread[2][readints/2], segread[3][readints/2])  # mid int good enough for segment. could extend this to save per chunk
         del segread
+
     elif d['dataformat'] == 'sdm':
         t0 = d['segmenttimes'][segment][0]
         t1 = d['segmenttimes'][segment][1]
@@ -419,16 +422,18 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         rfd=kwargs['read_fdownsample']
     else:
         rfd = 1
+    if 'datacol' in kwargs.keys(): 
+        datacol=kwargs['datacol']
+    else:
+        datacol = []
 
     # then get all metadata
     if os.path.exists(os.path.join(filename, 'Antenna.xml')):
         d = ps.get_metadata(filename, scan, chans=chans, spw=spw, read_fdownsample=rfd, params=paramfile)   # can take file name or Params instance
         d['dataformat'] = 'sdm'
     else:
-        print 'Not a valid SDM file? MS format not fully supported yet.'
-        return {}
-#        d = pm.get_metadata(filename, scan, chans=chans, spw=spw, params=paramfile)
-#        d['dataformat'] = 'ms'
+        d = pm.get_metadata(filename, scan, chans=chans, spw=spw, read_fdownsample=rfd, params=paramfile)
+        d['dataformat'] = 'ms'
 
     # overload with provided kwargs
     for key in kwargs.keys():
@@ -439,7 +444,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     if fileroot:
         d['fileroot'] = fileroot
     else:
-        d['fileroot'] = os.path.split(filename)[-1]
+        d['fileroot'] = os.path.split(os.path.abspath(filename))[1]
 
     # autodetect calibration products
     if not d['gainfile']:
@@ -477,8 +482,8 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         urange = d['urange'][scan]*(d['freq'].max()/d['freq_orig'][0])   # uvw from get_uvw already in lambda at ch0
         vrange = d['vrange'][scan]*(d['freq'].max()/d['freq_orig'][0])
         powers = n.fromfunction(lambda i,j: 2**i*3**j, (14,10), dtype='int')   # power array for 2**i * 3**j
-        rangex = n.round(urange).astype('int')
-        rangey = n.round(vrange).astype('int')
+        rangex = n.round(d['uvoversample']*urange).astype('int')
+        rangey = n.round(d['uvoversample']*vrange).astype('int')
         largerx = n.where(powers-rangex/d['uvres'] > 0, powers, powers[-1,-1])
         p2x, p3x = n.where(largerx == largerx.min())
         largery = n.where(powers-rangey/d['uvres'] > 0, powers, powers[-1,-1])

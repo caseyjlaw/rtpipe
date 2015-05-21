@@ -1,13 +1,14 @@
 import casautil
 import os, pickle, time, string
 import numpy as n
+import rtpipe.parseparams as pp
 
 # CASA initialization
 ms = casautil.tools.ms()
 tb = casautil.tools.table()
 qa = casautil.tools.quanta()
 
-def get_metadata(filename, scan=0, datacol='data', spw=[], chans=[], selectpol=[], params=None):
+def get_metadata(filename, scan=0, datacol='', spw=[], chans=[], selectpol=[], read_fdownsample=1, params=''):
     """ Function to scan data (a small read) and define parameters used elsewhere.
     filename needs full path.
     Examples include, read/bgsub windows, image grid, memory profile.
@@ -15,25 +16,19 @@ def get_metadata(filename, scan=0, datacol='data', spw=[], chans=[], selectpol=[
     Either way, dictionary is returned with info.
     """
 
-    # optionally define parameters of pipeline via Params object
-    if params:
-        raise NotImplementedError
-        
     # create primary state dictionary
     d = {}
 
-    # define working area (probably should be done elsewhere...)
-    ss = filename.rstrip('/').split('/')
-    if len(ss) > 1:
-        d['filename'] = ss[-1]
-        d['workdir'] = string.join(ss[:-1], '/') + '/'
-        os.chdir(d['workdir'])
-    else:
-        d['filename'] = filename
-        d['workdir'] = os.getcwd() + '/'
-
     # set misc params
-    d['datacol'] = datacol
+    d['filename'] = os.path.abspath(filename.rstrip('/'))
+    d['workdir'] = os.path.split(d['filename'])[0]
+
+    # define parameters of pipeline via Params object
+    params = pp.Params(os.path.join(d['workdir'], params))
+    for k in params.defined:   # fill in default params
+        d[k] = params[k]
+
+    assert read_fdownsample == 1, 'read_fdownsample not yet implemented for MS files.'
 
     # read metadata either from pickle or ms file
     pklname = d['filename'].rstrip('.ms') + '_init2.pkl'
@@ -58,7 +53,10 @@ def get_metadata(filename, scan=0, datacol='data', spw=[], chans=[], selectpol=[
         d['pols_orig'] = tb.getcol('CORR_TYPE').flatten()
         d['npol_orig'] = len(d['pols_orig'])
         tb.close()
-
+        tb.open(d['filename']+'/ANTENNA')
+        d['dishdiameter'] = tb.getcol('DISH_DIAMETER')[0]   # assume one diameter
+        tb.close()
+        
         print 'Opening %s...' % d['filename']
         # find spectral and scan info
         ms.open(d['filename'])
@@ -66,7 +64,11 @@ def get_metadata(filename, scan=0, datacol='data', spw=[], chans=[], selectpol=[
 
         # define ants and baselines
         d['nants'] = md.nantennas()
-        d['ants'] = [int(md.antennanames(aa)[0][2:]) for aa in range(d['nants'])]
+        if 'VLA' in md.observatorynames()[0]:
+            d['ants'] = [int(md.antennanames(aa)[0][2:]) for aa in range(d['nants'])]
+        elif 'GMRT' in md.observatorynames()[0]:
+            d['ants'] = md.antennaids()
+
         d['nbl'] = md.nbaselines()
         d['blarr'] = n.array([[d['ants'][i],d['ants'][j]] for i in range(d['nants'])  for j in range(i+1, d['nants'])])
         # find spw info
@@ -78,7 +80,6 @@ def get_metadata(filename, scan=0, datacol='data', spw=[], chans=[], selectpol=[
 
         # find data structure
         print 'Reading a little data from each scan...'
-        ms.selectinit(datadescid=0)  # reset select params for later data selection
         nints_snip = 10
         orig_spws_all = {}; freq_orig_all = {}
         urange = {}; vrange = {}
@@ -97,8 +98,11 @@ def get_metadata(filename, scan=0, datacol='data', spw=[], chans=[], selectpol=[
             starttime = qa.getvalue(qa.convert(qa.time(qa.quantity(starttime_mjd0,'d'),form=['ymd'], prec=9)[0], 's'))[0]
             stoptime = qa.getvalue(qa.convert(qa.time(qa.quantity(starttime_mjd0+(nints_snip*inttime0)/(24.*60*60), 'd'), form=['ymd'], prec=9)[0], 's'))[0]  # nints+1 to be avoid buffer running out and stalling iteration
             selection = {'time': [starttime, stoptime], 'uvdist': [1., 1e10]}    # exclude auto-corrs
+
+            # get uv data
+            ms.selectinit(datadescid=0)  # reset select params for later data selection
             ms.select(items = selection)
-            ms.iterinit(['TIME'], 10*inttime0)  # read 10 ints
+            ms.iterinit(['TIME'], nints_snip*inttime0)  # read 10 ints
             ms.iterorigin()
             da = ms.getdata(['axis_info', 'u', 'v', 'w'])
             urange[ss] = da['u'].max() - da['u'].min()
@@ -116,6 +120,11 @@ def get_metadata(filename, scan=0, datacol='data', spw=[], chans=[], selectpol=[
 
     ### Now extract refine info for given scan, chans, etc. ###
 
+    if datacol:
+        d['datacol'] = datacol
+    elif not d['datacol']:
+        d['datacol'] = 'data'
+
     # refine pols info
     pols = []
     for pol in d['pols_orig']:
@@ -128,15 +137,17 @@ def get_metadata(filename, scan=0, datacol='data', spw=[], chans=[], selectpol=[
     d['npol'] = len(pols)
 
     # refine spw/freq info
-    d['scan'] = d['scanlist'][scan]
-    d['orig_spws'] = n.array(d['orig_spws_all'][d['scan']])
+    d['scan'] = int(d['scanlist'][scan])
+    d['orig_spws'] = n.array(d['orig_spws_all'][d['scanlist'][scan]])
     if len(spw):
         d['spwlist'] = d['orig_spws'][spw]
+    elif len(d['spw']):
+        d['spwlist'] = d['orig_spws'][d['spw']]
     else:
         d['spwlist'] = d['orig_spws']
 
     d['spw'] = sorted(d['spwlist'])
-    allfreq = d['freq_orig_all'][d['scan']]
+    allfreq = d['freq_orig_all'][d['scanlist'][scan]]
     chperspw = len(allfreq)/len(d['orig_spws'])
     spwch = []
     for ss in d['orig_spws']:
@@ -145,26 +156,29 @@ def get_metadata(filename, scan=0, datacol='data', spw=[], chans=[], selectpol=[
     d['freq_orig'] = allfreq[spwch]
            
     d['nspw'] = len(d['spwlist'])
+
     if len(chans):
         d['freq'] = d['freq_orig'][chans]
         d['chans'] = chans
+    elif len(d['chans']):
+        d['freq'] = d['freq_orig'][d['chans']]
     else:
         d['freq'] = d['freq_orig']
         d['chans'] = range(len(d['freq']))
     d['nchan'] = len(d['freq'])
 
     # define integrations for given scan
-    d['nints'] = d['scansummary'][d['scan']]['0']['nRow']/(d['nbl']*d['npol'])
-    inttime0 = d['scansummary'][d['scan']]['0']['IntegrationTime'] # estimate of inttime from first scan
+    d['nints'] = d['scansummary'][d['scanlist'][scan]]['0']['nRow']/(d['nbl']*d['npol'])
+    inttime0 = d['scansummary'][d['scanlist'][scan]]['0']['IntegrationTime'] # estimate of inttime from first scan
 
     # define ideal res/npix
-    d['uvres_full'] = n.round(25./(3e-1/d['freq'].max())/2).astype('int')    # full VLA field of view. assumes freq in GHz
+    d['uvres_full'] = n.round(d['dishdiameter']/(3e-1/d['freq'].min())/2).astype('int')    # delay beam larger than VLA field of view at all freqs. assumes freq in GHz.
     # **this may let vis slip out of bounds. should really define grid out to 2*max(abs(u)) and 2*max(abs(v)). in practice, very few are lost.**
-    urange = d['urange'][d['scan']]*d['freq'].max() * (1e9/3e8)
-    vrange = d['vrange'][d['scan']]*d['freq'].max() * (1e9/3e8)
+    urange = d['urange'][d['scanlist'][scan]]*d['freq'].max() * (1e9/3e8)
+    vrange = d['vrange'][d['scanlist'][scan]]*d['freq'].max() * (1e9/3e8)
     powers = n.fromfunction(lambda i,j: 2**i*3**j, (14,10), dtype='int')   # power array for 2**i * 3**j
-    rangex = n.round(urange).astype('int')
-    rangey = n.round(vrange).astype('int')
+    rangex = n.round(d['uvoversample']*urange).astype('int')
+    rangey = n.round(d['uvoversample']*vrange).astype('int')
     largerx = n.where(powers-rangex/d['uvres_full'] > 0, powers, powers[-1,-1])
     p2x, p3x = n.where(largerx == largerx.min())
     largery = n.where(powers-rangey/d['uvres_full'] > 0, powers, powers[-1,-1])
@@ -173,12 +187,12 @@ def get_metadata(filename, scan=0, datacol='data', spw=[], chans=[], selectpol=[
     d['npixy_full'] = (2**p2y * 3**p3y)[0]
 
     # define times
-    d['starttime_mjd'] = d['scansummary'][d['scan']]['0']['BeginTime']
-    d['inttime'] = d['scansummary'][d['scan']]['0']['IntegrationTime']
+    d['starttime_mjd'] = d['scansummary'][d['scanlist'][scan]]['0']['BeginTime']
+    d['inttime'] = d['scansummary'][d['scanlist'][scan]]['0']['IntegrationTime']
 
     # summarize metadata
     print 'Metadata summary:'
-    print '\t Using scan %d (index %d)' % (int(d['scan']), scan)
+    print '\t Using scan %d (index %d)' % (d['scan'], scan)
     print '\t nants, nbl: %d, %d' % (d['nants'], d['nbl'])
     print '\t mid-freq, nspw, nchan: %.3f, %d, %d' % (d['freq'].mean(), d['nspw'], d['nchan'])
     print '\t inttime: %.3f s' % (d['inttime'])
@@ -248,7 +262,7 @@ def readsegment(d, segment):
     print 'Reading segment %d/%d, times %s to %s' % (segment, len(d['segmenttimes'])-1, qa.time(qa.quantity(starttime/(24*3600),'d'),form=['hms'], prec=9)[0], qa.time(qa.quantity(stoptime/(24*3600), 'd'), form=['hms'], prec=9)[0])
 
     # read data into data structure
-    ms.open(d['workdir'] + d['filename'])
+    ms.open(d['filename'])
     if len(d['spwlist']) == 1:
         ms.selectinit(datadescid=d['spwlist'][0])
     else:
