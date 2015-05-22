@@ -4,7 +4,7 @@ cimport cython
 # can choose between numpy and pyfftw
 #from numpy import fft
 import pyfftw
-import pyfftw.interfaces.NUMPY_fft as fft
+import pyfftw.interfaces.numpy_fft as fft   # numpy -> NUMPY for NRAO install
 
 CTYPE = n.long
 ctypedef n.long_t CTYPE_t
