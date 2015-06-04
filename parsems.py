@@ -2,8 +2,10 @@ import casautil
 import os, pickle, time, string
 import numpy as n
 import rtpipe.parseparams as pp
+import logging
 
-# CASA initialization
+# setup
+logger = logging.getLogger(__name__)
 ms = casautil.tools.ms()
 tb = casautil.tools.table()
 qa = casautil.tools.quanta()
@@ -33,12 +35,12 @@ def get_metadata(filename, scan=0, datacol='', spw=[], chans=[], selectpol=[], r
     # read metadata either from pickle or ms file
     pklname = d['filename'].rstrip('.ms') + '_init2.pkl'
     if os.path.exists(pklname):
-        print 'Initializing pickle found at %s.' % pklname
+        logger.debug('Initializing pickle found at %s.' % pklname)
         pkl = open(pklname, 'r')
         try:
             stuff = pickle.load(pkl)
         except EOFError:
-            print 'Bad pickle file. Exiting...'
+            logger.warning('Bad pickle file. Exiting...')
             return 1
 
         # load stuff into d
@@ -46,7 +48,7 @@ def get_metadata(filename, scan=0, datacol='', spw=[], chans=[], selectpol=[], r
             d[key] = stuff[key]
 
     else:
-        print 'No initialization pickle found. Making anew...'
+        logger.debug('No initialization pickle found. Making anew...')
 
         # find polarizations in MS
         tb.open(d['filename']+'/POLARIZATION')
@@ -57,7 +59,7 @@ def get_metadata(filename, scan=0, datacol='', spw=[], chans=[], selectpol=[], r
         d['dishdiameter'] = tb.getcol('DISH_DIAMETER')[0]   # assume one diameter
         tb.close()
         
-        print 'Opening %s...' % d['filename']
+        logger.debug('Opening %s...' % d['filename'])
         # find spectral and scan info
         ms.open(d['filename'])
         md = ms.metadata()
@@ -79,7 +81,7 @@ def get_metadata(filename, scan=0, datacol='', spw=[], chans=[], selectpol=[], r
         d['scanlist'] = sorted(d['scansummary'].keys())
 
         # find data structure
-        print 'Reading a little data from each scan...'
+        logger.debug('Reading a little data from each scan...')
         nints_snip = 10
         orig_spws_all = {}; freq_orig_all = {}
         urange = {}; vrange = {}
@@ -122,7 +124,7 @@ def get_metadata(filename, scan=0, datacol='', spw=[], chans=[], selectpol=[], r
 
     if datacol:
         d['datacol'] = datacol
-    elif not d['datacol']:
+    elif not datacol:
         d['datacol'] = 'data'
 
     # refine pols info
@@ -191,13 +193,14 @@ def get_metadata(filename, scan=0, datacol='', spw=[], chans=[], selectpol=[], r
     d['inttime'] = d['scansummary'][d['scanlist'][scan]]['0']['IntegrationTime']
 
     # summarize metadata
-    print 'Metadata summary:'
-    print '\t Using scan %d (index %d)' % (d['scan'], scan)
-    print '\t nants, nbl: %d, %d' % (d['nants'], d['nbl'])
-    print '\t mid-freq, nspw, nchan: %.3f, %d, %d' % (d['freq'].mean(), d['nspw'], d['nchan'])
-    print '\t inttime: %.3f s' % (d['inttime'])
-    print '\t %d polarizations: %s' % (d['npol'], d['pols'])
-    print '\t Ideal uvgrid npix=(%d,%d) and res=%d' % (d['npixx_full'], d['npixy_full'], d['uvres_full'])
+    logger.info('')
+    logger.info('Metadata summary:')
+    logger.info('\t Using scan %d (index %d)' % (d['scan'], scan))
+    logger.info('\t nants, nbl: %d, %d' % (d['nants'], d['nbl']))
+    logger.info('\t mid-freq, nspw, nchan: %.3f, %d, %d' % (d['freq'].mean(), d['nspw'], d['nchan']))
+    logger.info('\t inttime: %.3f s' % (d['inttime']))
+    logger.info('\t %d polarizations: %s' % (d['npol'], d['pols']))
+    logger.info('\t Ideal uvgrid npix=(%d,%d) and res=%d' % (d['npixx_full'], d['npixy_full'], d['uvres_full']))
 
     return d
 
@@ -210,8 +213,8 @@ def readiterinit(d):
     timeskip = d['inttime']*d['nskip']
     starttime = qa.getvalue(qa.convert(qa.time(qa.quantity(starttime_mjd+timeskip/(24.*60*60),'d'),form=['ymd'], prec=9)[0], 's'))[0]
     stoptime = qa.getvalue(qa.convert(qa.time(qa.quantity(starttime_mjd+(timeskip+(d['nints']+1)*d['inttime'])/(24.*60*60), 'd'), form=['ymd'], prec=9)[0], 's'))[0]  # nints+1 to be avoid buffer running out and stalling iteration
-    print 'Time of first integration:', qa.time(qa.quantity(starttime_mjd,'d'),form=['ymd'],prec=9)[0]
-    print 'Reading times %s to %s in %d iterations' % (qa.time(qa.quantity(starttime_mjd+timeskip/(24.*60*60),'d'),form=['hms'], prec=9)[0], qa.time(qa.quantity(starttime_mjd+(timeskip+(d['nints']+1)*d['inttime'])/(24.*60*60), 'd'), form=['hms'], prec=9)[0], d['nthread'])
+    logger.debug('Time of first integration:', qa.time(qa.quantity(starttime_mjd,'d'),form=['ymd'],prec=9)[0])
+    logger.info('Reading times %s to %s in %d iterations' % (qa.time(qa.quantity(starttime_mjd+timeskip/(24.*60*60),'d'),form=['hms'], prec=9)[0], qa.time(qa.quantity(starttime_mjd+(timeskip+(d['nints']+1)*d['inttime'])/(24.*60*60), 'd'), form=['hms'], prec=9)[0], d['nthread']))
 
     # read data into data structure
     ms.open(d['filename'])
@@ -259,7 +262,7 @@ def readsegment(d, segment):
     # set requested time range based on given parameters
     starttime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['segmenttimes'][segment,0],'d'),form=['ymd'], prec=9)[0], 's'))[0]
     stoptime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['segmenttimes'][segment,1],'d'),form=['ymd'], prec=9)[0], 's'))[0]
-    print 'Reading segment %d/%d, times %s to %s' % (segment, len(d['segmenttimes'])-1, qa.time(qa.quantity(starttime/(24*3600),'d'),form=['hms'], prec=9)[0], qa.time(qa.quantity(stoptime/(24*3600), 'd'), form=['hms'], prec=9)[0])
+    logger.info('Reading segment %d/%d, times %s to %s' % (segment, len(d['segmenttimes'])-1, qa.time(qa.quantity(starttime/(24*3600),'d'),form=['hms'], prec=9)[0], qa.time(qa.quantity(stoptime/(24*3600), 'd'), form=['hms'], prec=9)[0]))
 
     # read data into data structure
     ms.open(d['filename'])

@@ -234,7 +234,7 @@ class casa_sol():
             caldec = n.array([self.radec[i][1] for i in range(len(self.radec))])
             fields = n.where( (calra - ra < n.radians(dist)) & (caldec - dec < n.radians(dist)) )[0]
             if len(fields) == 0:
-                logging.info('Warning: no close calibrator found. Removing radec restriction.')
+                logging.warning('Warning: no close calibrator found. Removing radec restriction.')
                 fields = n.unique(self.uniquefield)
         else:
             fields = n.unique(self.uniquefield)
@@ -287,7 +287,7 @@ class casa_sol():
         # apply gain correction
         if hasattr(self, 'bandpass'):
             corr = n.ones_like(data)
-            flag = n.ones_like(data).astype('int')
+            flag = n.ones_like(data.real).astype('int')
             chans_uncal = range(len(self.freqs))
             for spw in range(len(self.gain[0])):
                 chsize = n.round(self.bpfreq[1]-self.bpfreq[0], 0)

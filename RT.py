@@ -249,7 +249,6 @@ def search(d, data, u, v, w):
     # SUBMITTING THE LOOPS
     if n.any(data):
         print 'Searching in %d chunks with %d threads' % (d['nchunk'], d['nthread'])
-        # open pool to run jobs
         print 'Dedispering to max (DM, dt) of (%d, %d) ...' % (d['dmarr'][-1], d['dtarr'][-1]), 
         for dmind in xrange(len(d['dmarr'])):
             for dtind in xrange(len(d['dtarr'])):
@@ -406,7 +405,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     kwargs used to overload paramfile definitions.
     Many parameters take 0 as default, which auto-defines ideal parameters. 
     This definition does not yet consider memory/cpu/time limitations.
-    nsegments defines how to break jobs in time. nchunk defines how each segment is split in time for imaging.
+    nsegments defines how to break jobs in time. nchunk defines how many jobs are sent to nthreads.
     """
 
     # define metadata (state) dict. chans/spw is special because it goes in to get_metadata call
@@ -437,6 +436,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     # overload with provided kwargs
     for key in kwargs.keys():
+        if kwargs.keys().index(key) == 0: print 
         print 'Setting %s to %s' % (key, kwargs[key])
         d[key] = kwargs[key]
 
@@ -521,10 +521,6 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     d['segmenttimes'] = n.array(segmenttimes)
     d['t_segment'] = 24*3600*(d['segmenttimes'][0,1]-d['segmenttimes'][0,0])
 
-    # farm out work in pieces to use all threads well
-    if d['nchunk'] == 0:
-        d['nchunk'] = d['nthread']
-
     # scaling of number of integrations beyond dt=1
     dtfactor = n.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
 
@@ -533,6 +529,11 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     qfrac = 1 - (erf(d['sigma_image1']/n.sqrt(2)) + 1)/2.
     nfalse = int(qfrac*ntrials)
 
+    # split imaging into chunks. ideally one per thread, but can modify to fit available memory
+    if d['nchunk'] == 0:
+        d['nchunk'] = d['nthread']
+
+    print
     print 'Pipeline summary:'
     print '\t Products saved with %s. Calibration files set to (%s, %s)' % (d['fileroot'], d['gainfile'], d['bpfile'])
     print '\t Using %d segment%s of %d ints (%.1f s) with overlap of %.1f s' % (d['nsegments'], "s"[not d['nsegments']-1:], d['t_segment']/(d['inttime']*d['read_tdownsample']), d['t_segment'], d['t_overlap'])
@@ -546,13 +547,36 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     print '\t Using uvgrid npix=(%d,%d) and res=%d.' % (d['npixx'], d['npixy'], d['uvres'])
     print '\t Expect %d thermal false positives per segment.' % nfalse
 
+    (vismem, immem) = calc_memory_footprint(d)
+    if d.has_key('memory_limit'):    # if preference given, then test
+        if vismem+immem > d['memory_limit']:
+            print
+            while vismem+immem > d['memory_limit']:
+                print 'Doubling nchunk from %d to fit in %d GB memory limit.' % (d['nchunk'], d['memory_limit'])
+                d['nchunk'] = 2*d['nchunk']
+                (vismem, immem) = calc_memory_footprint(d)
+
     print
-    vismem0 = (8*(d['t_segment']/(d['inttime']*d['read_tdownsample']) * d['nbl'] * d['nchan'] * d['npol'])/1024**3)
-    print '\t Visibility memory usage is %d GB/segment' % vismem0 * dtfactor
-    print '\t Imaging in %d chunk%s using max of %d GB/segment' % (d['nchunk'], "s"[not d['nsegments']-1:], 8*(d['t_segment']/(d['inttime']*d['read_tdownsample']) * d['npixx'] * d['npixy'])/1024**3)
-    print '\t Grand total memory usage: %d GB/segment' % ( (vismem0 * dtfactor) + 8*(d['t_segment']/(d['inttime']*d['read_tdownsample']) * d['npixx'] * d['npixy'])/1024**3)
+    print '\t Visibility memory usage is %.1f GB/segment' % vismem
+    print '\t Imaging in %d chunk%s using max of %.1f GB/segment' % (d['nchunk'], "s"[not d['nsegments']-1:], immem)
+    print '\t Grand total memory usage: %d GB/segment' % (vismem + immem)
 
     return d
+
+def calc_memory_footprint(d, headroom=2.):
+    """ Given pipeline state dict, this function calculates the memory required
+    to store visibilities and make images.
+    headroom scales memory size from ideal to realistic. only used for vismem.
+    Returns tuple of (vismem, immem) in units of GB.
+    """
+
+    toGB = 8/1024.**3   # number of complex64s to GB
+    dtfactor = n.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
+    nints = d['t_segment']/(d['inttime']*d['read_tdownsample'])
+
+    vismem = headroom * dtfactor * (nints * d['nbl'] * d['nchan'] * d['npol']) * toGB
+    immem = d['nthread'] * (nints/d['nchunk'] * d['npixx'] * d['npixy']) * toGB
+    return (vismem, immem)
 
 def calc_fringetime(d):
     """ Estimate largest time span of a "segment".

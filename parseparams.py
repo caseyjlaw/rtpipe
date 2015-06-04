@@ -11,6 +11,7 @@ class Params(object):
     """
 
     def  __init__(self, paramfile=''):
+    
         # default values
         self.chans = []; self.spw = []
         self.dmarr = [0]; self.dtarr = [1]
