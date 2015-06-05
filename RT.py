@@ -7,14 +7,14 @@ import multiprocessing.sharedctypes as mps
 from contextlib import closing
 import numpy as n
 from scipy.special import erf
-import casautil, os, pickle, glob
+import casautil, os, pickle, glob, time
 import logging
 
 # setup CASA and logging
 qa = casautil.tools.quanta()
 logger = logging.getLogger('rtpipe')
 logger.setLevel(logging.INFO)
-fh = logging.FileHandler('rtpipe.txt')
+fh = logging.FileHandler('rtpipe_%d.log' % int(round(time.time())))
 fh.setLevel(logging.INFO)
 fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 logger.addHandler(fh)
