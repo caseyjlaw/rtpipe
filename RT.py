@@ -8,8 +8,19 @@ from contextlib import closing
 import numpy as n
 from scipy.special import erf
 import casautil, os, pickle, glob
+import logging
 
+# setup CASA and logging
 qa = casautil.tools.quanta()
+logger = logging.getLogger('rtpipe')
+logger.setLevel(logging.INFO)
+fh = logging.FileHandler('rtpipe.txt')
+fh.setLevel(logging.INFO)
+fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+logger.addHandler(fh)
+ch = logging.StreamHandler()
+ch.setLevel(logging.INFO)
+logger.addHandler(ch)
 
 def pipeline(d, segment, reproducecand=()):
     """ Transient search pipeline running on single node.
@@ -58,7 +69,7 @@ def pipeline(d, segment, reproducecand=()):
         data[:] = ps.read_bdf_segment(d, segment)
         (u,v,w) = ps.get_uvw_segment(d, segment)
     else:
-        print 'Data format %s not supported.' % d['dataformat']
+        logger.error('Data format %s not supported.' % d['dataformat'])
 
     ####    ####    ####    ####
     # 2) Prepare data
@@ -71,46 +82,46 @@ def pipeline(d, segment, reproducecand=()):
         sols.setselection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'])
         sols.apply(data, d['blarr'])
     except IOError:
-        print 'Calibration file not found. Proceeding with no calibration applied.'
+        logger.info('Calibration file not found. Proceeding with no calibration applied.')
 
     # flag data
     if d['flagmode'] == 'standard':
         dataflagpool(data_mem, d)
     else:
-        print 'No real-time flagging.'
+        logger.info('No real-time flagging.')
 
     # mean t vis subtration
     if d['timesub'] == 'mean':
         meantsubpool(data_mem, d)
     else:
-        print 'No mean time subtraction.'
+        logger.info('No mean time subtraction.')
 
     if d['savenoise']:
         noisepickle(d, data, u, v, w)      # save noise pickle
 
     # optionally phase to new location
     if any([d['l0'], d['m0']]):
-        print 'Rephasing data to (l, m)=(%.3f, %.3f).' % (d['l0'], d['m0'])
+        logger.info('Rephasing data to (l, m)=(%.3f, %.3f).' % (d['l0'], d['m0']))
         rtlib.phaseshift_threaded(data, d, d['l0'], d['m0'], u, v)
 
     ####    ####    ####    ####
     # 3) Search using all threads
     ####    ####    ####    ####
     if len(reproducecand) == 0:
-        print 'Starting search...'
+        logger.info('Starting search...')
         cands = search(d, data, u, v, w)
 
         ####    ####    ####    ####
         # 4) Save candidate info
         ####    ####    ####    ####
         if d['savecands']:
-            print 'Saving %d candidates...' % (len(cands))
+            logger.info('Saving %d candidates...' % (len(cands)))
             savecands(d, cands)
 
         return len(cands)
 
     elif len(reproducecand) == 2:  # reproduce data
-        print 'Reproducing data...'
+        logger.info('Reproducing data...')
         dmind, dtind = reproducecand
         d['dmarr'] = [d['dmarr'][dmind]]
         d['dtarr'] = [d['dtarr'][dtind]]
@@ -118,7 +129,7 @@ def pipeline(d, segment, reproducecand=()):
         return data
 
     elif len(reproducecand) == 3:  # reproduce candidate image and data
-        print 'Reproducing candidate...'
+        logger.info('Reproducing candidate...')
         reproduceint, dmind, dtind = reproducecand
         d['dmarr'] = [d['dmarr'][dmind]]
         d['dtarr'] = [d['dtarr'][dtind]]
@@ -126,13 +137,13 @@ def pipeline(d, segment, reproducecand=()):
         return im, data
 
     else:
-        print 'reproducecand not in expected format: %s' % reproducecand
+        logger.error('reproducecand not in expected format: %s' % reproducecand)
 
 def meantsubpool(data_mem, d):
     """ Parallelized mean t visibility subtraction.
     """
 
-    print 'Subtracting mean visibility in time...'
+    logger.info('Subtracting mean visibility in time...')
     blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
     with closing(mp.Pool(d['nthread'], initializer=initpool2, initargs=(data_mem,))) as pool:
         for blr in blranges:
@@ -151,7 +162,7 @@ def dataflagpool(data_mem, d):
     """ Parallelized flagging
     """
 
-    print 'Flagging data...'
+    logger.info('Flagging data...')
     chperspw = len(d['freq_orig'])/len(d['spw'])
     with closing(mp.Pool(d['nthread'], initializer=initpool2, initargs=(data_mem,))) as pool:
         resultd = {}
@@ -163,6 +174,7 @@ def dataflagpool(data_mem, d):
 #                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 10., 'badcht', 0.05])
         for kk in resultd.keys():
             result = resultd[kk].get()
+            logger.info(result)
 
         resultd = {}
         for spw in range(d['nspw']):
@@ -171,6 +183,7 @@ def dataflagpool(data_mem, d):
             resultd[spw] = pool.apply_async(dataflag, [chans, 0, d, 3., 'badap', 0.2]) # pol not used here
         for kk in resultd.keys():
             result = resultd[kk].get()
+            logger.info(result)
 
         resultd = {}
         for pol in range(d['npol']):
@@ -181,6 +194,7 @@ def dataflagpool(data_mem, d):
                 resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 3.0, 'blstd', 0.05])
         for kk in resultd.keys():
             result = resultd[kk].get()
+            logger.info(result)
 
         resultd = {}
         for pol in range(d['npol']):
@@ -191,6 +205,7 @@ def dataflagpool(data_mem, d):
 #                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 7., 'badcht', 0.1])
         for kk in resultd.keys():
             result = resultd[kk].get()
+            logger.info(result)
 
             # resultd = {}
             # for pol in range(d['npol']):
@@ -200,7 +215,7 @@ def dataflagpool(data_mem, d):
             #         resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 4., 'ring', 0.2])
             # for kk in resultd.keys():
             #     result = resultd[kk].get()
-#                print kk, result, result/(0.5*data.size)
+#                logger.debug(kk, result, result/(0.5*data.size))
 
 def dataflag(chans, pol, d, sig, mode, conv):
     """ Wrapper function to get shared memory as numpy array into pool
@@ -225,7 +240,7 @@ def search(d, data, u, v, w):
     if d['savecands']:
         candsfile = 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
         if os.path.exists(candsfile):
-            print 'candsfile %s already exists' % candsfile
+            logger.warn('candsfile %s already exists' % candsfile)
             return cands
 
     readints = len(data)
@@ -248,11 +263,11 @@ def search(d, data, u, v, w):
 
     # SUBMITTING THE LOOPS
     if n.any(data):
-        print 'Searching in %d chunks with %d threads' % (d['nchunk'], d['nthread'])
-        print 'Dedispering to max (DM, dt) of (%d, %d) ...' % (d['dmarr'][-1], d['dtarr'][-1]), 
+        logger.info('Searching in %d chunks with %d threads' % (d['nchunk'], d['nthread']))
+        logger.info('Dedispering to max (DM, dt) of (%d, %d) ...' % (d['dmarr'][-1], d['dtarr'][-1]), )
         for dmind in xrange(len(d['dmarr'])):
             for dtind in xrange(len(d['dtarr'])):
-                print '(%d,%d)' % (d['dmarr'][dmind], d['dtarr'][dtind]),
+                logger.info('(%d,%d)' % (d['dmarr'][dmind], d['dtarr'][dtind]),)
                 data_resamp[:] = data[:]
                 blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
                 with closing(mp.Pool(d['nthread'], initializer=initpool, initargs=(data_resamp_mem,))) as pool:
@@ -263,7 +278,7 @@ def search(d, data, u, v, w):
                         result.wait()
                     resultlist = []
 
-                    print 'Imaging...',
+                    logger.info('Imaging...',)
                     for chunk in range(d['nchunk']):
                         i0 = (readints/d['dtarr'][dtind])*chunk/d['nchunk']
                         i1 = (readints/d['dtarr'][dtind])*(chunk+1)/d['nchunk']
@@ -284,9 +299,9 @@ def search(d, data, u, v, w):
                             cands[kk] = feat[kk]
 #                pool.join()
     else:
-        print 'Data for processing is zeros. Moving on...'
+        logger.warn('Data for processing is zeros. Moving on...')
 
-    print 'Found %d cands in scan %d segment %d of %s. ' % (len(cands), d['scan'], d['segment'], d['filename'])
+    logger.info('Found %d cands in scan %d segment %d of %s. ' % (len(cands), d['scan'], d['segment'], d['filename']))
     return cands
 
 def reproduce(d, data_resamp_mem, u, v, w, candint=-1, twindow=30):
@@ -300,7 +315,7 @@ def reproduce(d, data_resamp_mem, u, v, w, candint=-1, twindow=30):
 
     with closing(mp.Pool(1, initializer=initpool, initargs=(data_resamp_mem,))) as pool:
         # dedisperse
-        print 'Dedispersing with DM=%.1f, dt=%d...' % (d['dmarr'][dmind], d['dtarr'][dtind])
+        logger.info('Dedispersing with DM=%.1f, dt=%d...' % (d['dmarr'][dmind], d['dtarr'][dtind]))
         pool.apply(correct_dmdt, [d, dmind, dtind, (0,d['nbl'])])
 
         # set up image
@@ -313,12 +328,12 @@ def reproduce(d, data_resamp_mem, u, v, w, candint=-1, twindow=30):
 
         if candint > -1:
             # image
-            print 'Imaging int %d with %d %d pixels...' % (candint, npixx, npixy)
+            logger.info('Imaging int %d with %d %d pixels...' % (candint, npixx, npixy))
             im = pool.apply(image1wrap, [d, u, v, w, npixx, npixy, candint/d['dtarr'][dtind]])
 
             snrmin = im.min()/im.std()
             snrmax = im.max()/im.std()
-            print 'Made image with SNR min, max: %.1f, %.1f' % (snrmin, snrmax)
+            logger.info('Made image with SNR min, max: %.1f, %.1f' % (snrmin, snrmax))
             if snrmax > -1*snrmin:
                 peakl, peakm = n.where(im == im.max())
             else:
@@ -327,7 +342,7 @@ def reproduce(d, data_resamp_mem, u, v, w, candint=-1, twindow=30):
             m1 = (npixy/2. - peakm[0])/(npixy*d['uvres'])
 
             # rephase and trim interesting ints out
-            print 'Rephasing to peak...'
+            logger.info('Rephasing to peak...')
             pool.apply(move_phasecenter, [d, l1, m1, u, v])
             minint = max(candint/d['dtarr'][dtind]-twindow/2, 0)
             maxint = min(candint/d['dtarr'][dtind]+twindow/2, len(data_resamp)/d['dtarr'][dtind])
@@ -368,19 +383,19 @@ def lightcurve(d, l1, m1):
             sols.setselection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'])
             sols.apply(data, d['blarr'])
         except IOError:
-            print 'Calibration file not found. Proceeding with no calibration applied.'
+            logger.error('Calibration file not found. Proceeding with no calibration applied.')
 
         # flag data
         if d['flagmode'] == 'standard':
             dataflagpool(data_mem, d)
         else:
-            print 'No real-time flagging.'
+            logger.info('No real-time flagging.')
 
         # mean t vis subtration
         if d['timesub'] == 'mean':
             meantsubpool(data_mem, d)
         else:
-            print 'No mean time subtraction.'
+            logger.info('No mean time subtraction.')
 
         # no dedispersion yet
 
@@ -436,8 +451,8 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     # overload with provided kwargs
     for key in kwargs.keys():
-        if kwargs.keys().index(key) == 0: print 
-        print 'Setting %s to %s' % (key, kwargs[key])
+        if kwargs.keys().index(key) == 0: logger.info('')
+        logger.info('Setting %s to %s' % (key, kwargs[key]))
         d[key] = kwargs[key]
 
     # define rootname for in/out cal/products
@@ -452,13 +467,13 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         if len(filelist):
             filelist.sort()
             d['gainfile'] = filelist[-1]
-            print 'Autodetecting cal files... gainfile set to %s.' % d['gainfile']
+            logger.info('Autodetecting cal files... gainfile set to %s.' % d['gainfile'])
     if not d['bpfile']:
         filelist = glob.glob(os.path.join(d['workdir'], d['fileroot'] + '.b?'))
         if len(filelist):
             filelist.sort()
             d['bpfile'] = filelist[-1]
-            print 'Autodetecting cal files... bpfile set to %s.' % d['bpfile']
+            logger.info('Autodetecting cal files... bpfile set to %s.' % d['bpfile'])
 
     # supported features: snr1, immax1, l1, m1
     if d['searchtype'] == 'image1':
@@ -533,33 +548,33 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     if d['nchunk'] == 0:
         d['nchunk'] = d['nthread']
 
-    print
-    print 'Pipeline summary:'
-    print '\t Products saved with %s. Calibration files set to (%s, %s)' % (d['fileroot'], d['gainfile'], d['bpfile'])
-    print '\t Using %d segment%s of %d ints (%.1f s) with overlap of %.1f s' % (d['nsegments'], "s"[not d['nsegments']-1:], d['t_segment']/(d['inttime']*d['read_tdownsample']), d['t_segment'], d['t_overlap'])
+    logger.info('')
+    logger.info('Pipeline summary:')
+    logger.info('\t Products saved with %s. Calibration files set to (%s, %s)' % (d['fileroot'], d['gainfile'], d['bpfile']))
+    logger.info('\t Using %d segment%s of %d ints (%.1f s) with overlap of %.1f s' % (d['nsegments'], "s"[not d['nsegments']-1:], d['t_segment']/(d['inttime']*d['read_tdownsample']), d['t_segment'], d['t_overlap']))
     if d['t_overlap'] > d['t_segment']/3.:
-        print '\t\t **Inefficient search: Max DM sweep (%.1f s) close to segment size (%.1f s)**' % (d['t_overlap'], d['t_segment'])
-    print '\t Downsampling in time/freq by %d/%d and skipping %d ints from start of scan.' % (d['read_tdownsample'], d['read_fdownsample'], d['nskip'])
-    print '\t Excluding ants %s' % (d['excludeants'])
-    print
+        logger.info('\t\t **Inefficient search: Max DM sweep (%.1f s) close to segment size (%.1f s)**' % (d['t_overlap'], d['t_segment']))
+    logger.info('\t Downsampling in time/freq by %d/%d and skipping %d ints from start of scan.' % (d['read_tdownsample'], d['read_fdownsample'], d['nskip']))
+    logger.info('\t Excluding ants %s' % (d['excludeants']))
+    logger.info('')
 
-    print '\t Search with %s and threshold %.1f.' % (d['searchtype'], d['sigma_image1'])
-    print '\t Using uvgrid npix=(%d,%d) and res=%d.' % (d['npixx'], d['npixy'], d['uvres'])
-    print '\t Expect %d thermal false positives per segment.' % nfalse
+    logger.info('\t Search with %s and threshold %.1f.' % (d['searchtype'], d['sigma_image1']))
+    logger.info('\t Using uvgrid npix=(%d,%d) and res=%d.' % (d['npixx'], d['npixy'], d['uvres']))
+    logger.info('\t Expect %d thermal false positives per segment.' % nfalse)
 
     (vismem, immem) = calc_memory_footprint(d)
     if d.has_key('memory_limit'):    # if preference given, then test
         if vismem+immem > d['memory_limit']:
-            print
+            logger.info('')
             while vismem+immem > d['memory_limit']:
-                print 'Doubling nchunk from %d to fit in %d GB memory limit.' % (d['nchunk'], d['memory_limit'])
+                logger.info('Doubling nchunk from %d to fit in %d GB memory limit.' % (d['nchunk'], d['memory_limit']))
                 d['nchunk'] = 2*d['nchunk']
                 (vismem, immem) = calc_memory_footprint(d)
 
-    print
-    print '\t Visibility memory usage is %.1f GB/segment' % vismem
-    print '\t Imaging in %d chunk%s using max of %.1f GB/segment' % (d['nchunk'], "s"[not d['nsegments']-1:], immem)
-    print '\t Grand total memory usage: %d GB/segment' % (vismem + immem)
+    logger.info('')
+    logger.info('\t Visibility memory usage is %.1f GB/segment' % vismem)
+    logger.info('\t Imaging in %d chunk%s using max of %.1f GB/segment' % (d['nchunk'], "s"[not d['nsegments']-1:], immem))
+    logger.info('\t Grand total memory usage: %d GB/segment' % (vismem + immem))
 
     return d
 
@@ -671,7 +686,7 @@ def image1(d, i0, i1, u, v, w, dmind, dtind, beamnum):
             peakl, peakm = n.where(ims[i] == ims[i].min())
         l1 = (d['npixx']/2. - peakl[0])/(d['npixx']*d['uvres'])
         m1 = (d['npixy']/2. - peakm[0])/(d['npixy']*d['uvres'])
-        print 'Got one!  Int=%d, DM=%d, dt=%d: SNR_im=%.1f @ (%.2e,%.2e).' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], l1, m1)
+        logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im=%.1f @ (%.2e,%.2e).' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], l1, m1))
         candid =  (d['segment'], d['nskip']+(i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
 
         # assemble feature in requested order
@@ -733,7 +748,7 @@ def image2(d, i0, i1, u, v, w, dmind, dtind, beamnum):
                 peakl, peakm = n.where(im2 == im2.min())
             l2 = (d['npixx_full']/2. - peakl[0])/(d['npixx_full']*d['uvres'])
             m2 = (d['npixy_full']/2. - peakm[0])/(d['npixy_full']*d['uvres'])
-            print 'Got one!  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f @ (%.2e,%.2e).' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2, l2, m2)
+            logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f @ (%.2e,%.2e).' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2, l2, m2))
             candid =  (d['segment'], d['nskip']+(i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
 
             # assemble feature in requested order
@@ -764,7 +779,7 @@ def image2(d, i0, i1, u, v, w, dmind, dtind, beamnum):
 
             feat[candid] = list(ff)
         else:
-            print 'Almost...  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f.' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2)
+            logger.info('Almost...  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f.' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2))
 
     return feat
 
@@ -785,7 +800,7 @@ def image2w(d, i0, i1, u, v, w, dmind, dtind, beamnum, bls, uvkers):
         # reimage
         npix = max(d['npixx_full'], d['npixy_full'])
         im2 = rtlib.imgonefullw(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[i0+candints[i]], npix, d['uvres'], bls, uvkers, verbose=1)
-        print im2.shape
+        logger.debug(im2.shape)
 
         # find most extreme pixel
         snrmax = im2.max()/im2.std()
@@ -811,7 +826,7 @@ def image2w(d, i0, i1, u, v, w, dmind, dtind, beamnum, bls, uvkers):
                 peakl, peakm = n.where(im2 == im2.min())
             l2 = (npix/2. - peakl[0])/(npix*d['uvres'])
             m2 = (npix/2. - peakm[0])/(npix*d['uvres'])
-            print 'Got one!  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f @ (%.2e,%.2e).' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2, l2, m2)
+            logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f @ (%.2e,%.2e).' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2, l2, m2))
             candid =  (d['segment'], d['nskip']+(i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
 
             # assemble feature in requested order
@@ -842,7 +857,7 @@ def image2w(d, i0, i1, u, v, w, dmind, dtind, beamnum, bls, uvkers):
 
             feat[candid] = list(ff)
         else:
-            print 'Almost...  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f.' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2)
+            logger.info('Almost...  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f.' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2))
 
     return feat
 
@@ -889,7 +904,7 @@ def estimate_noiseperbl(data):
     (datameanmin, datameanmax) = rtlib.sigma_clip(datamean.flatten())
     good = n.where( (datamean>datameanmin) & (datamean<datameanmax) )
     noiseperbl = datamean[good].std()   # measure single noise for input to detect_bispectra
-    print 'Clipped to %d%% of data (%.3f to %.3f). Noise = %.3f.' % (100.*len(good[0])/len(datamean.flatten()), datameanmin, datameanmax, noiseperbl)
+    logger.info('Clipped to %d%% of data (%.3f to %.3f). Noise = %.3f.' % (100.*len(good[0])/len(datamean.flatten()), datameanmin, datameanmax, noiseperbl))
     return noiseperbl
 
 def noisepickle(d, data, u, v, w, chunk=200):
@@ -901,7 +916,7 @@ def noisepickle(d, data, u, v, w, chunk=200):
 
     if d['savenoise']:
         if os.path.exists(noisefile):
-            print 'noisefile %s already exists' % noisefile
+            logger.warn('noisefile %s already exists' % noisefile)
             return
 
     nints = len(data)

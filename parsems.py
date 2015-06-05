@@ -40,7 +40,7 @@ def get_metadata(filename, scan=0, datacol='', spw=[], chans=[], selectpol=[], r
         try:
             stuff = pickle.load(pkl)
         except EOFError:
-            logger.warning('Bad pickle file. Exiting...')
+            logger.warn('Bad pickle file. Exiting...')
             return 1
 
         # load stuff into d
