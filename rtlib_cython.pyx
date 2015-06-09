@@ -2,10 +2,14 @@ import numpy as n
 cimport numpy as n
 cimport cython
 # can choose between numpy and pyfftw
-#from numpy import fft
-import pyfftw
-import pyfftw.interfaces.numpy_fft as fft   # numpy -> NUMPY for NRAO install
-
+try:
+    import pyfftw
+    import pyfftw.interfaces.numpy_fft as fft   # numpy -> NUMPY for NRAO install
+    ffttype = 'pyfftw'
+except:
+    from numpy import fft
+    ffttype = 'numpy'
+    
 CTYPE = n.long
 ctypedef n.long_t CTYPE_t
 DTYPE = n.complex64
@@ -29,13 +33,13 @@ cpdef beamonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndi
     cdef int cellv
     cdef unsigned int nonzeros = 0
     cdef n.ndarray[DTYPE_t, ndim=2] grid = n.zeros( (npixx,npixy), dtype='complex64')
-    cdef arr = pyfftw.n_byte_align_empty((npixx,npixy), 16, dtype='complex64')
-
     # put uv data on grid
     cdef n.ndarray[CTYPE_t, ndim=2] uu = n.round(u/res).astype(n.int)
     cdef n.ndarray[CTYPE_t, ndim=2] vv = n.round(v/res).astype(n.int)
 
-    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)
+    if ffttype == 'pyfftw':
+        cdef arr = pyfftw.n_byte_align_empty((npixx,npixy), 16, dtype='complex64')
+        ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)
 
     ok = n.logical_and(n.abs(uu) < npixx/2, n.abs(vv) < npixy/2)
     uu = n.mod(uu, npixx)
@@ -53,8 +57,11 @@ cpdef beamonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndi
                         nonzeros = nonzeros + 1
 
     # make images and filter based on threshold
-    arr[:] = grid[:]
-    im = ifft(arr).real*int(npixx*npixy)/float(nonzeros)
+    if ffttype == 'pyfftw':
+        arr[:] = grid[:]
+        im = ifft(arr).real*int(npixx*npixy)/float(nonzeros)
+    else:
+        im = fft.ifft(grid).real*int(npixx*npixy)/float(nonzeros)
     im = recenter(im, (npixx/2,npixy/2))
 
     print 'Gridded %.3f of data. Scaling fft by = %.1f' % (float(ok.sum())/ok.size, int(npixx*npixy)/float(nonzeros))
@@ -333,7 +340,7 @@ cpdef genuvkernels(n.ndarray[n.float32_t, ndim=1] w, wres, unsigned int npix, un
     uvres = uvres/oversample
     cdef lmker = pyfftw.n_byte_align_empty( (npix, npix), 16, dtype='complex64')
 
-    fft = pyfftw.builders.fft2(lmker)
+    dofft = pyfftw.builders.fft2(lmker)
 
     # set up w planes
     sqrt_w = n.sqrt(n.abs(w)) * n.sign(w)
@@ -354,7 +361,7 @@ cpdef genuvkernels(n.ndarray[n.float32_t, ndim=1] w, wres, unsigned int npix, un
             lmker[:] = get_lmkernel(npix, uvres, avg_w).astype(DTYPE)
 
             # uv kernel from inv fft of lm kernel
-            im = fft()
+            im = dofft()
             uvker = recenter(im, (npix/2,npix/2))
 
             if ksize == 0:
