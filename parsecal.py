@@ -6,35 +6,6 @@ import logging, logging.config
 # set up
 tb = casautil.tools.table()
 
-LOGGING = {
-    'version': 1,              
-    'disable_existing_loggers': False,
-
-    'formatters': {
-        'standard': {
-            'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
-        },
-    },
-    'handlers': {
-        'default': {
-            'level':'INFO',    
-            'class':'logging.StreamHandler',
-        },  
-        'file': {
-            'level':'INFO',    
-            'class':'logging.FileHandler',
-            'filename':'tmp.log',
-        },  
-    },
-    'loggers': {
-        '': {                  
-            'handlers': ['default', 'file'],        
-            'level': 'INFO',  
-            'propagate': True  
-        }
-    }
-}
-
 class casa_sol():
     """ Container for CASA caltable(s).
     Provides tools for applying to data of shape (nints, nbl, nch, npol).
@@ -46,16 +17,13 @@ class casa_sol():
         """ Initialize with a table of CASA gain solutions. Can later add BP.
         """
         
+        # custom log file
+        self.logger = logging.getLogger(__name__)
         if os.path.exists(gainfile):
             self.parsegain(gainfile)
             self.flagants = flagants
-
-            # custom log file
-            logger = logging.getLogger('cal')
-            LOGGING['handlers']['file']['filename'] = 'calibration_' + os.path.split(gainfile)[1].split('.g')[0] + '.txt'
-            logging.config.dictConfig(LOGGING)
         else:
-            logging.warning('Gainfile not found.')
+            self.logger.warn('Gainfile not found.')
             raise IOError
 
     def parsegain(self, gainfile):
@@ -86,9 +54,9 @@ class casa_sol():
         # mslist = glob.glob(gainfile[:-3] + '*.ms')
         # try:
         #     msfile = mslist[0]
-        #     print 'Found parent data MS %s' % msfile
+        #     self.logger.info('Found parent data MS %s' % msfile)
         # except IndexError:
-        #     print 'Could not find parent data MS for metadata...'
+        #     self.logger.warn('Could not find parent data MS for metadata...')
 
         # tb.open(msfile + '/ANTENNA')
         # antname = tb.getcol('NAME')      # one name per ant
@@ -140,8 +108,8 @@ class casa_sol():
         self.uniquefield = n.array(uniquefield)
         nsol = len(self.uniquemjd)
 
-        logging.info('Parsed gain table solutions for %d solutions (skipping %d), %d ants, %d spw, and %d pols' % (nsol, len(skip), nants, nspw, npol))
-        logging.info('Unique solution times: %s' % str(self.uniquemjd))
+        self.logger.info('Parsed gain table solutions for %d solutions (skipping %d), %d ants, %d spw, and %d pols' % (nsol, len(skip), nants, nspw, npol))
+        self.logger.info('Unique solution times: %s' % str(self.uniquemjd))
 
         self.gain = n.zeros( (nsol, nants, nspw, npol), dtype='complex' )
         flags = n.zeros( (nsol, nants, nspw, npol), dtype='complex' )
@@ -190,7 +158,7 @@ class casa_sol():
         self.bptimes = n.array(timesBP)
         ptsperspec = 1000
         npol = 2
-        logging.info('Parsed bp solutions for %d solutions, %d ants, %d spw, and %d pols' % (nUniqueTimesBP, nants, nSpws, nPolarizations))
+        self.logger.info('Parsed bp solutions for %d solutions, %d ants, %d spw, and %d pols' % (nUniqueTimesBP, nants, nSpws, nPolarizations))
         self.bandpass = n.zeros( (nants, nSpws*ptsperspec, npol), dtype='complex')
         for spw in range(nSpws):
             ampSolR[spw*nants:(spw+1)*nants] += 1 - ampSolR[spw*nants:(spw+1)*nants].mean()     # renormalize mean over ants (per spw) == 1
@@ -211,7 +179,7 @@ class casa_sol():
         # structure close to tpipe data structure (nant, freq, pol). note that freq is oversampled to 1000 bins.
 #        self.bandpass = n.concatenate( (n.concatenate( (bpSolR0[:,:,None], bpSolR1[:,:,None]), axis=1), n.concatenate( (bpSolL0[:,:,None], bpSolL1[:,:,None]), axis=1)), axis=2)
 #        self.bpfreq = 1e9*n.concatenate( (frequenciesGHz[0], frequenciesGHz[nants]), axis=0)    # freq values at bp bins
-#        print 'Parsed bp table solutions for %d solutions, %d ants, %d spw, and %d pols' % (nUniqueTimesBP, nants, nSpws, nPolarizations)
+#        self.logger.info('Parsed bp table solutions for %d solutions, %d ants, %d spw, and %d pols' % (nUniqueTimesBP, nants, nSpws, nPolarizations))
 
     def setselection(self, time, freqs, radec=(), dist=10., spws=[0,1], pols=[0,1], verbose=0):
         """ Set select parameter that defines time, spw, and pol solutions to apply.
@@ -234,7 +202,7 @@ class casa_sol():
             caldec = n.array([self.radec[i][1] for i in range(len(self.radec))])
             fields = n.where( (calra - ra < n.radians(dist)) & (caldec - dec < n.radians(dist)) )[0]
             if len(fields) == 0:
-                logging.info('Warning: no close calibrator found. Removing radec restriction.')
+                self.logger.warn('Warning: no close calibrator found. Removing radec restriction.')
                 fields = n.unique(self.uniquefield)
         else:
             fields = n.unique(self.uniquefield)
@@ -245,14 +213,14 @@ class casa_sol():
         mjddist = n.abs(time - self.uniquemjd[sel])
         closestgain = n.where(mjddist == mjddist.min())[0][0]
 
-        logging.info('Using gain solution for field %d at MJD %.5f, separated by %d min ' % (self.uniquefield[n.where(self.uniquemjd == self.uniquemjd[sel][closestgain])], self.uniquemjd[closestgain], mjddist[closestgain]*24*60))
+        self.logger.info('Using gain solution for field %d at MJD %.5f, separated by %d min ' % (self.uniquefield[n.where(self.uniquemjd == self.uniquemjd[sel][closestgain])], self.uniquemjd[closestgain], mjddist[closestgain]*24*60))
         self.gain = self.gain[closestgain,:,spws[0]:spws[1]+1,pols[0]:pols[1]+1]
 
         if hasattr(self, 'bandpass'):
             bins = [n.where(n.min(n.abs(self.bpfreq-selfreq)) == n.abs(self.bpfreq-selfreq))[0][0] for selfreq in freqs]
             self.bandpass = self.bandpass[:,bins,pols[0]:pols[1]+1]
             self.freqs = freqs
-            logging.debug('Using solution at BP bins: ', bins)
+            self.logger.debug('Using solution at BP bins: ', bins)
 
     def calc_flag(self, sig=3.0):
         """ Calculates antennas to flag, based on bad gain and bp solutions.
@@ -265,7 +233,7 @@ class casa_sol():
 
 #        badgain = n.where(gamp < gamp.mean() - sig*gamp.std())
         badgain = n.where( (gamp < n.median(gamp) - sig*gamp.std()) | gamp.mask)
-        logging.info('Flagging low/bad gains for ant/spw/pol: %s %s %s' % (str(self.antnum[badgain[0]]), str(badgain[1]), str(badgain[2])))
+        self.logger.info('Flagging low/bad gains for ant/spw/pol: %s %s %s' % (str(self.antnum[badgain[0]]), str(badgain[1]), str(badgain[2])))
 
         badants = badgain
         return badants
@@ -287,18 +255,18 @@ class casa_sol():
         # apply gain correction
         if hasattr(self, 'bandpass'):
             corr = n.ones_like(data)
-            flag = n.ones_like(data).astype('int')
+            flag = n.ones_like(data.real).astype('int')
             chans_uncal = range(len(self.freqs))
             for spw in range(len(self.gain[0])):
                 chsize = n.round(self.bpfreq[1]-self.bpfreq[0], 0)
                 ww = n.where( (self.freqs >= self.bpfreq[spw*1000]) & (self.freqs <= self.bpfreq[(spw+1)*1000-1]+chsize) )[0]
                 if len(ww) == 0:
-                    logging.info('Gain solution frequencies not found in data for spw %d.' % (self.spws[spw]))
+                    self.logger.info('Gain solution frequencies not found in data for spw %d.' % (self.spws[spw]))
                 firstch = ww[0]
                 lastch = ww[-1]+1
                 for ch in ww:
                     chans_uncal.remove(ch)
-                logging.info('Combining gain sol from spw=%d with BW chans from %d-%d' % (self.spws[spw], firstch, lastch))
+                self.logger.info('Combining gain sol from spw=%d with BW chans from %d-%d' % (self.spws[spw], firstch, lastch))
                 for badant in n.transpose(badants):
                     if badant[1] == spw:
                         badbl = n.where((badant[0] == n.array(ant1ind)) | (badant[0] == n.array(ant2ind)))[0]
@@ -309,7 +277,7 @@ class casa_sol():
 
                 corr[:, :, firstch:lastch, :] = corr1 * corr2
             if len(chans_uncal):
-                logging.info('Setting data without bp solution to zero for chans %s.' % (chans_uncal))
+                self.logger.info('Setting data without bp solution to zero for chans %s.' % (chans_uncal))
                 flag[:, :, chans_uncal,:] = 0
             data[:] *= flag/corr
         else:
@@ -317,6 +285,8 @@ class casa_sol():
                 pass
 
 def openBpolyFile(caltable, debug=False):
+    logger = logging.getLogger(__name__)
+
 #    mytb = au.createCasaTool(tbtool)    # from analysisutilities by corder
     tb.open(caltable)
     desc = tb.getdesc()
@@ -330,13 +300,13 @@ def openBpolyFile(caltable, debug=False):
         nRows = len(polyType)
         for pType in polyType:
             if (pType != 'CHEBYSHEV'):
-                logging.info("I do not recognized polynomial type = %s" % (pType))
+                logger.info("I do not recognized polynomial type = %s" % (pType))
                 return
         # Here we assume that all spws have been solved with the same mode
         uniqueTimesBP = n.unique(tb.getcol('TIME'))
         nUniqueTimesBP = len(uniqueTimesBP)
         if (nUniqueTimesBP >= 2):
-            logging.debug("Multiple BP sols found with times differing by %s seconds. Using first." % (str(uniqueTimesBP-uniqueTimesBP[0])))
+            logger.debug("Multiple BP sols found with times differing by %s seconds. Using first." % (str(uniqueTimesBP-uniqueTimesBP[0])))
             nUniqueTimesBP = 1
             uniqueTimesBP = uniqueTimesBP[0]
         mystring = ''
@@ -368,10 +338,10 @@ def openBpolyFile(caltable, debug=False):
         tb.close()
         nPolarizations = len(polynomialAmplitude[0]) / nPolyAmp[0]
         mystring += '%.3f, ' % (uniqueTimesBP/(24*3600))
-        logging.debug('BP solution has unique time(s) %s and %d pols' % (mystring, nPolarizations))
+        logger.debug('BP solution has unique time(s) %s and %d pols' % (mystring, nPolarizations))
         
         # This value is overridden by the new function doPolarizations in ValueMapping.
-        # print "Inferring %d polarizations from size of polynomial array" % (nPolarizations)
+        # logger.debug("Inferring %d polarizations from size of polynomial array" % (nPolarizations))
         return([polyMode, polyType, nPolyAmp, nPolyPhase, scaleFactor, nRows, nSpws, nUniqueTimesBP,
                 uniqueTimesBP, nPolarizations, frequencyLimits, increments, frequenciesGHz,
                 polynomialPhase, polynomialAmplitude, times, antenna1, cal_desc_id, spwBP])
@@ -387,6 +357,8 @@ def calcChebyshev(coeffs, validDomain, freqs):
     Used for CASA bandpass reading.
     input coeffs and freqs are numpy arrays
     """
+
+    logger = logging.getLogger(__name__)
 
     domain = (validDomain[1] - validDomain[0])[0]
     bins = -1 + 2* n.array([ (freqs[i]-validDomain[0,i])/domain for i in range(len(freqs))])
@@ -407,7 +379,8 @@ class telcal_sol():
         self.freqs = freqs
         self.chansize = freqs[1]-freqs[0]
         self.parseGN(telcalfile)
-        logging.info('Read telcalfile %s' % telcalfile)
+        self.logger = logging.getLogger(__name__)
+        self.logger.info('Read telcalfile %s' % telcalfile)
 
     def setselection(self, calname, time, polstr, verbose=0):
         """ Set select parameter that defines spectral window, time, or any other selection.
@@ -425,9 +398,9 @@ class telcal_sol():
                     nameselect = n.where(self.source[self.select] == ss)   # define selection for name
                     self.select = self.select[nameselect[0]]       # update overall selection
                     if verbose:
-                        logging.info('Selection down to %d solutions with %s' % (len(self.select), calname))
+                        self.logger.info('Selection down to %d solutions with %s' % (len(self.select), calname))
             if len(nameselect) == 0:
-                logging.info('Calibrator name %s not found. Ignoring.' % (calname))
+                self.logger.info('Calibrator name %s not found. Ignoring.' % (calname))
 
         # select freq
         freqselect = n.where( n.around(1e6*self.skyfreq[self.select],-6) == n.around(self.freqs[len(self.freqs)/2],-6) )   # define selection for time
@@ -435,7 +408,7 @@ class telcal_sol():
             raise StandardError('No complete set of telcal solutions at that frequency.')
         self.select = self.select[freqselect[0]]    # update overall selection
         if verbose:
-            logging.info('Frequency selection cut down to %d solutions' % (len(self.select)))
+            self.logger.info('Frequency selection cut down to %d solutions' % (len(self.select)))
 
         # select pol
         ifids = self.ifid[self.select]
@@ -452,15 +425,15 @@ class telcal_sol():
         closest = n.where(mjddist == mjddist.min())
         timeselect = n.where(self.mjd[self.select] == n.unique(self.mjd[self.select])[closest])   # define selection for time
         self.select = self.select[timeselect[0]]    # update overall selection
-        logging.debug('Selection down to %d solutions separated from given time by %d minutes' % (len(self.select), mjddist[closest]*24*60))
+        self.logger.debug('Selection down to %d solutions separated from given time by %d minutes' % (len(self.select), mjddist[closest]*24*60))
 
         if verbose:
-            logging.info('Selected solutions: %s' % str(self.select))
-            logging.info('MJD: %s' % str(n.unique(self.mjd[self.select])))
-            logging.info('Mid frequency (MHz): %s' % str(n.unique(self.skyfreq[self.select])))
-            logging.info('IFID: %s' % str(n.unique(self.ifid[self.select])))
-            logging.info('Source: %s' % str(n.unique(self.source[self.select])))
-            logging.info('Ants: %s' % str(n.unique(self.antname[self.select])))
+            self.logger.info('Selected solutions: %s' % str(self.select))
+            self.logger.info('MJD: %s' % str(n.unique(self.mjd[self.select])))
+            self.logger.info('Mid frequency (MHz): %s' % str(n.unique(self.skyfreq[self.select])))
+            self.logger.info('IFID: %s' % str(n.unique(self.ifid[self.select])))
+            self.logger.info('Source: %s' % str(n.unique(self.source[self.select])))
+            self.logger.info('Ants: %s' % str(n.unique(self.antname[self.select])))
 
     def parseGN(self, telcalfile):
         """Takes .GN telcal file and places values in numpy arrays.

@@ -8,7 +8,9 @@ import os, shutil, subprocess, glob, string
 import casautil, tasklib
 import sdmreader, sdmpy
 import rtpipe.parseparams as pp
+import logging
 
+logger = logging.getLogger(__name__)
 qa = casautil.tools.quanta()
 me = casautil.tools.measures()
 
@@ -140,14 +142,15 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, params=''
     d['pols'] = pols
 
     # summarize metadata
-    print 'Metadata summary:'
-    print '\t Data at %s in workdir %s' % (d['filename'], d['workdir'])
-    print '\t Using scan %d' % (int(d['scan']))
-    print '\t nants, nbl: %d, %d' % (d['nants'], d['nbl'])
-    print '\t Freq range (%.3f -- %.3f). %d spw with %d chans.' % (d['freq'].min(), d['freq'].max(), d['nspw'], d['nchan'])
-    print '\t Scan has %d ints (%.1f s) and inttime %.3f s' % (d['nints'], d['nints']*d['inttime'], d['inttime'])
-    print '\t %d polarizations: %s' % (d['npol'], d['pols'])
-    print '\t Ideal uvgrid npix=(%d,%d) and res=%d' % (d['npixx_full'], d['npixy_full'], d['uvres_full'])
+    logger.info('\n')
+    logger.info('Metadata summary:')
+    logger.info('\t Data at %s in workdir %s' % (d['filename'], d['workdir']))
+    logger.info('\t Using scan %d' % (int(d['scan'])))
+    logger.info('\t nants, nbl: %d, %d' % (d['nants'], d['nbl']))
+    logger.info('\t Freq range (%.3f -- %.3f). %d spw with %d chans.' % (d['freq'].min(), d['freq'].max(), d['nspw'], d['nchan']))
+    logger.info('\t Scan has %d ints (%.1f s) and inttime %.3f s' % (d['nints'], d['nints']*d['inttime'], d['inttime']))
+    logger.info('\t %d polarizations: %s' % (d['npol'], d['pols']))
+    logger.info('\t Ideal uvgrid npix=(%d,%d) and res=%d' % (d['npixx_full'], d['npixy_full'], d['uvres_full']))
 
     return d
 
@@ -165,7 +168,7 @@ def read_bdf_segment(d, segment=-1):
         t1 = d['segmenttimes'][segment][1]
         readints = n.round(24*3600*(t1 - t0)/d['inttime'], 0).astype(int)
         nskip = n.round(24*3600*(t0 - d['starttime_mjd'])/d['inttime'], 0).astype(int)
-        print 'Reading segment %d/%d, times %s to %s' % (segment, len(d['segmenttimes'])-1, qa.time(qa.quantity(t0,'d'),form=['hms'], prec=9)[0], qa.time(qa.quantity(t1, 'd'), form=['hms'], prec=9)[0])
+        logger.info('Reading segment %d/%d, times %s to %s' % (segment, len(d['segmenttimes'])-1, qa.time(qa.quantity(t0,'d'),form=['hms'], prec=9)[0], qa.time(qa.quantity(t1, 'd'), form=['hms'], prec=9)[0]))
     else:
         nskip = 0
         readints = 0
@@ -176,10 +179,10 @@ def read_bdf_segment(d, segment=-1):
     # test that spw are in freq sorted order
     dfreq = n.array([d['spw_reffreq'][i+1] - d['spw_reffreq'][i] for i in range(len(d['spw_reffreq'])-1)])
     if not n.all(dfreq > 0):   # if spw not in freq order, then try to reorganize data
-        print 'BDF spw frequencies out of order:', d['spw_reffreq']
+        logger.warn('BDF spw frequencies out of order: %s' % str(d['spw_reffreq']))
         # use case 1: spw are rolled
         assert len(n.where(dfreq < 0)[0]) == 1
-        print 'BDF spw frequency order rolled. Fixing...'
+        logger.warn('BDF spw frequency order rolled. Fixing...')
         rollch = n.sum([d['spw_nchan'][ss] for ss in range(n.where(dfreq < 0)[0][0]+1)])
         data = n.roll(data, rollch, axis=2)
 
@@ -190,11 +193,11 @@ def read_bdf_segment(d, segment=-1):
         fsize = sh[2]/d['read_fdownsample']
         data2 = n.zeros( (tsize, sh[1], fsize, sh[3]), dtype='complex64')
         if d['read_tdownsample'] > 1:
-            print 'Downsampling in time by %d' % d['read_tdownsample']
+            logger.info('Downsampling in time by %d' % d['read_tdownsample'])
             for i in range(tsize):
                 data2[i] = data[i*d['read_tdownsample']:(i+1)*d['read_tdownsample']].mean(axis=0)
         if d['read_fdownsample'] > 1:
-            print 'Downsampling in frequency by %d' % d['read_fdownsample']
+            logger.info('Downsampling in frequency by %d' % d['read_fdownsample'])
             for i in range(fsize):
                 data2[:,:,i,:] = data[:,:,i*d['read_fdownsample']:(i+1)*d['read_fdownsample']].mean(axis=2)
         data = data2
@@ -214,7 +217,7 @@ def get_uvw_segment(d, segment=-1):
         t0 = d['segmenttimes'][segment][0]
         t1 = d['segmenttimes'][segment][1]
         datetime = qa.time(qa.quantity((t1+t0)/2,'d'),form=['ymdhms'], prec=9)[0]
-        print 'Calculating uvw for segment %d' % (d['segment'])
+        logger.info('Calculating uvw for segment %d' % (d['segment']))
     else:
         datetime = 0
 
@@ -237,11 +240,11 @@ def sdm2ms(sdmfile, msfile, scan, inttime='0'):
     # fill ms file
     msfile2 = msfile.rstrip('.ms') + '_s' + scan + '.ms'
     if os.path.exists(msfile2):
-        print '%s already set.' % msfile2
+        logger.debug('%s already set.' % msfile2)
     else:
-        print 'No %s found. Creating anew.' % msfile2
+        logger.info('No %s found. Creating anew.' % msfile2)
         if inttime != '0':
-            print 'Filtering by int time.'
+            logger.info('Filtering by int time.')
             subprocess.call(['asdm2MS', '--ocm co --icm co --lazy --scans', scan, sdmfile, 'tmp_'+msfile2])
             cfg = tasklib.SplitConfig()  # configure split
             cfg.vis = 'tmp_'+msfile2
@@ -278,7 +281,7 @@ def filter_scans(sdmfile, namefilter='', intentfilter=''):
         if intentfilter in scans[i][2]:
             if namefilter in scans[i][1]:
                 goodscans[scans[i][0]] = (scans[i][1], scanint[i], bdfnum[i])
-    print 'Found a total of %d scans and %d with name=%s and intent=%s.' % (len(scans), len(goodscans), namefilter, intentfilter)
+    logger.debug('Found a total of %d scans and %d with name=%s and intent=%s.' % (len(scans), len(goodscans), namefilter, intentfilter))
     return goodscans
 
 """ Misc stuff from Steve. Not yet in sdmreader
@@ -309,9 +312,9 @@ def listscans(dicts):
         tim = mys['timerange']
         sint= mys['intent']
         dur = mys['duration']*1440
-        print '%8i %24s %48s  %.1f minutes  %s ' % (key, src, tim, dur, sint)
+        logger.debug('%8i %24s %48s  %.1f minutes  %s ' % (key, src, tim, dur, sint))
     durations = duration(myscans)
-    print '  Found ', len(mysources),' sources in Source.xml'
+    logger.debug('  Found ', len(mysources),' sources in Source.xml')
     for key in durations:
         for mysrc in mysources.keys():
 #            if (key[0] == mysources[mysrc]['sourceName']):
@@ -322,10 +325,10 @@ def listscans(dicts):
                 break
         raString = qa.formxxx('%.12frad'%ra,format('hms'))
         decString = qa.formxxx('%.12frad'%dec,format('dms')).replace('.',':',2)
-        print '   Total %24s (%d)  %5.1f minutes  (%.3f, %+.3f radian) %s: %s %s' % (key[0], int(mysrc), key[1], ra, dec, directionCode, raString, decString)
+        logger.debug('   Total %24s (%d)  %5.1f minutes  (%.3f, %+.3f radian) %s: %s %s' % (key[0], int(mysrc), key[1], ra, dec, directionCode, raString, decString))
     durations = duration(myscans,nocal=True)
     for key in durations:
-        print '   Total %24s      %5.1f minutes (neglecting pntg, atm & sideband cal. scans)' % (key[0],key[1])
+        logger.debug('   Total %24s      %5.1f minutes (neglecting pntg, atm & sideband cal. scans)' % (key[0],key[1]))
     return
 # Done
 
@@ -364,6 +367,6 @@ def readrx(sdmfile):
         rxid = int(rowrxid[0].childNodes[0].nodeValue)
         rowfreqband = rownode.getElementsByTagName("frequencyBand")
         freqband = str(rowfreqband[0].childNodes[0].nodeValue)
-        print "rxid = %d, freqband = %s" % (rxid,freqband)
+        logger.debug("rxid = %d, freqband = %s" % (rxid,freqband))
     # return the dictionary for later use
     return rxdict
