@@ -5,9 +5,14 @@ import sdmreader, sdmpy
 from collections import OrderedDict
 
 class pipe(object):
-    def __init__(self, sdmfile, fileroot, workdir=''):
-        self.fileroot = fileroot
+    def __init__(self, sdmfile, fileroot='', workdir=''):
         self.sdmfile = os.path.abspath(sdmfile)
+
+        if not fileroot:
+            self.fileroot = os.path.split(os.path.abspath(sdmfile))[1]
+        else:
+            self.fileroot = fileroot
+
         if not workdir:
             self.workdir = os.path.split(self.sdmfile)[0]
         else:
