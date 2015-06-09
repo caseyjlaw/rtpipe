@@ -37,9 +37,8 @@ cpdef beamonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndi
     cdef n.ndarray[CTYPE_t, ndim=2] uu = n.round(u/res).astype(n.int)
     cdef n.ndarray[CTYPE_t, ndim=2] vv = n.round(v/res).astype(n.int)
 
-    if ffttype == 'pyfftw':
-        cdef arr = pyfftw.n_byte_align_empty((npixx,npixy), 16, dtype='complex64')
-        ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)
+    cdef arr = pyfftw.n_byte_align_empty((npixx,npixy), 16, dtype='complex64')
+    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)
 
     ok = n.logical_and(n.abs(uu) < npixx/2, n.abs(vv) < npixy/2)
     uu = n.mod(uu, npixx)
@@ -57,11 +56,8 @@ cpdef beamonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndi
                         nonzeros = nonzeros + 1
 
     # make images and filter based on threshold
-    if ffttype == 'pyfftw':
-        arr[:] = grid[:]
-        im = ifft(arr).real*int(npixx*npixy)/float(nonzeros)
-    else:
-        im = fft.ifft(grid).real*int(npixx*npixy)/float(nonzeros)
+    arr[:] = grid[:]
+    im = ifft(arr).real*int(npixx*npixy)/float(nonzeros)
     im = recenter(im, (npixx/2,npixy/2))
 
     print 'Gridded %.3f of data. Scaling fft by = %.1f' % (float(ok.sum())/ok.size, int(npixx*npixy)/float(nonzeros))
