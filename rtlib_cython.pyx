@@ -876,8 +876,10 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
             summary='Bad basepol flagging for chans %d-%d at %.1f sigma: ants/pols %s/%s, %3.2f %% of total flagged' % (chans[0], chans[-1], sigma, badants, ww[1], 100.*flagged/datacal.size)
 
         else:
+            summary = 'Flagmode not recognized.'
             print 'Not a recognized flag mode.'
     else:
+        summary = 'Data already flagged.'
         print 'Data already flagged.'
 
     return summary
