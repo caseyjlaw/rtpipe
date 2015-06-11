@@ -799,12 +799,14 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
                 blstdstdnew = blstd.std()
 
             # flag blstd too high
-            for i in xrange(iterint):
-                for chan in xrange(len(chans)):
-                    if blstd.data[i,chan] > blstdmednew + sigma*blstdstdnew:     # then measure points to flag based on a third std threshold
-                        flagged += nbl
-                        for j in xrange(nbl):
-                            datacal[i,j,chans[chan],pol] = 0j
+            badint, badchan = n.where(blstd > blstdmednew + sigma*blstdstdnew)
+            for badi in range(len(badint)):
+#            for i in xrange(iterint):
+#                for chan in xrange(len(chans)):
+#                    if blstd.data[i,chan] > blstdmednew + sigma*blstdstdnew:     # then measure points to flag based on a third std threshold
+                flagged += nbl
+                for j in xrange(nbl):
+                    datacal[badint[badi],j,chans[badchan[badi]],pol] = 0j
 
             summary='Blstd flagging for (chans %d-%d, pol %d), %.1f sigma: %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, 100.*flagged/datacal.size)
 
