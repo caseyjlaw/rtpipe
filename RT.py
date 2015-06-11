@@ -514,6 +514,15 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         d['npixx'] = d['npix']
         d['npixy'] = d['npix']
 
+    # define dmarr, if not already
+    if len(d['dmarr']) == 0:
+        if d.has_key('dm_maxloss') and d.has_key('maxdm') and d.has_key('dm_pulsewidth'):
+            d['dmarr'] = calc_dmgrid(d, maxloss=d['dm_maxloss'], maxdm=d['maxdm'], dt=d['dm_pulsewidth'])
+            logger.info('Calculated %d dms for max sensitivity loss %.2f, maxdm %d pc/cm3, and pulse width %d ms' % (len(d['dmarr']), d['dm_maxloss'], d['maxdm'], d['dm_pulsewidth']/1000))
+        else:
+            d['dmarr'] = [0]
+            logger.info('Can\'t calculate dm grid without dm_maxloss, maxdm, and dm_pulsewidth defined. Setting to [0].')
+
     # define times for data to read
     d['t_overlap'] = rtlib.calc_delay(d['freq'], d['inttime'], max(d['dmarr'])).max()*d['inttime']   # time of overlap for total dm coverage at segment boundaries
     d['datadelay'] = n.max([rtlib.calc_delay(d['freq'], d['inttime'],dm).max() for dm in d['dmarr']])
@@ -640,7 +649,7 @@ def move_phasecenter(d, l1, m1, u, v):
 
 def calc_dmgrid(d, maxloss=0.05, dt=3000., mindm=0., maxdm=2000.):
     """ Function to calculate the DM values for a given maximum sensitivity loss.
-    maxloss is sensitivity loss tolerated by dm bin width. dt is assumed pulse width.
+    maxloss is sensitivity loss tolerated by dm bin width. dt is assumed pulse width in microsec.
     """
 
     # parameters
