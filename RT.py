@@ -568,6 +568,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     logger.info('')
 
     logger.info('\t Search with %s and threshold %.1f.' % (d['searchtype'], d['sigma_image1']))
+    logger.info('\t Using %d DMs from %.1f to %.1f and dts %s.' % (len(d['dmarr']), min(d['dmarr']), max(d['dmarr']), d['dtarr']))
     logger.info('\t Using uvgrid npix=(%d,%d) and res=%d.' % (d['npixx'], d['npixy'], d['uvres']))
     logger.info('\t Expect %d thermal false positives per segment.' % nfalse)
 
