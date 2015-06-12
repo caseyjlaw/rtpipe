@@ -1,8 +1,9 @@
 from distutils.core import setup
 from distutils.extension import Extension
 from Cython.Distutils import build_ext
+import numpy
 
-ext_modules = [Extension("rtlib_cython", ["rtlib_cython.pyx"])]
+ext_modules = [Extension("rtlib_cython", ["rtlib_cython.pyx"], include_dirs=[numpy.get_include()])]
 
 setup(
     name = 'rtlib_cython app',

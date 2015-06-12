@@ -13,8 +13,8 @@ class Params(object):
     def  __init__(self, paramfile=''):
     
         # default values
-        self.chans = []; self.spw = []
-        self.dmarr = [0]; self.dtarr = [1]
+        self.chans = []; self.spw = []    
+        self.dmarr = []; self.dtarr = [1]    # dmarr = [] will autodetect, given other parameters
         self.nskip = 0; self.excludeants = []; self.read_tdownsample = 1; self.read_fdownsample = 1
         self.nthread = 8; self.nchunk = 0; self.nsegments = 0
         self.timesub = ''
@@ -24,6 +24,7 @@ class Params(object):
         self.flagmode = ''; self.flagantsol = True
         self.gainfile = ''; self.bpfile = ''; self.fileroot = ''
         self.savenoise = False; self.savecands = False
+        self.dm_maxloss = 0.05; self.maxdm = 100; self.dm_pulsewidth = 3000   # dmloss is fractional sensitivity loss, maxdm in pc/cm3, width in microsec
                            
         # overload with the parameter file values, if provided
         if len(paramfile):
