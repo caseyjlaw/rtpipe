@@ -14,10 +14,6 @@ import logging
 qa = casautil.tools.quanta()
 logger = logging.getLogger('rtpipe')
 logger.setLevel(logging.INFO)
-fh = logging.FileHandler('rtpipe_%d.log' % int(round(time.time())))
-fh.setLevel(logging.INFO)
-fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-logger.addHandler(fh)
 ch = logging.StreamHandler()
 ch.setLevel(logging.INFO)
 logger.addHandler(ch)
@@ -426,6 +422,14 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     This definition does not yet consider memory/cpu/time limitations.
     nsegments defines how to break jobs in time. nchunk defines how many jobs are sent to nthreads.
     """
+
+    
+    workdir = os.path.split(os.path.abspath(filename))[0]
+
+    fh = logging.FileHandler(os.path.join(workdir, 'rtpipe_%d.log' % int(round(time.time()))))
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(fh)
 
     # define metadata (state) dict. chans/spw is special because it goes in to get_metadata call
     if 'chans' in kwargs.keys(): 
