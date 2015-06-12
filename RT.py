@@ -515,9 +515,13 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         d['npixy_full'] = (2**p2y * 3**p3y)[0]
 
     if d['npix'] == 0:
-        d['npixx'] = d['npixx_full']
-        d['npixy'] = d['npixy_full']
-        d['npix'] = max(d['npixx'], d['npixy'])
+        if d.has_key('npix_max'):   # optional 'do not exceed' image specification
+            d['npixx'] = min(d['npix_max'], d['npixx_full'])
+            d['npixy'] = min(d['npix_max'], d['npixy_full'])
+        else:    # otherwise, go with full res
+            d['npixx'] = d['npixx_full']
+            d['npixy'] = d['npixy_full']
+        d['npix'] = max(d['npixx'], d['npixy'])   # this used to define fringe time
     else:
         d['npixx'] = d['npix']
         d['npixy'] = d['npix']
