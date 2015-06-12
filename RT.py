@@ -46,7 +46,7 @@ def pipeline(d, segment, reproducecand=()):
 
     os.chdir(d['workdir'])
 
-    candsfile = 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+    candsfile = 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(segment) + '.pkl'
     if d['savecands'] and os.path.exists(candsfile) and len(reproducecand) == 0:
         logger.error('candsfile %s already exists. Ending processing...' % candsfile)
         return 0
