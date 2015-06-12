@@ -46,6 +46,11 @@ def pipeline(d, segment, reproducecand=()):
 
     os.chdir(d['workdir'])
 
+    candsfile = 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+    if d['savecands'] and os.path.exists(candsfile) and len(reproducecand) == 0:
+        logger.error('candsfile %s already exists. Ending processing...' % candsfile)
+        return 0
+    
     if d['dataformat'] == 'ms':   # CASA-based read
         segread = pm.readsegment(d, segment)
         readints = len(segread[0])
@@ -237,11 +242,10 @@ def search(d, data, u, v, w):
     cands = {}
     resultlist = []
 
-    if d['savecands']:
-        candsfile = 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
-        if os.path.exists(candsfile):
-            logger.warn('candsfile %s already exists' % candsfile)
-            return cands
+    candsfile = 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+    if d['savecands'] and os.path.exists(candsfile):
+        logger.warn('candsfile %s already exists' % candsfile)
+        return cands
 
     readints = len(data)
 #    data_resamp_mem = [mps.RawArray(mps.ctypes.c_float, (readints*d['nbl']*d['nchan']*d['npol'])*2) for resamp in range(len(d['dtarr']))]    # simple shared array
