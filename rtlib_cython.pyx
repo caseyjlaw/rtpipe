@@ -141,8 +141,8 @@ cpdef imgallfullfilterxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t
     cdef unsigned int p
     cdef unsigned int cellu
     cdef unsigned int cellv
-    cdef n.ndarray[DTYPE_t, ndim=3] grid = n.zeros((len0,npixx,npixy), dtype='complex64')
-    cdef arr = pyfftw.n_byte_align_empty((npixx,npixy), 16, dtype='complex64')
+    cdef n.ndarray[DTYPE_t, ndim=3] grid = n.zeros((len0,npixx,npixy), dtype='complex64', order='F')
+    cdef arr = pyfftw.n_byte_align_empty((npixx,npixy), 32, dtype='complex64', order='F')
     cdef float snr
 
     # put uv data on grid

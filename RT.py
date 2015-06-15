@@ -426,10 +426,14 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     
     workdir = os.path.split(os.path.abspath(filename))[0]
 
-    fh = logging.FileHandler(os.path.join(workdir, 'rtpipe_%d.log' % int(round(time.time()))))
-    fh.setLevel(logging.INFO)
-    fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    logger.addHandler(fh)
+    # option of not writing log file (need to improve later)
+    if 'nologfile' in kwargs.keys(): 
+        pass
+    else:
+        fh = logging.FileHandler(os.path.join(workdir, 'rtpipe_%d.log' % int(round(time.time()))))
+        fh.setLevel(logging.INFO)
+        fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logger.addHandler(fh)
 
     # define metadata (state) dict. chans/spw is special because it goes in to get_metadata call
     if 'chans' in kwargs.keys(): 
