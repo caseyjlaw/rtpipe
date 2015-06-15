@@ -264,10 +264,10 @@ def search(d, data, u, v, w):
     # SUBMITTING THE LOOPS
     if n.any(data):
         logger.info('Searching in %d chunks with %d threads' % (d['nchunk'], d['nthread']))
-        logger.info('Dedispering to max (DM, dt) of (%d, %d) ...' % (d['dmarr'][-1], d['dtarr'][-1]), )
+        logger.info('Dedispering to max (DM, dt) of (%d, %d) ...' % (d['dmarr'][-1], d['dtarr'][-1]) )
         for dmind in xrange(len(d['dmarr'])):
             for dtind in xrange(len(d['dtarr'])):
-                logger.info('(%d,%d)' % (d['dmarr'][dmind], d['dtarr'][dtind]),)
+                logger.info('Starting (%d,%d)' % (d['dmarr'][dmind], d['dtarr'][dtind]),)
                 data_resamp[:] = data[:]
                 blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
                 with closing(mp.Pool(d['nthread'], initializer=initpool, initargs=(data_resamp_mem,))) as pool:
@@ -278,10 +278,15 @@ def search(d, data, u, v, w):
                         result.wait()
                     resultlist = []
 
-                    logger.info('Imaging...',)
+                    # set dm-dependent starting int for segment
+                    nskip_dm = (d['datadelay'][-1] - d['datadelay'][dmind]) * (d['segment'] != 0)  # nskip=0 for first segment
+                    searchints = readints - d['datadelay'][dmind] - nskip_dm
+
+                    # submit jobs in chunks of time
                     for chunk in range(d['nchunk']):
-                        i0 = (readints/d['dtarr'][dtind])*chunk/d['nchunk']
-                        i1 = (readints/d['dtarr'][dtind])*(chunk+1)/d['nchunk']
+                        i0 = nskip_dm + (searchints/d['dtarr'][dtind])*chunk/d['nchunk']
+                        i1 = nskip_dm + (searchints/d['dtarr'][dtind])*(chunk+1)/d['nchunk']
+
                         if d['searchtype'] == 'image1':
                             result = pool.apply_async(image1, [d, i0, i1, u, v, w, dmind, dtind, beamnum])
                             resultlist.append(result)
@@ -541,7 +546,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     # define times for data to read
     d['t_overlap'] = rtlib.calc_delay(d['freq'], d['inttime'], max(d['dmarr'])).max()*d['inttime']   # time of overlap for total dm coverage at segment boundaries
-    d['datadelay'] = n.max([rtlib.calc_delay(d['freq'], d['inttime'],dm).max() for dm in d['dmarr']])
+    d['datadelay'] = [rtlib.calc_delay(d['freq'], d['inttime'],dm).max() for dm in d['dmarr']]
     d['nints'] = d['nints'] - d['nskip']
 
     if d['nsegments'] == 0:
@@ -562,6 +567,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     d['t_segment'] = 24*3600*(d['segmenttimes'][0,1]-d['segmenttimes'][0,0])
 
     # scaling of number of integrations beyond dt=1
+    assert all(d['dtarr'])
     dtfactor = n.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
 
     # calculate number of thermal noise candidates per segment
@@ -578,7 +584,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     logger.info('\t Products saved with %s. Calibration files set to (%s, %s)' % (d['fileroot'], d['gainfile'], d['bpfile']))
     logger.info('\t Using %d segment%s of %d ints (%.1f s) with overlap of %.1f s' % (d['nsegments'], "s"[not d['nsegments']-1:], d['t_segment']/(d['inttime']*d['read_tdownsample']), d['t_segment'], d['t_overlap']))
     if d['t_overlap'] > d['t_segment']/3.:
-        logger.info('\t\t **Inefficient search: Max DM sweep (%.1f s) close to segment size (%.1f s)**' % (d['t_overlap'], d['t_segment']))
+        logger.info('\t\t Lots of segments needed, since Max DM sweep (%.1f s) close to segment size (%.1f s)' % (d['t_overlap'], d['t_segment']))
     logger.info('\t Downsampling in time/freq by %d/%d and skipping %d ints from start of scan.' % (d['read_tdownsample'], d['read_fdownsample'], d['nskip']))
     logger.info('\t Excluding ants %s' % (d['excludeants']))
     logger.info('')
@@ -712,8 +718,8 @@ def image1(d, i0, i1, u, v, w, dmind, dtind, beamnum):
             peakl, peakm = n.where(ims[i] == ims[i].min())
         l1 = (d['npixx']/2. - peakl[0])/(d['npixx']*d['uvres'])
         m1 = (d['npixy']/2. - peakm[0])/(d['npixy']*d['uvres'])
-        logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im=%.1f @ (%.2e,%.2e).' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], l1, m1))
-        candid =  (d['segment'], d['nskip']+(i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
+        logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im=%.1f @ (%.2e,%.2e).' % ((i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], l1, m1))
+        candid =  (d['segment'], (i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
 
         # assemble feature in requested order
         ff = []
@@ -774,8 +780,8 @@ def image2(d, i0, i1, u, v, w, dmind, dtind, beamnum):
                 peakl, peakm = n.where(im2 == im2.min())
             l2 = (d['npixx_full']/2. - peakl[0])/(d['npixx_full']*d['uvres'])
             m2 = (d['npixy_full']/2. - peakm[0])/(d['npixy_full']*d['uvres'])
-            logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f @ (%.2e,%.2e).' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2, l2, m2))
-            candid =  (d['segment'], d['nskip']+(i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
+            logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f @ (%.2e,%.2e).' % ((i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2, l2, m2))
+            candid =  (d['segment'], (i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
 
             # assemble feature in requested order
             ff = []
@@ -805,7 +811,7 @@ def image2(d, i0, i1, u, v, w, dmind, dtind, beamnum):
 
             feat[candid] = list(ff)
         else:
-            logger.info('Almost...  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f.' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2))
+            logger.info('Almost...  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f.' % ((i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2))
 
     return feat
 
@@ -852,8 +858,8 @@ def image2w(d, i0, i1, u, v, w, dmind, dtind, beamnum, bls, uvkers):
                 peakl, peakm = n.where(im2 == im2.min())
             l2 = (npix/2. - peakl[0])/(npix*d['uvres'])
             m2 = (npix/2. - peakm[0])/(npix*d['uvres'])
-            logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f @ (%.2e,%.2e).' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2, l2, m2))
-            candid =  (d['segment'], d['nskip']+(i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
+            logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f @ (%.2e,%.2e).' % ((i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2, l2, m2))
+            candid =  (d['segment'], (i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
 
             # assemble feature in requested order
             ff = []
@@ -883,7 +889,7 @@ def image2w(d, i0, i1, u, v, w, dmind, dtind, beamnum, bls, uvkers):
 
             feat[candid] = list(ff)
         else:
-            logger.info('Almost...  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f.' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2))
+            logger.info('Almost...  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f.' % ((i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2))
 
     return feat
 
