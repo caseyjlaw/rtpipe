@@ -714,8 +714,8 @@ def image1(d, i0, i1, u, v, w, dmind, dtind, beamnum):
             peakl, peakm = n.where(ims[i] == ims[i].min())
         l1 = (d['npixx']/2. - peakl[0])/(d['npixx']*d['uvres'])
         m1 = (d['npixy']/2. - peakm[0])/(d['npixy']*d['uvres'])
-        logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im=%.1f @ (%.2e,%.2e).' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], l1, m1))
-        candid =  (d['segment'], d['nskip']+(i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
+        logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im=%.1f @ (%.2e,%.2e).' % ((i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], l1, m1))
+        candid =  (d['segment'], (i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
 
         # assemble feature in requested order
         ff = []
@@ -776,8 +776,8 @@ def image2(d, i0, i1, u, v, w, dmind, dtind, beamnum):
                 peakl, peakm = n.where(im2 == im2.min())
             l2 = (d['npixx_full']/2. - peakl[0])/(d['npixx_full']*d['uvres'])
             m2 = (d['npixy_full']/2. - peakm[0])/(d['npixy_full']*d['uvres'])
-            logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f @ (%.2e,%.2e).' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2, l2, m2))
-            candid =  (d['segment'], d['nskip']+(i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
+            logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f @ (%.2e,%.2e).' % ((i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2, l2, m2))
+            candid =  (d['segment'], (i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
 
             # assemble feature in requested order
             ff = []
@@ -807,7 +807,7 @@ def image2(d, i0, i1, u, v, w, dmind, dtind, beamnum):
 
             feat[candid] = list(ff)
         else:
-            logger.info('Almost...  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f.' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2))
+            logger.info('Almost...  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f.' % ((i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2))
 
     return feat
 
@@ -854,8 +854,8 @@ def image2w(d, i0, i1, u, v, w, dmind, dtind, beamnum, bls, uvkers):
                 peakl, peakm = n.where(im2 == im2.min())
             l2 = (npix/2. - peakl[0])/(npix*d['uvres'])
             m2 = (npix/2. - peakm[0])/(npix*d['uvres'])
-            logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f @ (%.2e,%.2e).' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2, l2, m2))
-            candid =  (d['segment'], d['nskip']+(i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
+            logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f @ (%.2e,%.2e).' % ((i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2, l2, m2))
+            candid =  (d['segment'], (i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
 
             # assemble feature in requested order
             ff = []
@@ -885,7 +885,7 @@ def image2w(d, i0, i1, u, v, w, dmind, dtind, beamnum, bls, uvkers):
 
             feat[candid] = list(ff)
         else:
-            logger.info('Almost...  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f.' % (d['nskip']+(i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2))
+            logger.info('Almost...  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f.' % ((i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2))
 
     return feat
 
