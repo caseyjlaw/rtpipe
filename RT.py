@@ -280,8 +280,17 @@ def search(d, data, u, v, w):
 
                     logger.info('Imaging...',)
                     for chunk in range(d['nchunk']):
-                        i0 = (readints/d['dtarr'][dtind])*chunk/d['nchunk']
-                        i1 = (readints/d['dtarr'][dtind])*(chunk+1)/d['nchunk']
+                        if segment != 0:
+                            # most segments have dm-dependent overlap with previous segment. don't search those ints.
+                            nskip_dm = d['datadelay'][-1] - d['datadelay'][dmind]  
+                            uniqueints = readints - nskip_dm  # shrink nominal ints down to nonrepeated ints
+                            i0 = ((nskip_dm + uniqueints)/d['dtarr'][dtind])*chunk/d['nchunk']
+                            i1 = ((nskip_dm + uniqueints)/d['dtarr'][dtind])*(chunk+1)/d['nchunk']
+                        else:
+                            # for segment=0 just search all
+                            i0 = (readints/d['dtarr'][dtind])*chunk/d['nchunk']
+                            i1 = (readints/d['dtarr'][dtind])*(chunk+1)/d['nchunk']
+
                         if d['searchtype'] == 'image1':
                             result = pool.apply_async(image1, [d, i0, i1, u, v, w, dmind, dtind, beamnum])
                             resultlist.append(result)
