@@ -140,6 +140,101 @@ def pipeline(d, segment, reproducecand=()):
     else:
         logger.error('reproducecand not in expected format: %s' % reproducecand)
 
+def pipeline2(d, segment):
+    """ Playing with pools/shared-memory toward parallel prep/search pipeline.
+    """
+
+    data, u, v, w = pipelineprep(d, segment)  # slow and memory intensive
+
+    nints, nbl, nchan, npol = data.shape
+    data_mem = mps.RawArray(mps.ctypes.c_float, long(nints*nbl*nchan*npol)*2)
+    data = numpyview(data_mem, 'complex64', (nints, nbl, nchan, npol))
+
+    pool = mp.Pool(8, initializer=initpool2, initargs=(data_mem,))
+    cands = search(d, data, u, v, w)   # memory and cpu intensive
+
+    return len(cands)
+
+def pipelineprep(d, segment):
+    """ Single-threaded pipeline for data prep that can be started in a pool.
+    """
+
+    if d['dataformat'] == 'ms':   # CASA-based read
+        segread = pm.readsegment(d, segment)
+        readints = len(segread[0])
+        data = segread[0]
+        (u, v, w) = (segread[1][readints/2], segread[2][readints/2], segread[3][readints/2])  # mid int good enough for segment. could extend this to save per chunk
+        del segread
+    elif d['dataformat'] == 'sdm':
+        t0 = d['segmenttimes'][segment][0]
+        t1 = d['segmenttimes'][segment][1]
+        readints = n.round(24*3600*(t1 - t0)/d['inttime'], 0).astype(int)/d['read_tdownsample']
+        assert readints > 0
+        data = ps.read_bdf_segment(d, segment)
+        (u,v,w) = ps.get_uvw_segment(d, segment)
+
+    try:
+        sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
+        sols.parsebp(d['bpfile'])
+        sols.setselection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'])
+        sols.apply(data, d['blarr'])
+    except IOError:
+        logger.info('Calibration file not found. Proceeding with no calibration applied.')
+
+    # flag data
+    if d['flagmode'] == 'standard':
+        chperspw = len(d['freq_orig'])/len(d['spw'])
+        for pol in range(d['npol']):
+            for spw in range(d['nspw']):
+                freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
+                chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
+                rtlib.dataflag(data, chans, pol, d, 20., 'badcht', 0.3)
+    else:
+        logger.info('No real-time flagging.')
+
+    # mean t vis subtration
+    if d['timesub'] == 'mean':
+        rtlib.meantsub(data, [0, d['nbl']])
+    else:
+        logger.info('No mean time subtraction.')
+
+    if d['savenoise']:
+        noisepickle(d, data, u, v, w)      # save noise pickle
+
+    # optionally phase to new location
+    if any([d['l0'], d['m0']]):
+        logger.info('Rephasing data to (l, m)=(%.3f, %.3f).' % (d['l0'], d['m0']))
+        rtlib.phaseshift_threaded(data, d, d['l0'], d['m0'], u, v)
+
+    return data, u, v, w
+
+def reproducecand(d, segment, candloc = ()):
+
+    data, u, v, w = pipelineprep(d, segment)
+
+    nints, nbl, nchan, npol = data.shape
+    data_mem = mps.RawArray(mps.ctypes.c_float, long(nints*nbl*nchan*npol)*2)  # 'long' type needed to hold whole (2 min, 5 ms) scans
+    data = numpyview(data_mem, 'complex64', (nints, nbl, nchan, npol))
+
+    if len(candloc) == 2:
+        logger.info('Reproducing data...')
+        dmind, dtind = candloc
+        d['dmarr'] = [d['dmarr'][dmind]]
+        d['dtarr'] = [d['dtarr'][dtind]]
+        data = reproduce(d, data_mem, u, v, w)
+        return data
+
+    elif len(candloc) == 3:  # reproduce candidate image and data
+        logger.info('Reproducing candidate...')
+        reproduceint, dmind, dtind = candloc
+        d['dmarr'] = [d['dmarr'][dmind]]
+        d['dtarr'] = [d['dtarr'][dtind]]
+        im, data = reproduce(d, data_mem, u, v, w, reproduceint)
+        return im, data
+
+    else:
+        logger.error('reproducecand not in expected format: %s' % reproducecand)
+
 def meantsubpool(data_mem, d):
     """ Parallelized mean t visibility subtraction.
     """
