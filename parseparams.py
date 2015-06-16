@@ -16,7 +16,7 @@ class Params(object):
         self.chans = []; self.spw = []    
         self.dmarr = []; self.dtarr = [1]    # dmarr = [] will autodetect, given other parameters
         self.nskip = 0; self.excludeants = []; self.read_tdownsample = 1; self.read_fdownsample = 1
-        self.nthread = 8; self.nchunk = 0; self.nsegments = 0
+        self.nthread = 8; self.nchunk = 0; self.nsegments = 0; self.scale_nsegments = 1
         self.timesub = ''
         self.searchtype = 'image1'; self.sigma_image1 = 7.; self.sigma_image2 = 7.
         self.l0 = 0.; self.m0 = 0.

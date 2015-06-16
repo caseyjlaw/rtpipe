@@ -265,12 +265,12 @@ def search(d, data, u, v, w):
     if n.any(data):
         logger.info('Searching in %d chunks with %d threads' % (d['nchunk'], d['nthread']))
         logger.info('Dedispering to max (DM, dt) of (%d, %d) ...' % (d['dmarr'][-1], d['dtarr'][-1]) )
-        for dmind in xrange(len(d['dmarr'])):
-            for dtind in xrange(len(d['dtarr'])):
-                logger.info('Starting (%d,%d)' % (d['dmarr'][dmind], d['dtarr'][dtind]),)
-                data_resamp[:] = data[:]
-                blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
-                with closing(mp.Pool(d['nthread'], initializer=initpool, initargs=(data_resamp_mem,))) as pool:
+        with closing(mp.Pool(d['nthread'], initializer=initpool, initargs=(data_resamp_mem,))) as pool:
+            for dmind in xrange(len(d['dmarr'])):
+                for dtind in xrange(len(d['dtarr'])):
+                    logger.info('Starting (%d,%d)' % (d['dmarr'][dmind], d['dtarr'][dtind]),)
+                    data_resamp[:] = data[:]
+                    blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
                     for blr in blranges:
                         result = pool.apply_async(correct_dmdt, [d, dmind, dtind, blr])
                         resultlist.append(result)
@@ -551,7 +551,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     if d['nsegments'] == 0:
         fringetime = calc_fringetime(d)
-        d['nsegments'] = max(1, int(d['inttime']*(d['nints']-d['nskip'])/(fringetime-d['t_overlap'])))
+        d['nsegments'] = max(1, d['scale_nsegments']*int(d['inttime']*(d['nints']-d['nskip'])/(fringetime-d['t_overlap'])))
 #        stopdts = n.arange(d['nskip']*d['inttime']+d['t_overlap'], d['nints']*d['inttime'], fringetime-d['t_overlap'])[1:] # old way
 #        startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
 
