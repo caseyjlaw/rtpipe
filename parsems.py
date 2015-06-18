@@ -258,7 +258,6 @@ def readsegment(d, segment):
     """ Prepare to read segment of data
     """
 
-    d['segment'] = segment
     # set requested time range based on given parameters
     starttime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['segmenttimes'][segment,0],'d'),form=['ymd'], prec=9)[0], 's'))[0]
     stoptime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['segmenttimes'][segment,1],'d'),form=['ymd'], prec=9)[0], 's'))[0]

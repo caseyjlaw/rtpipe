@@ -162,7 +162,6 @@ def read_bdf_segment(d, segment=-1):
     # define integration range
     if segment != -1:
         assert d.has_key('segmenttimes')
-        d['segment'] = segment
 
         t0 = d['segmenttimes'][segment][0]
         t1 = d['segmenttimes'][segment][1]
@@ -213,11 +212,10 @@ def get_uvw_segment(d, segment=-1):
     if segment != -1:
         assert d.has_key('segmenttimes')
 
-        d['segment'] = segment
         t0 = d['segmenttimes'][segment][0]
         t1 = d['segmenttimes'][segment][1]
         datetime = qa.time(qa.quantity((t1+t0)/2,'d'),form=['ymdhms'], prec=9)[0]
-        logger.info('Calculating uvw for segment %d' % (d['segment']))
+        logger.info('Calculating uvw for segment %d' % (segment))
     else:
         datetime = 0
 
