@@ -147,70 +147,79 @@ def pipeline2(d, segments):
     """
 
     results = {}
-    with closing(mp.Pool(1)) as readpool:   # only one needed for parallel read/process. more would help for quick reads.
+
+    # set up empty shared array to fill
+    dt = d['segmenttimes'][0][1] - d['segmenttimes'][0][0]
+    readints = n.round(24*3600*dt/d['inttime'], 0).astype(int)/d['read_tdownsample']
+    data_read_mem = mps.Array(mps.ctypes.c_float, long(readints*d['nbl']*d['nchan']*d['npol'])*2)
+    data_read = numpyview(data_read_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']), raw=False)
+
+    # only one needed for parallel read/process. more would help for quick reads
+    with closing(mp.Pool(1, initializer=initpool4, initargs=(data_read_mem,))) as readpool:  
         for segment in segments:
+            d['segment'] = segment
             results[segment] = readpool.apply_async(pipelineprep, (d, segment))
 
         for segment, result in results.iteritems():
             print 'waiting on prep of segment %s' % str(segment)
-            data, u, v, w = result.get()   # delay here as large numpy array returned by pickle. how else to return object defined remotely?
+            u, v, w = result.get()   # delay here as large numpy array returned by pickle. how else to return object defined remotely?
 
-            d['segment'] = segment
-            cands = search(d, data, u, v, w)
-            print '%d cands' % len(cands)
+            with data_read_mem.get_lock():
+                cands = search(d, data_read, u, v, w)
+                print '%d cands' % len(cands)
 
 def pipelineprep(d, segment):
     """ Single-threaded pipeline for data prep that can be started in a pool.
     """
 
-    if d['dataformat'] == 'ms':   # CASA-based read
-        segread = pm.readsegment(d, segment)
-        readints = len(segread[0])
-        data = segread[0]
-        (u, v, w) = (segread[1][readints/2], segread[2][readints/2], segread[3][readints/2])  # mid int good enough for segment. could extend this to save per chunk
-        del segread
-    elif d['dataformat'] == 'sdm':
-        t0 = d['segmenttimes'][segment][0]
-        t1 = d['segmenttimes'][segment][1]
-        readints = n.round(24*3600*(t1 - t0)/d['inttime'], 0).astype(int)/d['read_tdownsample']
-        assert readints > 0
-        data = ps.read_bdf_segment(d, segment)
-        (u,v,w) = ps.get_uvw_segment(d, segment)
+    readints = len(data_read_mem)/(d['nbl']*d['nchan']*d['npol']*2)
+    data = numpyview(data_read_mem, 'complex64', (readints, d['nbl'], d['nchan'], d['npol']), raw=False)
 
-    try:
-        sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
-        sols.parsebp(d['bpfile'])
-        sols.setselection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'])
-        sols.apply(data, d['blarr'])
-    except IOError:
-        logger.info('Calibration file not found. Proceeding with no calibration applied.')
+    with data_read_mem.get_lock():
+        if d['dataformat'] == 'ms':   # CASA-based read
+            segread = pm.readsegment(d, segment)
+            readints = len(segread[0])
+            data[:] = segread[0]
+            (u, v, w) = (segread[1][readints/2], segread[2][readints/2], segread[3][readints/2])  # mid int good enough for segment. could extend this to save per chunk
+            del segread
+        elif d['dataformat'] == 'sdm':
+            data[:] = ps.read_bdf_segment(d, segment)
+            (u,v,w) = ps.get_uvw_segment(d, segment)
 
-    # flag data
-    if d['flagmode'] == 'standard':
-        chperspw = len(d['freq_orig'])/len(d['spw'])
-        for pol in range(d['npol']):
-            for spw in range(d['nspw']):
-                freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
-                chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                rtlib.dataflag(data, chans, pol, d, 20., 'badcht', 0.3)
-    else:
-        logger.info('No real-time flagging.')
+        try:
+            sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
+            sols.parsebp(d['bpfile'])
+            sols.setselection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'])
+            sols.apply(data, d['blarr'])
+        except IOError:
+            logger.info('Calibration file not found. Proceeding with no calibration applied.')
 
-    # mean t vis subtration
-    if d['timesub'] == 'mean':
-        rtlib.meantsub(data, [0, d['nbl']])
-    else:
-        logger.info('No mean time subtraction.')
+        # flag data
+        if d['flagmode'] == 'standard':
+            chperspw = len(d['freq_orig'])/len(d['spw'])
+            for pol in range(d['npol']):
+                for spw in range(d['nspw']):
+                    freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
+                    chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
+                    rtlib.dataflag(data, chans, pol, d, 20., 'badcht', 0.3)
+        else:
+            logger.info('No real-time flagging.')
 
-    if d['savenoise']:
-        noisepickle(d, data, u, v, w)      # save noise pickle
+        # mean t vis subtration
+        if d['timesub'] == 'mean':
+            rtlib.meantsub(data, [0, d['nbl']])
+        else:
+            logger.info('No mean time subtraction.')
 
-    # optionally phase to new location
-    if any([d['l0'], d['m0']]):
-        logger.info('Rephasing data to (l, m)=(%.3f, %.3f).' % (d['l0'], d['m0']))
-        rtlib.phaseshift_threaded(data, d, d['l0'], d['m0'], u, v)
+        if d['savenoise']:
+            noisepickle(d, data, u, v, w)      # save noise pickle
 
-    return data, u, v, w
+        # optionally phase to new location
+        if any([d['l0'], d['m0']]):
+            logger.info('Rephasing data to (l, m)=(%.3f, %.3f).' % (d['l0'], d['m0']))
+            rtlib.phaseshift_threaded(data, d, d['l0'], d['m0'], u, v)
+
+    return u, v, w
 
 def reproducecand(d, segment, candloc = ()):
 
@@ -1094,12 +1103,14 @@ def savecands(d, cands):
     pickle.dump(cands, pkl)
     pkl.close()
 
-def numpyview(arr, datatype, shape):
+def numpyview(arr, datatype, shape, raw=True):
     """ Takes mp shared array and returns numpy array with given shape.
     """
 
-#    return n.frombuffer(arr.get_obj(), dtype=n.dtype(datatype)).view(n.dtype(datatype)).reshape(shape)  # for shared mp.Array
-    return n.frombuffer(arr, dtype=n.dtype(datatype)).view(n.dtype(datatype)).reshape(shape)   # for shared mps.RawArray
+    if raw:
+        return n.frombuffer(arr, dtype=n.dtype(datatype)).view(n.dtype(datatype)).reshape(shape)   # for shared mps.RawArray
+    else:
+        return n.frombuffer(arr.get_obj(), dtype=n.dtype(datatype)).view(n.dtype(datatype)).reshape(shape)  # for shared mp.Array
 
 def initpool(shared_arr_):
     global data_resamp_mem
@@ -1114,4 +1125,8 @@ def initpool3(shared_arr_, shared_arr_list):
     data_mem = shared_arr_ # must be inhereted, not passed as an argument
     data_resamp_mem = shared_arr_list[0]
     data_resamp2_mem = shared_arr_list[1]
+
+def initpool4(shared_arr_):
+    global data_read_mem
+    data_read_mem = shared_arr_ # must be inhereted, not passed as an argument
 
