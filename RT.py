@@ -13,10 +13,11 @@ import logging
 # setup CASA and logging
 qa = casautil.tools.quanta()
 logger = logging.getLogger('rtpipe')
-logger.setLevel(logging.INFO)
-ch = logging.StreamHandler()
-ch.setLevel(logging.INFO)
-logger.addHandler(ch)
+if not len(logger.handlers):
+    logger.setLevel(logging.INFO)
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+    logger.addHandler(ch)
 
 def pipeline(d, segment, reproducecand=()):
     """ Transient search pipeline running on single node.
@@ -108,6 +109,7 @@ def pipeline(d, segment, reproducecand=()):
     ####    ####    ####    ####
     # 3) Search using all threads
     ####    ####    ####    ####
+    d['segment'] = segment
     if len(reproducecand) == 0:
         logger.info('Starting search...')
         cands = search(d, data, u, v, w)
