@@ -166,6 +166,8 @@ def pipeline2(d, segments):
             d['segment'] = segment
             results[segment] = readpool.apply_async(pipelineprep, (d, segment))   # no need for segment here? need to think through structure...
 
+            # not clear that this won't just overwrite itself if search takes forever...
+
         for segment in segments:
             results[segment].wait()
             with data_read_mem.get_lock():
@@ -377,12 +379,13 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
         logger.info('Dedispering to max (DM, dt) of (%d, %d) ...' % (d['dmarr'][-1], d['dtarr'][-1]) )
 
         # set up shared memory spaces
-        data_resamp_list = [mps.RawArray(mps.ctypes.c_float, datasize(d)*2), mps.RawArray(mps.ctypes.c_float, datasize(d)*2)]
-        memspace = 0   # iterator to define which shared memory space to use
+#        data_resamp_list = [mps.RawArray(mps.ctypes.c_float, datasize(d)*2), mps.RawArray(mps.ctypes.c_float, datasize(d)*2)]
+        data_resamp_mem = mps.RawArray(mps.ctypes.c_float, datasize(d)*2)
 
         # open pool
         # potential to parallelize access to two memspaces?
-        with closing(mp.Pool(d['nthread'], initializer=initpool3, initargs=(data_mem, data_resamp_list))) as pool:
+#        with closing(mp.Pool(d['nthread'], initializer=initpool3, initargs=(data_mem, data_resamp_list))) as pool:
+        with closing(mp.Pool(d['nthread'], initializer=initresamp, initargs=(data_mem, data_resamp_mem))) as pool:
             for dmind in xrange(len(d['dmarr'])):
                 for dtind in xrange(len(d['dtarr'])):
                     logger.info('Dedispersing (%d,%d)' % (d['dmarr'][dmind], d['dtarr'][dtind]),)
@@ -392,12 +395,16 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
                     searchints = d['readints'] - d['datadelay'][dmind] - nskip_dm
 
                     # set partial functions for pool.map
-                    correctpart = partial(correct_dmdt2, d, dmind, dtind, memspace)
-                    image1part = partial(image1, d, u, v, w, dmind, dtind, beamnum, memspace)
+                    correctpart = partial(correct_dmdt2, d, dmind, dtind)
+                    image1part = partial(image1, d, u, v, w, dmind, dtind, beamnum)
 
                     # dedispersion in shared memory, mapped over baselines
                     blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
                     dedispresults = pool.map(correctpart, blranges)
+
+                    logger.info('dedispersion done. sleeping...')
+                    time.sleep(90)
+                    logger.info('sleeping done')
 
                     # imaging in shared memory, mapped over ints
                     irange = [(nskip_dm + (searchints/d['dtarr'][dtind])*chunk/d['nchunk'], nskip_dm + (searchints/d['dtarr'][dtind])*(chunk+1)/d['nchunk']) for chunk in range(d['nchunk'])]
@@ -407,8 +414,6 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
                     for imageresult in imageresults:
                         for kk in imageresult.keys():
                             cands[kk] = imageresult[kk]
-
-                    memspace = not memspace # toggle memspace
 
     else:
         logger.warn('Data for processing is zeros. Moving on...')
@@ -749,23 +754,15 @@ def correct_dmdt(d, dmind, dtind, blr):
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
     rtlib.dedisperse_resample(data_resamp, d['freq'], d['inttime'], d['dmarr'][dmind], d['dtarr'][dtind], blr, verbose=0)        # dedisperses data.
 
-def correct_dmdt2(d, dmind, dtind, memspace, blrange):
+def correct_dmdt2(d, dmind, dtind, blrange):
     """ Dedisperses and resamples data *in place*.
     Drops edges, since it assumes that data is read with overlapping chunks in time.
-    memspace says which data_resamp array to work on (0,1)
     """
 
     data = numpyview(data_mem, 'complex64', datashape(d), raw=False)
-    if memspace == 0:
-        data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
-        data_resamp[:] = data[:]
-        rtlib.dedisperse_resample(data_resamp, d['freq'], d['inttime'], d['dmarr'][dmind], d['dtarr'][dtind], blrange, verbose=0)        # dedisperses data.
-    elif memspace == 1:
-        data_resamp2 = numpyview(data_resamp2_mem, 'complex64', datashape(d))
-        data_resamp2[:] = data[:]
-        rtlib.dedisperse_resample(data_resamp2, d['freq'], d['inttime'], d['dmarr'][dmind], d['dtarr'][dtind], blrange, verbose=0)        # dedisperses data.
-    else:
-        print 'Invalid memspace value (0 or 1)'
+    data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
+    data_resamp[:] = data[:]
+    rtlib.dedisperse_resample(data_resamp, d['freq'], d['inttime'], d['dmarr'][dmind], d['dtarr'][dtind], blrange, verbose=0)        # dedisperses data.
 
 def calc_lm(d, im, pix=()):
     """ Helper function to calculate location of image pixel in (l,m) coords.
@@ -817,7 +814,7 @@ def calc_dmgrid(d, maxloss=0.05, dt=3000., mindm=0., maxdm=2000.):
 
     return dmgrid_final
 
-def image1(d, u, v, w, dmind, dtind, beamnum, memspace, irange):
+def image1(d, u, v, w, dmind, dtind, beamnum, irange):
     """ Parallelizable function for imaging a chunk of data for a single dm.
     Assumes data is dedispersed and resampled, so this just images each integration.
     Simple one-stage imaging that returns dict of params.
@@ -825,16 +822,9 @@ def image1(d, u, v, w, dmind, dtind, beamnum, memspace, irange):
     """
 
     i0, i1 = irange
-
-    if memspace == 0:
-        data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
-    elif memspace == 1:
-        data_resamp = numpyview(data_resamp2_mem, 'complex64', datashape(d))
-    else:
-        print 'not valid memspace'
+    data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
 
     ims,snr,candints = rtlib.imgallfullfilterxyflux(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[i0:i1], d['npixx'], d['npixy'], d['uvres'], d['sigma_image1'])
-
 
     feat = {}
     for i in xrange(len(candints)):
@@ -1110,19 +1100,14 @@ def numpyview(arr, datatype, shape, raw=True):
     else:
         return n.frombuffer(arr.get_obj(), dtype=n.dtype(datatype)).view(n.dtype(datatype)).reshape(shape)  # for shared mp.Array
 
-def initpool(shared_arr_):
-    global data_resamp_mem
-    data_resamp_mem = shared_arr_ # must be inhereted, not passed as an argument
-
 def initpool2(shared_arr_):
     global data_mem
     data_mem = shared_arr_ # must be inhereted, not passed as an argument
 
-def initpool3(shared_arr_, shared_arr_list):
-    global data_mem, data_resamp_mem, data_resamp2_mem
-    data_mem = shared_arr_ # must be inhereted, not passed as an argument
-    data_resamp_mem = shared_arr_list[0]
-    data_resamp2_mem = shared_arr_list[1]
+def initresamp(shared_arr_, shared_arr2_):
+    global data_mem, data_resamp_mem
+    data_mem = shared_arr_
+    data_resamp_mem = shared_arr2_
 
 def initread(shared_arr1_, shared_arr2_, shared_arr3_, shared_arr4_):
     global data_read_mem, u_read_mem, v_read_mem, w_read_mem
