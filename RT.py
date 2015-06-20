@@ -142,54 +142,52 @@ def pipeline2(d, segments):
     """
 
     # set up shared arrays to fill
-    u_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
-    u_read = numpyview(u_read_mem, 'float32', d['nbl'], raw=False)
-    u_mem = mps.RawArray(mps.ctypes.c_float, d['nbl'])
-    u = numpyview(u_mem, 'float32', d['nbl'], raw=True)
-    v_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
-    v_read = numpyview(v_read_mem, 'float32', d['nbl'], raw=False)
-    v_mem = mps.RawArray(mps.ctypes.c_float, d['nbl'])
-    v = numpyview(v_mem, 'float32', d['nbl'], raw=True)
-    w_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
-    w_read = numpyview(w_read_mem, 'float32', d['nbl'], raw=False)
-    w_mem = mps.RawArray(mps.ctypes.c_float, d['nbl'])
-    w = numpyview(w_mem, 'float32', d['nbl'], raw=True)
     data_read_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
-    data_read = numpyview(data_read_mem, 'complex64', datashape(d), raw=False)
     data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
-    data = numpyview(data_mem, 'complex64', datashape(d), raw=False)
+    u_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    u_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    v_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    v_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    w_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    w_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
 
     results = {}
     # only one needed for parallel read/process. more would help for quick reads
-    with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem))) as readpool:  
+    with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
         for segment in segments:
-            d['segment'] = segment
             results[segment] = readpool.apply_async(pipelineprep, (d, segment))   # no need for segment here? need to think through structure...
-
-            # not clear that this won't just overwrite itself if search takes forever...
+        logger.info('pipeline2 submitted all segment prep jobs')
 
         for segment in segments:
-            results[segment].wait()
-            with data_read_mem.get_lock():
-                print 'data_read unlocked for segment %d' % segment
-                data[:] = data_read[:]
-                u[:] = u_read[:]; v[:] = v_read[:]; w[:] = w_read[:]
-                print 'data_read copied into data'
-
+            logger.info('pipeline2 waiting on prep to complete for segment %d' % segment)
+            d = results[segment].get()   # returning d is a hack here
+            logger.info('pipeline2 wait complete for %d. now sleeping' % segment)
+            time.sleep(1)      # does waiting here allows readpool to overwrite data_read?
+            logger.info('pipeline2 waiting on data lock for %d' % segment)
             with data_mem.get_lock():
+                data = numpyview(data_mem, 'complex64', datashape(d)) # optional
+                logger.info('pipeline2 data unlocked. starting search for %d. data = %s' % (segment, str(data.mean())))
                 cands = search(d, data_mem, u_mem, v_mem, w_mem)
-                print '%d cands' % len(cands)
 
 def pipelineprep(d, segment):
     """ Single-threaded pipeline for data prep that can be started in a pool.
     """
 
+    d['segment'] = segment  # need to think more carefully of how to set this in d
+
+    logger.info('pipelineprep starting for segment %d' % segment)
     data_read = numpyview(data_read_mem, 'complex64', datashape(d), raw=False)
     u_read = numpyview(u_read_mem, 'float32', d['nbl'], raw=False)
     v_read = numpyview(v_read_mem, 'float32', d['nbl'], raw=False)
     w_read = numpyview(w_read_mem, 'float32', d['nbl'], raw=False)
+    u = numpyview(u_read_mem, 'float32', d['nbl'], raw=False)
+    v = numpyview(v_read_mem, 'float32', d['nbl'], raw=False)
+    w = numpyview(w_read_mem, 'float32', d['nbl'], raw=False)
+    data = numpyview(data_read_mem, 'complex64', datashape(d), raw=False)
 
+    logger.info('pipelineprep at data_read lock for %d. data_read = %s' % (segment, str(data_read.mean())))
     with data_read_mem.get_lock():
+        logger.info('pipelineprep entering data_read lock for %d' % segment)
         if d['dataformat'] == 'ms':   # CASA-based read
             segread = pm.readsegment(d, segment)
             data_read[:] = segread[0]
@@ -231,6 +229,18 @@ def pipelineprep(d, segment):
         if any([d['l0'], d['m0']]):
             logger.info('Rephasing data to (l, m)=(%.3f, %.3f).' % (d['l0'], d['m0']))
             rtlib.phaseshift_threaded(data_read, d, d['l0'], d['m0'], u, v)
+
+        logger.info('pipelineprep finished data_read mods for segment %d. data_read = %s' % (segment, str(data_read.mean())))
+        logger.info('pipelineprep now waiting on data lock for segment %d' % segment)
+
+        with data_mem.get_lock():
+            logger.info('pipelineprep data_read unlocked for segment %d. data_read = %s' % (segment, str(data_read.mean())))
+            data[:] = data_read[:]
+            u[:] = u_read[:]; v[:] = v_read[:]; w[:] = w_read[:]
+            logger.info('pipelineprep data_read copied into data')
+    logger.info('pipelineprep unlocked all data for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
+
+    return d
 
 def reproducecand(d, segment, candloc = ()):
 
@@ -352,10 +362,11 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
     Assumes shared memory system with single uvw grid for all images.
     """
 
-    data = numpyview(data_mem, 'complex64', datashape(d), raw=False)
-    u = numpyview(u_mem, 'float32', d['nbl'], raw=True)
-    v = numpyview(v_mem, 'float32', d['nbl'], raw=True)
-    w = numpyview(w_mem, 'float32', d['nbl'], raw=True)
+    data = numpyview(data_mem, 'complex64', datashape(d))
+    logger.info('search of segment %d and data = %s' % (d['segment'], str(data.mean())))
+    u = numpyview(u_mem, 'float32', d['nbl'])
+    v = numpyview(v_mem, 'float32', d['nbl'])
+    w = numpyview(w_mem, 'float32', d['nbl'])
 
     beamnum = 0
     cands = {}
@@ -403,7 +414,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
                     dedispresults = pool.map(correctpart, blranges)
 
                     logger.info('dedispersion done. sleeping...')
-                    time.sleep(90)
+                    time.sleep(1)
                     logger.info('sleeping done')
 
                     # imaging in shared memory, mapped over ints
@@ -759,7 +770,7 @@ def correct_dmdt2(d, dmind, dtind, blrange):
     Drops edges, since it assumes that data is read with overlapping chunks in time.
     """
 
-    data = numpyview(data_mem, 'complex64', datashape(d), raw=False)
+    data = numpyview(data_mem, 'complex64', datashape(d))
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
     data_resamp[:] = data[:]
     rtlib.dedisperse_resample(data_resamp, d['freq'], d['inttime'], d['dmarr'][dmind], d['dtarr'][dtind], blrange, verbose=0)        # dedisperses data.
@@ -1091,7 +1102,7 @@ def datashape(d):
 def datasize(d):
     return long(d['readints']*d['nbl']*d['nchan']*d['npol'])
 
-def numpyview(arr, datatype, shape, raw=True):
+def numpyview(arr, datatype, shape, raw=False):
     """ Takes mp shared array and returns numpy array with given shape.
     """
 
@@ -1109,9 +1120,13 @@ def initresamp(shared_arr_, shared_arr2_):
     data_mem = shared_arr_
     data_resamp_mem = shared_arr2_
 
-def initread(shared_arr1_, shared_arr2_, shared_arr3_, shared_arr4_):
-    global data_read_mem, u_read_mem, v_read_mem, w_read_mem
+def initread(shared_arr1_, shared_arr2_, shared_arr3_, shared_arr4_, shared_arr5_, shared_arr6_, shared_arr7_, shared_arr8_):
+    global data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem
     data_read_mem = shared_arr1_  # must be inhereted, not passed as an argument
     u_read_mem = shared_arr2_
     v_read_mem = shared_arr3_
     w_read_mem = shared_arr4_
+    data_mem = shared_arr5_
+    u_mem = shared_arr6_
+    v_mem = shared_arr7_
+    w_mem = shared_arr8_
