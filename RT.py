@@ -151,22 +151,22 @@ def pipeline2(d, segments):
     w_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
     w_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
 
+    data = numpyview(data_mem, 'complex64', datashape(d)) # optional
+    data_read = numpyview(data_read_mem, 'complex64', datashape(d)) # optional
+                
     results = {}
     # only one needed for parallel read/process. more would help for quick reads
     with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
         for segment in segments:
             results[segment] = readpool.apply_async(pipelineprep, (d, segment))   # no need for segment here? need to think through structure...
-        logger.info('pipeline2 submitted all segment prep jobs')
+        logger.debug('pipeline2 submitted all segment prep jobs')
 
         for segment in segments:
-            logger.info('pipeline2 waiting on prep to complete for segment %d' % segment)
+            logger.debug('pipeline2 waiting on prep to complete for segment %d' % segment)
             d = results[segment].get()   # returning d is a hack here
-            logger.info('pipeline2 wait complete for %d. now sleeping' % segment)
-            time.sleep(1)      # does waiting here allows readpool to overwrite data_read?
-            logger.info('pipeline2 waiting on data lock for %d' % segment)
+            logger.debug('pipeline2 got result. now waiting on data lock for %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
             with data_mem.get_lock():
-                data = numpyview(data_mem, 'complex64', datashape(d)) # optional
-                logger.info('pipeline2 data unlocked. starting search for %d. data = %s' % (segment, str(data.mean())))
+                logger.debug('pipeline2 data unlocked. starting search for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
                 cands = search(d, data_mem, u_mem, v_mem, w_mem)
 
 def pipelineprep(d, segment):
@@ -175,19 +175,19 @@ def pipelineprep(d, segment):
 
     d['segment'] = segment  # need to think more carefully of how to set this in d
 
-    logger.info('pipelineprep starting for segment %d' % segment)
+    logger.debug('pipelineprep starting for segment %d' % segment)
     data_read = numpyview(data_read_mem, 'complex64', datashape(d), raw=False)
     u_read = numpyview(u_read_mem, 'float32', d['nbl'], raw=False)
     v_read = numpyview(v_read_mem, 'float32', d['nbl'], raw=False)
     w_read = numpyview(w_read_mem, 'float32', d['nbl'], raw=False)
-    u = numpyview(u_read_mem, 'float32', d['nbl'], raw=False)
-    v = numpyview(v_read_mem, 'float32', d['nbl'], raw=False)
-    w = numpyview(w_read_mem, 'float32', d['nbl'], raw=False)
-    data = numpyview(data_read_mem, 'complex64', datashape(d), raw=False)
+    u = numpyview(u_mem, 'float32', d['nbl'], raw=False)
+    v = numpyview(v_mem, 'float32', d['nbl'], raw=False)
+    w = numpyview(w_mem, 'float32', d['nbl'], raw=False)
+    data = numpyview(data_mem, 'complex64', datashape(d), raw=False)
 
-    logger.info('pipelineprep at data_read lock for %d. data_read = %s' % (segment, str(data_read.mean())))
+    logger.debug('pipelineprep at data_read lock for %d. data_read = %s' % (segment, str(data_read.mean())))
     with data_read_mem.get_lock():
-        logger.info('pipelineprep entering data_read lock for %d' % segment)
+        logger.debug('pipelineprep entering data_read lock for %d' % segment)
         if d['dataformat'] == 'ms':   # CASA-based read
             segread = pm.readsegment(d, segment)
             data_read[:] = segread[0]
@@ -230,15 +230,13 @@ def pipelineprep(d, segment):
             logger.info('Rephasing data to (l, m)=(%.3f, %.3f).' % (d['l0'], d['m0']))
             rtlib.phaseshift_threaded(data_read, d, d['l0'], d['m0'], u, v)
 
-        logger.info('pipelineprep finished data_read mods for segment %d. data_read = %s' % (segment, str(data_read.mean())))
-        logger.info('pipelineprep now waiting on data lock for segment %d' % segment)
-
+        logger.debug('pipelineprep finished data_read mods and waiting for data lock for segment %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
         with data_mem.get_lock():
-            logger.info('pipelineprep data_read unlocked for segment %d. data_read = %s' % (segment, str(data_read.mean())))
+            logger.debug('pipelineprep data_read unlocked for segment %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
             data[:] = data_read[:]
             u[:] = u_read[:]; v[:] = v_read[:]; w[:] = w_read[:]
-            logger.info('pipelineprep data_read copied into data')
-    logger.info('pipelineprep unlocked all data for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
+            logger.debug('pipelineprep copied into data for segment %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
+    logger.debug('pipelineprep unlocked all data for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
 
     return d
 
@@ -280,7 +278,7 @@ def meantsubpool(data_mem, d):
 
 def meantsub(blr, d):
     """ Wrapper function for rtlib.meantsub
-    Assumes data_mem is global mps.RawArray
+    Assumes data_mem is global mps.Array
     """
 
     data = numpyview(data_mem, 'complex64', datashape(d))
@@ -348,7 +346,7 @@ def dataflagpool(data_mem, d):
 
 def dataflag(chans, pol, d, sig, mode, conv):
     """ Wrapper function to get shared memory as numpy array into pool
-    Assumes data_mem is global mps.RawArray
+    Assumes data_mem is global mps.Array
     """
 
     data = numpyview(data_mem, 'complex64', datashape(d))
@@ -363,7 +361,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
     """
 
     data = numpyview(data_mem, 'complex64', datashape(d))
-    logger.info('search of segment %d and data = %s' % (d['segment'], str(data.mean())))
+    logger.debug('search of segment %d and data = %s' % (d['segment'], str(data.mean())))
     u = numpyview(u_mem, 'float32', d['nbl'])
     v = numpyview(v_mem, 'float32', d['nbl'])
     w = numpyview(w_mem, 'float32', d['nbl'])
@@ -391,7 +389,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
 
         # set up shared memory spaces
 #        data_resamp_list = [mps.RawArray(mps.ctypes.c_float, datasize(d)*2), mps.RawArray(mps.ctypes.c_float, datasize(d)*2)]
-        data_resamp_mem = mps.RawArray(mps.ctypes.c_float, datasize(d)*2)
+        data_resamp_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
 
         # open pool
         # potential to parallelize access to two memspaces?
@@ -412,10 +410,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
                     # dedispersion in shared memory, mapped over baselines
                     blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
                     dedispresults = pool.map(correctpart, blranges)
-
-                    logger.info('dedispersion done. sleeping...')
-                    time.sleep(1)
-                    logger.info('sleeping done')
+                    logger.debug('dedispersion done.')
 
                     # imaging in shared memory, mapped over ints
                     irange = [(nskip_dm + (searchints/d['dtarr'][dtind])*chunk/d['nchunk'], nskip_dm + (searchints/d['dtarr'][dtind])*(chunk+1)/d['nchunk']) for chunk in range(d['nchunk'])]
