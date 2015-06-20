@@ -20,7 +20,7 @@ if not len(logger.handlers):
     ch.setLevel(logging.INFO)
     logger.addHandler(ch)
 
-def pipeline(d, segment, reproducecand=()):
+def pipeline(d, segments):
     """ Transient search pipeline running on single node.
     Processes a single segment of data (where a single bgsub, (u,v,w), etc. can be used).
     Searches completely, independently, and saves candidates.
@@ -36,109 +36,6 @@ def pipeline(d, segment, reproducecand=()):
     3) Search using all threads
     -- Option for plug-and-play detection algorithm and multiple filters
     4) Save candidate and noise info, if requested
-    """
-
-    ####    ####    ####    ####
-    # 1) Read data
-    ####    ####    ####    ####
-
-    os.chdir(d['workdir'])
-
-    candsfile = 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(segment) + '.pkl'
-    if d['savecands'] and os.path.exists(candsfile) and len(reproducecand) == 0:
-        logger.error('candsfile %s already exists. Ending processing...' % candsfile)
-        return 0
-    
-    if d['dataformat'] == 'ms':   # CASA-based read
-        segread = pm.readsegment(d, segment)
-        data_mem = mps.RawArray(mps.ctypes.c_float, datasize(d)*2)
-        data = numpyview(data_mem, 'complex64', datashape(d))
-        data[:] = segread[0]
-        (u, v, w) = (segread[1][d['readints']/2], segread[2][d['readints']/2], segread[3][d['readints']/2])  # mid int good enough for segment. could extend this to save per chunk
-        del segread
-
-    elif d['dataformat'] == 'sdm':
-        assert d['readints'] > 0
-
-        # for shared mem
-        data_mem = mps.RawArray(mps.ctypes.c_float, datasize(d)*2)  # 'long' type needed to hold whole (2 min, 5 ms) scans
-        data = numpyview(data_mem, 'complex64', datashape(d))
-
-        data[:] = ps.read_bdf_segment(d, segment)
-        (u,v,w) = ps.get_uvw_segment(d, segment)
-    else:
-        logger.error('Data format %s not supported.' % d['dataformat'])
-
-    ####    ####    ####    ####
-    # 2) Prepare data
-    ####    ####    ####    ####
-
-    # calibrate data
-    try:
-        sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
-        sols.parsebp(d['bpfile'])
-        sols.setselection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'])
-        sols.apply(data, d['blarr'])
-    except IOError:
-        logger.info('Calibration file not found. Proceeding with no calibration applied.')
-
-    # flag data
-    if d['flagmode'] == 'standard':
-        dataflagpool(data_mem, d)
-    else:
-        logger.info('No real-time flagging.')
-
-    # mean t vis subtration
-    if d['timesub'] == 'mean':
-        meantsubpool(data_mem, d)
-    else:
-        logger.info('No mean time subtraction.')
-
-    if d['savenoise']:
-        noisepickle(d, data, u, v, w)      # save noise pickle
-
-    # optionally phase to new location
-    if any([d['l0'], d['m0']]):
-        logger.info('Rephasing data to (l, m)=(%.3f, %.3f).' % (d['l0'], d['m0']))
-        rtlib.phaseshift_threaded(data, d, d['l0'], d['m0'], u, v)
-
-    ####    ####    ####    ####
-    # 3) Search using all threads
-    ####    ####    ####    ####
-    if len(reproducecand) == 0:
-        logger.info('Starting search...')
-        cands = search(d, data, u, v, w)
-
-        ####    ####    ####    ####
-        # 4) Save candidate info
-        ####    ####    ####    ####
-        if d['savecands']:
-            logger.info('Saving %d candidates...' % (len(cands)))
-            savecands(d, cands)
-
-        return len(cands)
-
-    elif len(reproducecand) == 2:  # reproduce data
-        logger.info('Reproducing data...')
-        dmind, dtind = reproducecand
-        d['dmarr'] = [d['dmarr'][dmind]]
-        d['dtarr'] = [d['dtarr'][dtind]]
-        data = reproduce(d, data_mem, u, v, w)
-        return data
-
-    elif len(reproducecand) == 3:  # reproduce candidate image and data
-        logger.info('Reproducing candidate...')
-        reproduceint, dmind, dtind = reproducecand
-        d['dmarr'] = [d['dmarr'][dmind]]
-        d['dtarr'] = [d['dtarr'][dtind]]
-        im, data = reproduce(d, data_mem, u, v, w, reproduceint)
-        return im, data
-
-    else:
-        logger.error('reproducecand not in expected format: %s' % reproducecand)
-
-def pipeline2(d, segments):
-    """ Playing with pools/shared-memory toward parallel prep/search pipeline.
     """
 
     # set up shared arrays to fill
@@ -157,10 +54,13 @@ def pipeline2(d, segments):
     results = {}
     # only one needed for parallel read/process. more would help for quick reads
     with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
+
+        # submit all segments to pool of 1. locking data should keep this from running away.
         for segment in segments:
-            results[segment] = readpool.apply_async(pipelineprep, (d, segment))   # no need for segment here? need to think through structure...
+            results[segment] = readpool.apply_async(pipeline_dataprep, (d, segment))   # no need for segment here? need to think through structure...
         logger.debug('pipeline2 submitted all segment prep jobs')
 
+        # step through pool of jobs and pull data off as ready. this allows pool to continue to next segment.
         for segment in segments:
             logger.debug('pipeline2 waiting on prep to complete for segment %d' % segment)
             d = results[segment].get()   # returning d is a hack here
@@ -169,13 +69,18 @@ def pipeline2(d, segments):
                 logger.debug('pipeline2 data unlocked. starting search for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
                 cands = search(d, data_mem, u_mem, v_mem, w_mem)
 
-def pipelineprep(d, segment):
+def pipeline_dataprep(d, segment):
     """ Single-threaded pipeline for data prep that can be started in a pool.
     """
 
+    candsfile = 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(segment) + '.pkl'
+    if d['savecands'] and os.path.exists(candsfile) and len(reproducecand) == 0:
+        logger.error('candsfile %s already exists. Ending processing...' % candsfile)
+        return d
+    
     d['segment'] = segment  # need to think more carefully of how to set this in d
 
-    logger.debug('pipelineprep starting for segment %d' % segment)
+    logger.debug('prep starting for segment %d' % segment)
     data_read = numpyview(data_read_mem, 'complex64', datashape(d), raw=False)
     u_read = numpyview(u_read_mem, 'float32', d['nbl'], raw=False)
     v_read = numpyview(v_read_mem, 'float32', d['nbl'], raw=False)
@@ -185,9 +90,13 @@ def pipelineprep(d, segment):
     w = numpyview(w_mem, 'float32', d['nbl'], raw=False)
     data = numpyview(data_mem, 'complex64', datashape(d), raw=False)
 
-    logger.debug('pipelineprep at data_read lock for %d. data_read = %s' % (segment, str(data_read.mean())))
+    ####    ####    ####    ####
+    # 1) Read data
+    ####    ####    ####    ####
+
+    logger.debug('prep at data_read lock for %d. data_read = %s' % (segment, str(data_read.mean())))
     with data_read_mem.get_lock():
-        logger.debug('pipelineprep entering data_read lock for %d' % segment)
+        logger.debug('prep entering data_read lock for %d' % segment)
         if d['dataformat'] == 'ms':   # CASA-based read
             segread = pm.readsegment(d, segment)
             data_read[:] = segread[0]
@@ -197,6 +106,11 @@ def pipelineprep(d, segment):
             data_read[:] = ps.read_bdf_segment(d, segment)
             (u_read[:], v_read[:], w_read[:]) = ps.get_uvw_segment(d, segment)
 
+    ####    ####    ####    ####
+    # 2) Prepare data
+    ####    ####    ####    ####
+
+        # calibrate data
         try:
             sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
             sols.parsebp(d['bpfile'])
@@ -207,18 +121,13 @@ def pipelineprep(d, segment):
 
         # flag data
         if d['flagmode'] == 'standard':
-            chperspw = len(d['freq_orig'])/len(d['spw'])
-            for pol in range(d['npol']):
-                for spw in range(d['nspw']):
-                    freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
-                    chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                    rtlib.dataflag(data_read, chans, pol, d, 20., 'badcht', 0.3)
+            dataflag(d, data_read)
         else:
             logger.info('No real-time flagging.')
 
         # mean t vis subtration
         if d['timesub'] == 'mean':
-            rtlib.meantsub(data_read, [0, d['nbl']])
+            meantsub(d, data_read)
         else:
             logger.info('No mean time subtraction.')
 
@@ -230,22 +139,39 @@ def pipelineprep(d, segment):
             logger.info('Rephasing data to (l, m)=(%.3f, %.3f).' % (d['l0'], d['m0']))
             rtlib.phaseshift_threaded(data_read, d, d['l0'], d['m0'], u, v)
 
-        logger.debug('pipelineprep finished data_read mods and waiting for data lock for segment %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
+        logger.debug('prep finished data_read mods and waiting for data lock for segment %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
         with data_mem.get_lock():
-            logger.debug('pipelineprep data_read unlocked for segment %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
+            logger.debug('prep data_read unlocked for segment %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
             data[:] = data_read[:]
             u[:] = u_read[:]; v[:] = v_read[:]; w[:] = w_read[:]
-            logger.debug('pipelineprep copied into data for segment %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
-    logger.debug('pipelineprep unlocked all data for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
+            logger.debug('prep copied into data for segment %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
+    logger.info('All data unlocked for segment %d')
 
     return d
 
 def reproducecand(d, segment, candloc = ()):
+    """ Reproduces candidates for a given 
+    """
 
-    pipelineprep(d, segment)
+    # set up shared arrays to fill
+    data_read_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
+    data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
+    u_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    u_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    v_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    v_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    w_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    w_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
 
-    data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)  # 'long' type needed to hold whole (2 min, 5 ms) scans
-    data = numpyview(data_mem, 'complex64', datashape(d))
+    # get numpy views of memory spaces
+    data = numpyview(data_mem, 'complex64', datashape(d)) # optional
+    data_read = numpyview(data_read_mem, 'complex64', datashape(d)) # optional
+    u = numpyview(u_mem, 'float32', d['nbl'], raw=False)
+    v = numpyview(v_mem, 'float32', d['nbl'], raw=False)
+    w = numpyview(w_mem, 'float32', d['nbl'], raw=False)
+
+    with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
+        readpool.apply(pipeline_dataprep, (d, segment))
 
     if len(candloc) == 2:
         logger.info('Reproducing data...')
@@ -266,39 +192,36 @@ def reproducecand(d, segment, candloc = ()):
     else:
         logger.error('reproducecand not in expected format: %s' % reproducecand)
 
-def meantsubpool(data_mem, d):
-    """ Parallelized mean t visibility subtraction.
+def meantsubpool(d, data_read):
+    """ Wrapper function for parallelized mean t visibility subtraction.
     """
 
     logger.info('Subtracting mean visibility in time...')
-    blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
-    with closing(mp.Pool(d['nthread'], initializer=initpool2, initargs=(data_mem,))) as pool:
-        for blr in blranges:
-            pool.apply_async(meantsub, [blr, d])
+# if calling directly
+    rtlib.meantsub(data_read, [0, d['nbl']])
+# elif doing pool
+#    data_read = numpyview(data_read_mem, 'complex64', datashape(d))
+#    tsubpart = partial(rtlib.meantsub, data_read)
 
-def meantsub(blr, d):
-    """ Wrapper function for rtlib.meantsub
-    Assumes data_mem is global mps.Array
-    """
+#    blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
+#    with closing(mp.Pool(1, initializer=initreadonly, initargs=(data_read_mem,))) as tsubpool:
+#        tsubpool.map(tsubpart, blr)
+#    tsubpart((0,d['nbl']))
 
-    data = numpyview(data_mem, 'complex64', datashape(d))
 
-    rtlib.meantsub(data, blr)
-
-def dataflagpool(data_mem, d):
+def dataflagpool(d, data_read_mem):
     """ Parallelized flagging
     """
 
     logger.info('Flagging data...')
     chperspw = len(d['freq_orig'])/len(d['spw'])
-    with closing(mp.Pool(d['nthread'], initializer=initpool2, initargs=(data_mem,))) as pool:
+    with closing(mp.Pool(4, initializer=initreadonly, initargs=(data_read_mem,))) as flagpool:
         resultd = {}
         for pol in range(d['npol']):
             for spw in range(d['nspw']):
                 freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
                 chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 20., 'badcht', 0.3])
-#                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 10., 'badcht', 0.05])
+                resultd[(spw,pol)] = flagpool.apply_async(dataflag, [chans, pol, d, 20., 'badcht', 0.3])
         for kk in resultd.keys():
             result = resultd[kk].get()
             logger.info(result)
@@ -307,7 +230,7 @@ def dataflagpool(data_mem, d):
         for spw in range(d['nspw']):
             freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
             chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-            resultd[spw] = pool.apply_async(dataflag, [chans, 0, d, 3., 'badap', 0.2]) # pol not used here
+            resultd[spw] = flagpool.apply_async(dataflag, [chans, 0, d, 3., 'badap', 0.2]) # pol not used here
         for kk in resultd.keys():
             result = resultd[kk].get()
             logger.info(result)
@@ -317,8 +240,7 @@ def dataflagpool(data_mem, d):
             for spw in range(d['nspw']):
                 freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
                 chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-#                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 10.0, 'blstd', 0.2])
-                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 3.0, 'blstd', 0.05])
+                resultd[(spw,pol)] = flagpool.apply_async(dataflag, [chans, pol, d, 3.0, 'blstd', 0.05])
         for kk in resultd.keys():
             result = resultd[kk].get()
             logger.info(result)
@@ -328,8 +250,7 @@ def dataflagpool(data_mem, d):
             for spw in range(d['nspw']):
                 freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
                 chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 15., 'badcht', 0.3])
-#                resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 7., 'badcht', 0.1])
+                resultd[(spw,pol)] = flagpool.apply_async(dataflag, [chans, pol, d, 15., 'badcht', 0.3])
         for kk in resultd.keys():
             result = resultd[kk].get()
             logger.info(result)
@@ -361,10 +282,13 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
     """
 
     data = numpyview(data_mem, 'complex64', datashape(d))
-    logger.debug('search of segment %d and data = %s' % (d['segment'], str(data.mean())))
     u = numpyview(u_mem, 'float32', d['nbl'])
     v = numpyview(v_mem, 'float32', d['nbl'])
     w = numpyview(w_mem, 'float32', d['nbl'])
+    data_resamp_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
+    data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
+
+    logger.debug('search of segment %d and data = %s' % (d['segment'], str(data.mean())))
 
     beamnum = 0
     cands = {}
@@ -387,14 +311,10 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
         logger.info('Searching in %d chunks with %d threads' % (d['nchunk'], d['nthread']))
         logger.info('Dedispering to max (DM, dt) of (%d, %d) ...' % (d['dmarr'][-1], d['dtarr'][-1]) )
 
-        # set up shared memory spaces
-#        data_resamp_list = [mps.RawArray(mps.ctypes.c_float, datasize(d)*2), mps.RawArray(mps.ctypes.c_float, datasize(d)*2)]
-        data_resamp_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
-
         # open pool
         # potential to parallelize access to two memspaces?
 #        with closing(mp.Pool(d['nthread'], initializer=initpool3, initargs=(data_mem, data_resamp_list))) as pool:
-        with closing(mp.Pool(d['nthread'], initializer=initresamp, initargs=(data_mem, data_resamp_mem))) as pool:
+        with closing(mp.Pool(d['nthread'], initializer=initresamp, initargs=(data_mem, data_resamp_mem))) as resamppool:
             for dmind in xrange(len(d['dmarr'])):
                 for dtind in xrange(len(d['dtarr'])):
                     logger.info('Dedispersing (%d,%d)' % (d['dmarr'][dmind], d['dtarr'][dtind]),)
@@ -404,17 +324,18 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
                     searchints = d['readints'] - d['datadelay'][dmind] - nskip_dm
 
                     # set partial functions for pool.map
-                    correctpart = partial(correct_dmdt2, d, dmind, dtind)
+                    correctpart = partial(correct_dmdt, d, dmind, dtind)
                     image1part = partial(image1, d, u, v, w, dmind, dtind, beamnum)
 
+                    data_resamp[:] = data[:]
                     # dedispersion in shared memory, mapped over baselines
                     blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
-                    dedispresults = pool.map(correctpart, blranges)
+                    dedispresults = resamppool.map(correctpart, blranges)
                     logger.debug('dedispersion done.')
 
                     # imaging in shared memory, mapped over ints
                     irange = [(nskip_dm + (searchints/d['dtarr'][dtind])*chunk/d['nchunk'], nskip_dm + (searchints/d['dtarr'][dtind])*(chunk+1)/d['nchunk']) for chunk in range(d['nchunk'])]
-                    imageresults = pool.map(image1part, irange)
+                    imageresults = resamppool.map(image1part, irange)
 
                     # COLLECTING THE RESULTS per dm/dt. Clears the way for overwriting data_resamp
                     for imageresult in imageresults:
@@ -435,10 +356,10 @@ def reproduce(d, data_resamp_mem, u, v, w, candint=-1, twindow=30):
     dmind = 0; dtind = 0
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
 
-    with closing(mp.Pool(1, initializer=initpool, initargs=(data_resamp_mem,))) as pool:
+    with closing(mp.Pool(1, initializer=initpool, initargs=(data_resamp_mem,))) as repropool:
         # dedisperse
         logger.info('Dedispersing with DM=%.1f, dt=%d...' % (d['dmarr'][dmind], d['dtarr'][dtind]))
-        pool.apply(correct_dmdt, [d, dmind, dtind, (0,d['nbl'])])
+        repropool.apply(correct_dmdt, [d, dmind, dtind, (0,d['nbl'])])
 
         # set up image
         if d['searchtype'] == 'image1':
@@ -752,22 +673,12 @@ def calc_fringetime(d):
     fringetime = 0.5*(24*3600)/(2*n.pi*maxbl/25.)   # max fringe window in seconds
     return fringetime
 
-def correct_dmdt(d, dmind, dtind, blr):
+def correct_dmdt(d, dmind, dtind, blrange):
     """ Dedisperses and resamples data *in place*.
     Drops edges, since it assumes that data is read with overlapping chunks in time.
     """
 
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
-    rtlib.dedisperse_resample(data_resamp, d['freq'], d['inttime'], d['dmarr'][dmind], d['dtarr'][dtind], blr, verbose=0)        # dedisperses data.
-
-def correct_dmdt2(d, dmind, dtind, blrange):
-    """ Dedisperses and resamples data *in place*.
-    Drops edges, since it assumes that data is read with overlapping chunks in time.
-    """
-
-    data = numpyview(data_mem, 'complex64', datashape(d))
-    data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
-    data_resamp[:] = data[:]
     rtlib.dedisperse_resample(data_resamp, d['freq'], d['inttime'], d['dmarr'][dmind], d['dtarr'][dtind], blrange, verbose=0)        # dedisperses data.
 
 def calc_lm(d, im, pix=()):
@@ -1106,9 +1017,9 @@ def numpyview(arr, datatype, shape, raw=False):
     else:
         return n.frombuffer(arr.get_obj(), dtype=n.dtype(datatype)).view(n.dtype(datatype)).reshape(shape)  # for shared mp.Array
 
-def initpool2(shared_arr_):
-    global data_mem
-    data_mem = shared_arr_ # must be inhereted, not passed as an argument
+def initreadonly(shared_arr_):
+    global data_read_mem
+    data_read_mem = shared_arr_ # must be inhereted, not passed as an argument
 
 def initresamp(shared_arr_, shared_arr2_):
     global data_mem, data_resamp_mem
