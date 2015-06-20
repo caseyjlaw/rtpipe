@@ -22,9 +22,9 @@ if not len(logger.handlers):
 
 def pipeline(d, segments):
     """ Transient search pipeline running on single node.
-    Processes a single segment of data (where a single bgsub, (u,v,w), etc. can be used).
-    Searches completely, independently, and saves candidates.
-    reproducecand is tuple of (dmind, dtind) or (candint, dmind, dtind). Former returns corrected data, latter images and phases data.
+    Processes one or more segments of data (in which a single bgsub, (u,v,w), etc. can be used).
+    Can search completely, independently, and saves candidates.
+    If segments is a list of segments, then it will parallelize read/search processes.
 
     Stages:
     0) Take dictionary that defines metadata and search params
@@ -39,46 +39,43 @@ def pipeline(d, segments):
     """
 
     # set up shared arrays to fill
-    data_read_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
-    data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
-    u_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
-    u_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
-    v_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
-    v_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
-    w_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
-    w_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    data_read_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2);  data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
+    u_read_mem = mps.Array(mps.ctypes.c_float, d['nbl']);  u_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    v_read_mem = mps.Array(mps.ctypes.c_float, d['nbl']);  v_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    w_read_mem = mps.Array(mps.ctypes.c_float, d['nbl']);  w_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
 
-    data = numpyview(data_mem, 'complex64', datashape(d)) # optional
-    data_read = numpyview(data_read_mem, 'complex64', datashape(d)) # optional
+    # need these if debugging
+    if logger.level == loggging.DEBUG:
+        data = numpyview(data_mem, 'complex64', datashape(d)) # optional
+        data_read = numpyview(data_read_mem, 'complex64', datashape(d)) # optional
                 
     results = {}
-    # only one needed for parallel read/process. more would help for quick reads
+    # only one needed for parallel read/process. more would overwrite memory space
     with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
 
         # submit all segments to pool of 1. locking data should keep this from running away.
         for segment in segments:
             results[segment] = readpool.apply_async(pipeline_dataprep, (d, segment))   # no need for segment here? need to think through structure...
-        logger.debug('pipeline2 submitted all segment prep jobs')
 
         # step through pool of jobs and pull data off as ready. this allows pool to continue to next segment.
         for segment in segments:
-            logger.debug('pipeline2 waiting on prep to complete for segment %d' % segment)
+            logger.debug('pipeline waiting on prep to complete for segment %d' % segment)
             d = results[segment].get()   # returning d is a hack here
-            logger.debug('pipeline2 got result. now waiting on data lock for %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
+            logger.debug('pipeline got result. now waiting on data lock for %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
             with data_mem.get_lock():
-                logger.debug('pipeline2 data unlocked. starting search for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
+                logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
                 cands = search(d, data_mem, u_mem, v_mem, w_mem)
 
 def pipeline_dataprep(d, segment):
     """ Single-threaded pipeline for data prep that can be started in a pool.
     """
 
-    candsfile = 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(segment) + '.pkl'
+
+    d['segment'] = segment  # need to think more carefully of how to set this in d
+
     if d['savecands'] and os.path.exists(candsfile) and len(reproducecand) == 0:
         logger.error('candsfile %s already exists. Ending processing...' % candsfile)
         return d
-    
-    d['segment'] = segment  # need to think more carefully of how to set this in d
 
     logger.debug('prep starting for segment %d' % segment)
     data_read = numpyview(data_read_mem, 'complex64', datashape(d), raw=False)
@@ -127,7 +124,8 @@ def pipeline_dataprep(d, segment):
 
         # mean t vis subtration
         if d['timesub'] == 'mean':
-            meantsub(d, data_read)
+            logger.info('Subtracting mean visibility in time...')
+            rtlib.meantsub(data_read, [0, d['nbl']])
         else:
             logger.info('No mean time subtraction.')
 
@@ -149,8 +147,10 @@ def pipeline_dataprep(d, segment):
 
     return d
 
-def reproducecand(d, segment, candloc = ()):
-    """ Reproduces candidates for a given 
+def pipeline_reproduce(d, segment, candloc = ()):
+    """ Reproduces candidates for a given candidate.
+    candloc is tuple of (dmind, dtind) or (candint, dmind, dtind). 
+    Former returns corrected data, latter images and phases data.
     """
 
     # set up shared arrays to fill
@@ -178,7 +178,7 @@ def reproducecand(d, segment, candloc = ()):
         dmind, dtind = candloc
         d['dmarr'] = [d['dmarr'][dmind]]
         d['dtarr'] = [d['dtarr'][dtind]]
-        data = reproduce(d, data_mem, u, v, w)
+        data = runreproduce(d, data_mem, u, v, w)
         return data
 
     elif len(candloc) == 3:  # reproduce candidate image and data
@@ -193,21 +193,17 @@ def reproducecand(d, segment, candloc = ()):
         logger.error('reproducecand not in expected format: %s' % reproducecand)
 
 def meantsubpool(d, data_read):
-    """ Wrapper function for parallelized mean t visibility subtraction.
+    """ Wrapper for mean visibility subtraction in time.
+    Doesn't work when called from pipeline using multiprocessing pool.
     """
 
     logger.info('Subtracting mean visibility in time...')
-# if calling directly
-    rtlib.meantsub(data_read, [0, d['nbl']])
-# elif doing pool
-#    data_read = numpyview(data_read_mem, 'complex64', datashape(d))
-#    tsubpart = partial(rtlib.meantsub, data_read)
+    data_read = numpyview(data_read_mem, 'complex64', datashape(d))
+    tsubpart = partial(rtlib.meantsub, data_read)
 
-#    blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
-#    with closing(mp.Pool(1, initializer=initreadonly, initargs=(data_read_mem,))) as tsubpool:
-#        tsubpool.map(tsubpart, blr)
-#    tsubpart((0,d['nbl']))
-
+    blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
+    with closing(mp.Pool(1, initializer=initreadonly, initargs=(data_read_mem,))) as tsubpool:
+        tsubpool.map(tsubpart, blr)
 
 def dataflagpool(d, data_read_mem):
     """ Parallelized flagging
@@ -295,7 +291,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
     dedispresults = []
     imageresults = []
 
-    candsfile = 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+    candsfile = getcandsfile(d)
     if d['savecands'] and os.path.exists(candsfile):
         logger.warn('candsfile %s already exists' % candsfile)
         return cands
@@ -348,7 +344,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
     logger.info('Found %d cands in scan %d segment %d of %s. ' % (len(cands), d['scan'], d['segment'], d['filename']))
     return cands
 
-def reproduce(d, data_resamp_mem, u, v, w, candint=-1, twindow=30):
+def runreproduce(d, data_resamp_mem, u, v, w, candint=-1, twindow=30):
     """ Reproduce function, much like search.
     If no candint is given, it returns resampled data. Otherwise, returns image and rephased data.
     """
@@ -645,6 +641,18 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     logger.info('\t Grand total memory usage: %d GB/segment' % (vismem + immem))
 
     return d
+
+def getcandsfile(d):
+    """ Return name of candsfile for a given dictionary. Must have d['segment'] defined.
+    """
+
+    return 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+
+def getnoisefile(d):
+    """ Return name of noisefile for a given dictionary. Must have d['segment'] defined.
+    """
+
+    return 'noise_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
 
 def calc_memory_footprint(d, headroom=2.):
     """ Given pipeline state dict, this function calculates the memory required
@@ -971,33 +979,30 @@ def noisepickle(d, data, u, v, w, chunk=200):
     chunk defines window for measurement. at least one measurement always made.
     """
 
-    noisefile = 'noise_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
-
     if d['savenoise']:
+        noisefile = getnoisefile(d)
+
         if os.path.exists(noisefile):
             logger.warn('noisefile %s already exists' % noisefile)
-            return
-
-    nints = len(data)
-    chunk = min(chunk, nints-1)  # ensure at least one measurement
-    results = []
-    pkl = open(noisefile, 'a')
-    for (i0, i1) in zip(range(0, nints-chunk, chunk), range(chunk, nints, chunk)):
-        imid = (i0+i1)/2
-        noiseperbl = estimate_noiseperbl(data[i0:i1])
-        imstd = sample_image(d, data, u, v, w, imid, verbose=0).std()
-        zerofrac = float(len(n.where(data[i0:i1] == 0j)[0]))/data[i0:i1].size
-        results.append( (d['segment'], noiseperbl, zerofrac, imstd) )
-    pickle.dump(results, pkl)
-    pkl.close()
+        else:
+            nints = len(data)
+            chunk = min(chunk, nints-1)  # ensure at least one measurement
+            results = []
+            pkl = open(noisefile, 'a')
+            for (i0, i1) in zip(range(0, nints-chunk, chunk), range(chunk, nints, chunk)):
+                imid = (i0+i1)/2
+                noiseperbl = estimate_noiseperbl(data[i0:i1])
+                imstd = sample_image(d, data, u, v, w, imid, verbose=0).std()
+                zerofrac = float(len(n.where(data[i0:i1] == 0j)[0]))/data[i0:i1].size
+                results.append( (d['segment'], noiseperbl, zerofrac, imstd) )
+            pickle.dump(results, pkl)
+            pkl.close()
 
 def savecands(d, cands):
     """ Save all candidates in pkl file for later aggregation and filtering.
     """
 
-    candsfile = 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
-
-    pkl = open(candsfile, 'w')
+    pkl = open(getcandsfile(d), 'w')
     pickle.dump(d, pkl)
     pickle.dump(cands, pkl)
     pkl.close()
