@@ -45,17 +45,20 @@ def pipeline(d, segments):
     w_read_mem = mps.Array(mps.ctypes.c_float, d['nbl']);  w_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
 
     # need these if debugging
-    if logger.level == loggging.DEBUG:
-        data = numpyview(data_mem, 'complex64', datashape(d)) # optional
-        data_read = numpyview(data_read_mem, 'complex64', datashape(d)) # optional
+    data = numpyview(data_mem, 'complex64', datashape(d)) # optional
+    data_read = numpyview(data_read_mem, 'complex64', datashape(d)) # optional
                 
     results = {}
+    candcount = 0
     # only one needed for parallel read/process. more would overwrite memory space
     with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
 
         # submit all segments to pool of 1. locking data should keep this from running away.
         for segment in segments:
-            results[segment] = readpool.apply_async(pipeline_dataprep, (d, segment))   # no need for segment here? need to think through structure...
+            if d['savecands'] and os.path.exists(getcandsfile(d, segment)):
+                logger.error('candsfile %s already exists. Ending processing...' % candsfile)
+            else:
+                results[segment] = readpool.apply_async(pipeline_dataprep, (d, segment))   # no need for segment here? need to think through structure...
 
         # step through pool of jobs and pull data off as ready. this allows pool to continue to next segment.
         for segment in segments:
@@ -66,26 +69,30 @@ def pipeline(d, segments):
                 logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
                 cands = search(d, data_mem, u_mem, v_mem, w_mem)
 
+            ####    ####    ####    ####
+            # 4) Save candidate info
+            ####    ####    ####    ####
+            candcount += len(cands)
+            if d['savecands']:
+                logger.info('Saving %d candidates...' % (len(cands)))
+                savecands(d, cands)
+
+    return candcount
+
 def pipeline_dataprep(d, segment):
     """ Single-threaded pipeline for data prep that can be started in a pool.
     """
 
-
-    d['segment'] = segment  # need to think more carefully of how to set this in d
-
-    if d['savecands'] and os.path.exists(candsfile) and len(reproducecand) == 0:
-        logger.error('candsfile %s already exists. Ending processing...' % candsfile)
-        return d
-
     logger.debug('prep starting for segment %d' % segment)
-    data_read = numpyview(data_read_mem, 'complex64', datashape(d), raw=False)
-    u_read = numpyview(u_read_mem, 'float32', d['nbl'], raw=False)
-    v_read = numpyview(v_read_mem, 'float32', d['nbl'], raw=False)
-    w_read = numpyview(w_read_mem, 'float32', d['nbl'], raw=False)
-    u = numpyview(u_mem, 'float32', d['nbl'], raw=False)
-    v = numpyview(v_mem, 'float32', d['nbl'], raw=False)
-    w = numpyview(w_mem, 'float32', d['nbl'], raw=False)
-    data = numpyview(data_mem, 'complex64', datashape(d), raw=False)
+
+    # dataprep reads for a single segment, so d['segment'] defined here
+    d['segment'] = segment
+
+    # set up numpy arrays, as expected by dataprep functions
+    data_read = numpyview(data_read_mem, 'complex64', datashape(d), raw=False); data = numpyview(data_mem, 'complex64', datashape(d), raw=False)
+    u_read = numpyview(u_read_mem, 'float32', d['nbl'], raw=False); u = numpyview(u_mem, 'float32', d['nbl'], raw=False)
+    v_read = numpyview(v_read_mem, 'float32', d['nbl'], raw=False); v = numpyview(v_mem, 'float32', d['nbl'], raw=False)
+    w_read = numpyview(w_read_mem, 'float32', d['nbl'], raw=False); w = numpyview(w_mem, 'float32', d['nbl'], raw=False)
 
     ####    ####    ####    ####
     # 1) Read data
@@ -103,9 +110,9 @@ def pipeline_dataprep(d, segment):
             data_read[:] = ps.read_bdf_segment(d, segment)
             (u_read[:], v_read[:], w_read[:]) = ps.get_uvw_segment(d, segment)
 
-    ####    ####    ####    ####
-    # 2) Prepare data
-    ####    ####    ####    ####
+        ####    ####    ####    ####
+        # 2) Prepare data
+        ####    ####    ####    ####
 
         # calibrate data
         try:
@@ -117,7 +124,8 @@ def pipeline_dataprep(d, segment):
             logger.info('Calibration file not found. Proceeding with no calibration applied.')
 
         # flag data
-        if d['flagmode'] == 'standard':
+        if len(d['flaglist']):
+            logging.info('Flagging with flaglist: %s' % d['flaglist'])
             dataflag(d, data_read)
         else:
             logger.info('No real-time flagging.')
@@ -129,10 +137,11 @@ def pipeline_dataprep(d, segment):
         else:
             logger.info('No mean time subtraction.')
 
+        # save noise pickle
         if d['savenoise']:
-            noisepickle(d, data_read, u, v, w)      # save noise pickle
+            noisepickle(d, data_read, u, v, w)
 
-        # optionally phase to new location
+        # phase to new location (not tested much yet)
         if any([d['l0'], d['m0']]):
             logger.info('Rephasing data to (l, m)=(%.3f, %.3f).' % (d['l0'], d['m0']))
             rtlib.phaseshift_threaded(data_read, d, d['l0'], d['m0'], u, v)
@@ -143,8 +152,9 @@ def pipeline_dataprep(d, segment):
             data[:] = data_read[:]
             u[:] = u_read[:]; v[:] = v_read[:]; w[:] = w_read[:]
             logger.debug('prep copied into data for segment %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
-    logger.info('All data unlocked for segment %d')
+    logger.info('All data unlocked for segment %d' % segment)
 
+    # d now has segment keyword defined
     return d
 
 def pipeline_reproduce(d, segment, candloc = ()):
@@ -205,6 +215,26 @@ def meantsubpool(d, data_read):
     with closing(mp.Pool(1, initializer=initreadonly, initargs=(data_read_mem,))) as tsubpool:
         tsubpool.map(tsubpart, blr)
 
+def dataflag(d, data_read):
+    """ Flagging data in single process 
+    """
+
+    for flag in d['flaglist']:
+        mode, sig, conv = flag
+        chans = n.array(d['chans'])
+        for pol in range(d['npol']):
+            rtlib.dataflag(data_read, chans, pol, d, sig, mode, conv)
+
+def dataflagatom(chans, pol, d, sig, mode, conv):
+    """ Wrapper function to get shared memory as numpy array into pool
+    Assumes data_mem is global mps.Array
+    """
+
+    data = numpyview(data_mem, 'complex64', datashape(d))
+#    data = n.ma.masked_array(data, data==0j)  # this causes massive overflagging on 14sep03 data
+
+    return rtlib.dataflag(data, chans, pol, d, sig, mode, conv)
+
 def dataflagpool(d, data_read_mem):
     """ Parallelized flagging
     """
@@ -217,7 +247,7 @@ def dataflagpool(d, data_read_mem):
             for spw in range(d['nspw']):
                 freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
                 chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                resultd[(spw,pol)] = flagpool.apply_async(dataflag, [chans, pol, d, 20., 'badcht', 0.3])
+                resultd[(spw,pol)] = flagpool.apply_async(dataflagatom, [chans, pol, d, 20., 'badcht', 0.3])
         for kk in resultd.keys():
             result = resultd[kk].get()
             logger.info(result)
@@ -226,7 +256,7 @@ def dataflagpool(d, data_read_mem):
         for spw in range(d['nspw']):
             freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
             chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-            resultd[spw] = flagpool.apply_async(dataflag, [chans, 0, d, 3., 'badap', 0.2]) # pol not used here
+            resultd[spw] = flagpool.apply_async(dataflagatom, [chans, 0, d, 3., 'badap', 0.2]) # pol not used here
         for kk in resultd.keys():
             result = resultd[kk].get()
             logger.info(result)
@@ -236,7 +266,7 @@ def dataflagpool(d, data_read_mem):
             for spw in range(d['nspw']):
                 freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
                 chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                resultd[(spw,pol)] = flagpool.apply_async(dataflag, [chans, pol, d, 3.0, 'blstd', 0.05])
+                resultd[(spw,pol)] = flagpool.apply_async(dataflagatom, [chans, pol, d, 3.0, 'blstd', 0.05])
         for kk in resultd.keys():
             result = resultd[kk].get()
             logger.info(result)
@@ -246,30 +276,10 @@ def dataflagpool(d, data_read_mem):
             for spw in range(d['nspw']):
                 freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
                 chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                resultd[(spw,pol)] = flagpool.apply_async(dataflag, [chans, pol, d, 15., 'badcht', 0.3])
+                resultd[(spw,pol)] = flagpool.apply_async(dataflagatom, [chans, pol, d, 15., 'badcht', 0.3])
         for kk in resultd.keys():
             result = resultd[kk].get()
             logger.info(result)
-
-            # resultd = {}
-            # for pol in range(d['npol']):
-            #     for spw in range(d['nspw']):
-            #         freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
-            #         chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-            #         resultd[(spw,pol)] = pool.apply_async(dataflag, [chans, pol, d, 4., 'ring', 0.2])
-            # for kk in resultd.keys():
-            #     result = resultd[kk].get()
-#                logger.debug(kk, result, result/(0.5*data.size))
-
-def dataflag(chans, pol, d, sig, mode, conv):
-    """ Wrapper function to get shared memory as numpy array into pool
-    Assumes data_mem is global mps.Array
-    """
-
-    data = numpyview(data_mem, 'complex64', datashape(d))
-#    data = n.ma.masked_array(data, data==0j)  # this causes massive overflagging on 14sep03 data
-
-    return rtlib.dataflag(data, chans, pol, d, sig, mode, conv)
 
 def search(d, data_mem, u_mem, v_mem, w_mem):
     """ Search function.
@@ -642,16 +652,16 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     return d
 
-def getcandsfile(d):
+def getcandsfile(d, segment=-1):
     """ Return name of candsfile for a given dictionary. Must have d['segment'] defined.
     """
-
+    assert d.has_key('segment') or segment >= 0
     return 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
 
-def getnoisefile(d):
+def getnoisefile(d, segment=-1):
     """ Return name of noisefile for a given dictionary. Must have d['segment'] defined.
     """
-
+    assert d.has_key('segment') or segment >= 0
     return 'noise_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
 
 def calc_memory_footprint(d, headroom=2.):
