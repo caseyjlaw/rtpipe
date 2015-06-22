@@ -764,7 +764,7 @@ cpdef meantsub(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, blr):
                             datacal[i,j,k,l] = datacal[i,j,k,l] - sum/count
 
 cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, ndim=1] chans, unsigned int pol, d, sigma=4, mode='', convergence=0.2, tripfrac=0.4):
-    """ Flagging function
+    """ Flagging function that can operate on pol/chan selections independently
     """
 
     cdef unsigned int i, j, 

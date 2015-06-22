@@ -163,11 +163,9 @@ def read_bdf_segment(d, segment=-1):
     if segment != -1:
         assert d.has_key('segmenttimes')
 
-        t0 = d['segmenttimes'][segment][0]
-        t1 = d['segmenttimes'][segment][1]
-        readints = n.round(24*3600*(t1 - t0)/d['inttime'], 0).astype(int)
-        nskip = n.round(24*3600*(t0 - d['starttime_mjd'])/d['inttime'], 0).astype(int)
-        logger.info('Reading segment %d/%d, times %s to %s' % (segment, len(d['segmenttimes'])-1, qa.time(qa.quantity(t0,'d'),form=['hms'], prec=9)[0], qa.time(qa.quantity(t1, 'd'), form=['hms'], prec=9)[0]))
+        readints = int(round(24*3600*(d['segmenttimes'][0,1] - d['segmenttimes'][0,0])/d['inttime'], 0))   # readints fixed to first segment for consistency with RT and avoiding rounding issues
+        nskip = n.round(24*3600*(d['segmenttimes'][segment,0] - d['starttime_mjd'])/d['inttime'], 0).astype(int)
+        logger.info('Reading segment %d/%d, times %s to %s' % (segment, len(d['segmenttimes'])-1, qa.time(qa.quantity(d['segmenttimes'][segment,0],'d'),form=['hms'], prec=9)[0], qa.time(qa.quantity(d['segmenttimes'][segment,1], 'd'), form=['hms'], prec=9)[0]))
     else:
         nskip = 0
         readints = 0
