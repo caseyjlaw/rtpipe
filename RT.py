@@ -38,6 +38,10 @@ def pipeline(d, segments):
     4) Save candidate and noise info, if requested
     """
 
+    
+    if type(segments) == int:
+        segments = [segments]
+
     # set up shared arrays to fill
     data_read_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2);  data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
     u_read_mem = mps.Array(mps.ctypes.c_float, d['nbl']);  u_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
