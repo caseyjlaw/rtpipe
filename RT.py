@@ -223,7 +223,8 @@ def dataflag(d, data_read):
         mode, sig, conv = flag
         chans = n.array(d['chans'])
         for pol in range(d['npol']):
-            rtlib.dataflag(data_read, chans, pol, d, sig, mode, conv)
+            status = rtlib.dataflag(data_read, chans, pol, d, sig, mode, conv)
+            logger.info(status)
 
 def dataflagatom(chans, pol, d, sig, mode, conv):
     """ Wrapper function to get shared memory as numpy array into pool
