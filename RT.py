@@ -654,14 +654,22 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 def getcandsfile(d, segment=-1):
     """ Return name of candsfile for a given dictionary. Must have d['segment'] defined.
     """
-    assert d.has_key('segment') or segment >= 0
-    return 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+    if d.has_key('segment'):
+        return 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+    elif segment >= 0:
+        return 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(segment) + '.pkl'
+    else:
+        return ''
 
 def getnoisefile(d, segment=-1):
     """ Return name of noisefile for a given dictionary. Must have d['segment'] defined.
     """
-    assert d.has_key('segment') or segment >= 0
-    return 'noise_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+    if d.has_key('segment'):
+        return 'noise_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+    elif segment >= 0:
+        return 'noise_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(segment) + '.pkl'
+    else:
+        return ''
 
 def calc_memory_footprint(d, headroom=2.):
     """ Given pipeline state dict, this function calculates the memory required
