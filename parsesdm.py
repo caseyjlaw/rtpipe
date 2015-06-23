@@ -150,7 +150,7 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, params=''
     logger.info('\t Freq range (%.3f -- %.3f). %d spw with %d chans.' % (d['freq'].min(), d['freq'].max(), d['nspw'], d['nchan']))
     logger.info('\t Scan has %d ints (%.1f s) and inttime %.3f s' % (d['nints'], d['nints']*d['inttime'], d['inttime']))
     logger.info('\t %d polarizations: %s' % (d['npol'], d['pols']))
-    logger.info('\t Ideal uvgrid npix=(%d,%d) and res=%d' % (d['npixx_full'], d['npixy_full'], d['uvres_full']))
+    logger.info('\t Ideal uvgrid npix=(%d,%d) and res=%d (oversample %.1f)' % (d['npixx_full'], d['npixy_full'], d['uvres_full'], d['uvoversample']))
 
     return d
 
