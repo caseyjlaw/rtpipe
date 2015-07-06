@@ -45,6 +45,7 @@ cpdef beamonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndi
     vv = n.mod(vv, npixy)
 
     # add uv data to grid
+    # or use np.add.at(x, i, y)?
     for i in xrange(len0):
         for j in xrange(len1):
             if ok[i,j]:
@@ -96,6 +97,7 @@ cpdef imgonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim
     vv = n.mod(vv, npixy)
 
     # add uv data to grid
+    # or use np.add.at(x, i, y)?
     for i in xrange(len0):
         for j in xrange(len1):
             if ok[i,j]:
@@ -156,6 +158,7 @@ cpdef imgallfullfilterxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t
     vv = n.mod(vv, npixy)
 
     # add uv data to grid
+    # or use np.add.at(x, i, y)?
     for i in xrange(len1):
         for j in xrange(len2):
             if ok[i,j]:
@@ -223,6 +226,7 @@ cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float
     vv = n.mod(vv, npixy)
 
     # add uv data to grid
+    # or use np.add.at(x, i, y)?
     for i in xrange(len1):
         for j in xrange(len2):
             if ok[i,j]:
