@@ -299,7 +299,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
     data_resamp_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
 
-    logger.debug('search of segment %d and data = %s' % (d['segment'], str(data.mean())))
+    logger.debug('Search of segment %d' % d['segment'])
 
     beamnum = 0
     cands = {}
