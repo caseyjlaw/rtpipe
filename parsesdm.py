@@ -241,7 +241,7 @@ def sdm2ms(sdmfile, msfile, scan, inttime='0'):
         logger.info('No %s found. Creating anew.' % msfile2)
         if inttime != '0':
             logger.info('Filtering by int time.')
-            subprocess.call(['asdm2MS', '--ocm co --icm co --lazy --scans', scan, sdmfile, 'tmp_'+msfile2])
+            subprocess.call(['asdm2MS', '--ocm', 'co', '--icm', 'co', '--lazy', '--scans', scan, sdmfile, 'tmp_'+msfile2])
             cfg = tasklib.SplitConfig()  # configure split
             cfg.vis = 'tmp_'+msfile2
             cfg.out = msfile2
@@ -252,7 +252,7 @@ def sdm2ms(sdmfile, msfile, scan, inttime='0'):
             # clean up
             shutil.rmtree('tmp_'+msfile2)
         else:
-            subprocess.call(['asdm2MS', '--ocm co --icm co --lazy --scans', scan, sdmfile, msfile2])
+            subprocess.call(['asdm2MS', '--ocm', 'co', '--icm', 'co', '--lazy', '--scans', scan, sdmfile, msfile2])
 
     return msfile2
 
