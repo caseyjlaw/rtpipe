@@ -3,7 +3,7 @@
 ... or 'real-time pipeline' is a package for searching for fast transients in radio interferometer data. 
 Supersedes `tpipe` (http://github.com/caseyjlaw/tpipe) by defining algorithm to break long (large) data into smaller, independent pieces.
 
-### Requirements
+## Requirements
 
 * Python 2.7 recommended
 * Standard scientific Python stuff: numpy, scipy, matplotlib, multiprocessing
