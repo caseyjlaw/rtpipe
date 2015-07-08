@@ -181,7 +181,7 @@ class casa_sol():
 #        self.bpfreq = 1e9*n.concatenate( (frequenciesGHz[0], frequenciesGHz[nants]), axis=0)    # freq values at bp bins
 #        self.logger.info('Parsed bp table solutions for %d solutions, %d ants, %d spw, and %d pols' % (nUniqueTimesBP, nants, nSpws, nPolarizations))
 
-    def setselection(self, time, freqs, radec=(), dist=10., spws=[0,1], pols=[0,1], verbose=0):
+    def set_selection(self, time, freqs, radec=(), dist=10., spws=[0,1], pols=[0,1]):
         """ Set select parameter that defines time, spw, and pol solutions to apply.
         time defines the time to find solutions near in mjd.
         freqs defines frequencies to select bandpass solution
@@ -369,26 +369,24 @@ def calcChebyshev(coeffs, validDomain, freqs):
     return rr,ll
 
 class telcal_sol():
-    """ Container for telcal solutions. Parses .GN files and provides tools for applying to data of shape (nints, nbl, nch, npol)
-    Initialize class based on telcalfile and selection criteria.
-    solnum is iteration of solution (0-based), pol is 0/1 for R/L.
-    freqs is array of channel frequencies in Hz. Should be something like tpipe.freq*1e9.
+    """ Instantiated with on telcalfile.
+    Parses .GN file and provides tools for applying to data of shape (nints, nbl, nch, npol)
     """
 
-    def __init__(self, telcalfile, freqs=[1.4e9,1.401e9]):
-        self.freqs = freqs
-        self.chansize = freqs[1]-freqs[0]
+    def __init__(self, telcalfile):
         self.parseGN(telcalfile)
         self.logger = logging.getLogger(__name__)
         self.logger.info('Read telcalfile %s' % telcalfile)
 
-    def setselection(self, calname, time, polstr, verbose=0):
+    def set_selection(self, time, freqs, calname=''):
         """ Set select parameter that defines spectral window, time, or any other selection.
+        time (in mjd) defines the time to find solutions near for given calname.
+        freqs (in Hz) is frequencies in data.
         calname defines the name of the calibrator to use. if blank, uses only the time selection.
-        time defines the time to find solutions near for given calname. it is in mjd.
-        polstr is either 'RR' or 'LL', where (A,C) == (R,L), it seems.
         """
 
+        self.freqs = freqs
+        self.chansize = freqs[1]-freqs[0]
         self.select = self.complete   # use only complete solution sets (set during parse)
 
         if calname:
@@ -396,44 +394,45 @@ class telcal_sol():
             for ss in n.unique(self.source[self.select]):
                 if calname in ss:
                     nameselect = n.where(self.source[self.select] == ss)   # define selection for name
-                    self.select = self.select[nameselect[0]]       # update overall selection
-                    if verbose:
-                        self.logger.info('Selection down to %d solutions with %s' % (len(self.select), calname))
+                    self.select = self.select[nameselect]       # update overall selection
+                    self.logger.debug('Selection down to %d solutions with %s' % (len(self.select), calname))
             if len(nameselect) == 0:
-                self.logger.info('Calibrator name %s not found. Ignoring.' % (calname))
+                self.logger.debug('Calibrator name %s not found. Ignoring.' % (calname))
 
         # select freq
-        freqselect = n.where( n.around(1e6*self.skyfreq[self.select],-6) == n.around(self.freqs[len(self.freqs)/2],-6) )   # define selection for time
-        if len(freqselect[0]) == 0:
-            raise StandardError('No complete set of telcal solutions at that frequency.')
-        self.select = self.select[freqselect[0]]    # update overall selection
-        if verbose:
-            self.logger.info('Frequency selection cut down to %d solutions' % (len(self.select)))
+#        freqselect = n.where( n.around(1e6*self.skyfreq[self.select],-6) == n.around(self.freqs[len(self.freqs)/2],-6) )   # define selection for time
+#        if len(freqselect[0]) == 0:
+#            raise StandardError('No complete set of telcal solutions at that frequency.')
+#        self.select = self.select[freqselect[0]]    # update overall selection
+#        self.logger.info('Frequency selection cut down to %d solutions' % (len(self.select)))
 
         # select pol
-        ifids = self.ifid[self.select]
-        for pp in n.unique(ifids):
-            if (('A' in pp or 'B' in pp) and ((polstr == 'RR') or (polstr == 'XX'))):
-                polselect = n.where(ifids == pp)
-            elif (('C' in pp or 'D' in pp) and ((polstr == 'LL') or (polstr == 'YY'))):
-                polselect = n.where(ifids == pp)
-
-        self.select = self.select[polselect[0]]    # update overall selection
+#        ifids = self.ifid[self.select]
+#        if (polstr == 'RR') or (polstr == 'XX'):
+#            polselect = n.where(['A' in ifid or 'B' in ifid for ifid in ifids])
+#        elif (polstr == 'LL') or (polstr == 'YY'):
+#            polselect = n.where(['C' in ifid or 'D' in ifid for ifid in ifids])
+#        self.select = self.select[polselect]    # update overall selection
+        self.polarization = n.empty(len(self.ifid))
+        for i in range(len(self.ifid)):
+            if ('A' in self.ifid[i]) or ('B' in self.ifid[i]):
+                self.polarization[i] = 0
+            elif ('C' in self.ifid[i]) or ('D' in self.ifid[i]):
+                self.polarization[i] = 1
 
         # select by smallest time distance for source
         mjddist = n.abs(time - n.unique(self.mjd[self.select]))
         closest = n.where(mjddist == mjddist.min())
         timeselect = n.where(self.mjd[self.select] == n.unique(self.mjd[self.select])[closest])   # define selection for time
         self.select = self.select[timeselect[0]]    # update overall selection
-        self.logger.debug('Selection down to %d solutions separated from given time by %d minutes' % (len(self.select), mjddist[closest]*24*60))
+        self.logger.info('Selection down to %d solutions separated from given time by %d minutes' % (len(self.select), mjddist[closest]*24*60))
 
-        if verbose:
-            self.logger.info('Selected solutions: %s' % str(self.select))
-            self.logger.info('MJD: %s' % str(n.unique(self.mjd[self.select])))
-            self.logger.info('Mid frequency (MHz): %s' % str(n.unique(self.skyfreq[self.select])))
-            self.logger.info('IFID: %s' % str(n.unique(self.ifid[self.select])))
-            self.logger.info('Source: %s' % str(n.unique(self.source[self.select])))
-            self.logger.info('Ants: %s' % str(n.unique(self.antname[self.select])))
+        self.logger.debug('Selected solutions: %s' % str(self.select))
+        self.logger.info('MJD: %s' % str(n.unique(self.mjd[self.select])))
+        self.logger.debug('Mid frequency (MHz): %s' % str(n.unique(self.skyfreq[self.select])))
+        self.logger.debug('IFID: %s' % str(n.unique(self.ifid[self.select])))
+        self.logger.info('Source: %s' % str(n.unique(self.source[self.select])))
+        self.logger.debug('Ants: %s' % str(n.unique(self.antname[self.select])))
 
     def parseGN(self, telcalfile):
         """Takes .GN telcal file and places values in numpy arrays.
@@ -493,14 +492,16 @@ class telcal_sol():
             antnum.append(int(aa[2:]))    # cuts the 'ea' from start of antenna string to get integer
         self.antnum = n.array(antnum)
 
-    def calcgain(self, ant1, ant2):
+    def calcgain(self, ant1, ant2, skyfreq, pol):
         """ Calculates the complex gain product (g1*g2) for a pair of antennas.
         """
 
-        ind1 = n.where(ant1 == self.antnum[self.select])
-        ind2 = n.where(ant2 == self.antnum[self.select])
-        g1 = self.amp[self.select][ind1]*n.exp(1j*n.radians(self.phase[self.select][ind1]))
-        g2 = self.amp[self.select][ind2]*n.exp(-1j*n.radians(self.phase[self.select][ind2]))
+        select = n.where( (self.skyfreq[self.select] == skyfreq) & (self.polarization[self.select] == pol) )
+
+        ind1 = n.where(ant1 == self.antnum[select])
+        ind2 = n.where(ant2 == self.antnum[select])
+        g1 = self.amp[select][ind1]*n.exp(1j*n.radians(self.phase[select][ind1]))
+        g2 = self.amp[select][ind2]*n.exp(-1j*n.radians(self.phase[select][ind2]))
         if len(g1*g2) > 0:
             invg1g2 = 1/(g1*g2)
             invg1g2[n.where( (g1 == 0j) | (g2 == 0j) )] = 0.
@@ -508,38 +509,49 @@ class telcal_sol():
         else:
             return n.array([0])
 
-    def calcdelay(self, ant1, ant2):
+    def calcdelay(self, ant1, ant2, skyfreq, pol):
         """ Calculates the relative delay (d1-d2) for a pair of antennas in ns.
         """
 
-        ind1 = n.where(ant1 == self.antnum[self.select])
-        ind2 = n.where(ant2 == self.antnum[self.select])
-        d1 = self.delay[self.select][ind1]
-        d2 = self.delay[self.select][ind2]
+        select = n.where( (self.skyfreq[self.select] == skyfreq) & (self.polarization[self.select] == pol) )
+
+        ind1 = n.where(ant1 == self.antnum[select])
+        ind2 = n.where(ant2 == self.antnum[select])
+        d1 = self.delay[select][ind1]
+        d2 = self.delay[select][ind2]
         if len(d1-d2) > 0:
             return d1-d2
         else:
             return n.array([0])
 
-    def apply(self, data, blarr, pol):
+    def apply(self, data, blarr):
         """ Applies calibration solution to data array. Assumes structure of (nint, nbl, nch, npol).
         blarr is array of size 2xnbl that gives pairs of antennas in each baseline (a la tpipe.blarr).
-        pol is an index to apply solution (0/1)
         """
 
-        # define freq structure to apply delay solution
-        nch = data.shape[2]
-        chanref = nch/2    # reference channel at center
-        freqarr = self.chansize*(n.arange(nch) - chanref)   # relative frequency
+        # find best skyfreq for each channel
+        skyfreqs = n.unique(self.skyfreq)
+        nch_tot = len(self.freqs)
+        chan_bandnum = [range(nch_tot*i/len(skyfreqs), nch_tot*(i+1)/len(skyfreqs)) for i in range(len(skyfreqs))]  # divide chans by number of spw in solution
 
-        for i in range(len(blarr)):
-            ant1, ant2 = blarr[i]  # ant numbers (1-based)
+        for j in range(len(skyfreqs)):
+            skyfreq = skyfreqs[j]
+            chans = chan_bandnum[j]
+            self.logger.info('Applying gain solution for chans from %d-%d' % (chans[0], chans[-1]))
 
-            # apply gain correction
-            invg1g2 = self.calcgain(ant1, ant2)
-            data[:,i,:,pol] = data[:,i,:,pol] * invg1g2[0]
+            # define freq structure to apply delay solution
+            nch = len(chans)
+            chanref = nch/2    # reference channel at center
+            relfreq = self.chansize*(n.arange(nch) - chanref)   # relative frequency
 
-            # apply delay correction
-            d1d2 = self.calcdelay(ant1, ant2)
-            delayrot = 2*n.pi*(d1d2 * 1e-9)*freqarr      # phase to rotate across band
-            data[:,i,:,pol] = data[:,i,:,pol] * n.exp(-1j*delayrot[None, :])     # do rotation
+            for i in range(len(blarr)):
+                ant1, ant2 = blarr[i]  # ant numbers (1-based)
+                for pol in n.unique(self.polarization):
+                    # apply gain correction
+                    invg1g2 = self.calcgain(ant1, ant2, skyfreq, pol)
+                    data[:,i,chans,pol] = data[:,i,chans,pol] * invg1g2
+
+                    # apply delay correction
+                    d1d2 = self.calcdelay(ant1, ant2, skyfreq, pol)
+                    delayrot = 2*n.pi*(d1d2[0] * 1e-9) * relfreq      # phase to rotate across band
+                    data[:,i,chans,pol] = data[:,i,chans,pol] * n.exp(-1j*delayrot[None, None, :])     # do rotation

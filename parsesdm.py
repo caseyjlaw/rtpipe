@@ -144,8 +144,8 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, params=''
     # summarize metadata
     logger.info('\n')
     logger.info('Metadata summary:')
-    logger.info('\t Data at %s in workdir %s' % (d['filename'], d['workdir']))
-    logger.info('\t Using scan %d' % (int(d['scan'])))
+    logger.info('\t Working directory and data at %s, %s' % (d['workdir'], filename))
+    logger.info('\t Using scan %d, source %s' % (int(d['scan']), d['source']))
     logger.info('\t nants, nbl: %d, %d' % (d['nants'], d['nbl']))
     logger.info('\t Freq range (%.3f -- %.3f). %d spw with %d chans.' % (d['freq'].min(), d['freq'].max(), d['nspw'], d['nchan']))
     logger.info('\t Scan has %d ints (%.1f s) and inttime %.3f s' % (d['nints'], d['nints']*d['inttime'], d['inttime']))

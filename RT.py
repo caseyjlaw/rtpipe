@@ -119,12 +119,23 @@ def pipeline_dataprep(d, segment):
         ####    ####    ####    ####
 
         # calibrate data
-        try:
-            sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
-            sols.parsebp(d['bpfile'])
-            sols.setselection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'])
-            sols.apply(data_read, d['blarr'])
-        except IOError:
+        if os.path.exists(d['gainfile']):
+            try:
+                # if CASA table
+                sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
+                sols.parsebp(d['bpfile'])
+                sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'])
+            except:
+                # if telcal file
+                try:
+                    sols = pc.telcal_sol(d['gainfile'])
+                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9)   # chooses solutions closest in time that match pol and source name
+                except:
+                    logger.warning('Could not parse gainfile %s as CASA or telcal file' % d['gainfile'])
+            else:
+                sols.apply(data_read, d['blarr'])
+
+        else:
             logger.info('Calibration file not found. Proceeding with no calibration applied.')
 
         # flag data
@@ -425,7 +436,7 @@ def lightcurve(d, l1, m1):
         try:
             sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
             sols.parsebp(d['bpfile'])
-            sols.setselection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'])
+            sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'])
             sols.apply(data, d['blarr'])
         except IOError:
             logger.error('Calibration file not found. Proceeding with no calibration applied.')
@@ -520,17 +531,23 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     # autodetect calibration products
     if not d['gainfile']:
-        filelist = glob.glob(os.path.join(d['workdir'], d['fileroot'] + '.g?'))
-        if len(filelist):
+        # first try to get CASA gain file
+        try:
+            filelist = glob.glob(os.path.join(d['workdir'], d['fileroot'] + '.g?'))
             filelist.sort()
             d['gainfile'] = filelist[-1]
-            logger.info('Autodetecting cal files... gainfile set to %s.' % d['gainfile'])
-    if not d['bpfile']:
-        filelist = glob.glob(os.path.join(d['workdir'], d['fileroot'] + '.b?'))
-        if len(filelist):
+            logger.info('Autodetected CASA gainfile %s' % d['gainfile'])
+
+            # if CASA gainfile, look for CASA bpfile
+            filelist = glob.glob(os.path.join(d['workdir'], d['fileroot'] + '.b?'))
             filelist.sort()
             d['bpfile'] = filelist[-1]
-            logger.info('Autodetecting cal files... bpfile set to %s.' % d['bpfile'])
+            logger.info('Autodetected CASA bpfile %s' % d['bpfile'])
+        except:
+            # if that fails, look for telcal file
+            filelist = glob.glob(os.path.join(d['workdir'], filename + '.GN'))
+            d['gainfile'] = filelist[0]
+            logger.info('Autodetected telcal file %s' % d['gainfile'])
 
     # supported features: snr1, immax1, l1, m1
     if d['searchtype'] == 'image1':
@@ -622,7 +639,10 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     logger.info('')
     logger.info('Pipeline summary:')
-    logger.info('\t Products saved with %s. Calibration files set to (%s, %s)' % (d['fileroot'], d['gainfile'], d['bpfile']))
+    if '.GN' in d['gainfile']:
+        logger.info('\t Products saved with %s. telcal calibration with %s' % (d['fileroot'], d['gainfile']))
+    else:
+        logger.info('\t Products saved with %s. CASA calibration files (%s, %s)' % (d['fileroot'], d['gainfile'], d['bpfile']))
     logger.info('\t Using %d segment%s of %d ints (%.1f s) with overlap of %.1f s' % (d['nsegments'], "s"[not d['nsegments']-1:], d['readints'], d['t_segment'], d['t_overlap']))
     if d['t_overlap'] > d['t_segment']/3.:
         logger.info('\t\t Lots of segments needed, since Max DM sweep (%.1f s) close to segment size (%.1f s)' % (d['t_overlap'], d['t_segment']))
