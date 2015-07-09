@@ -545,9 +545,12 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
             logger.info('Autodetected CASA bpfile %s' % d['bpfile'])
         except:
             # if that fails, look for telcal file
-            filelist = glob.glob(os.path.join(d['workdir'], filename + '.GN'))
-            d['gainfile'] = filelist[0]
-            logger.info('Autodetected telcal file %s' % d['gainfile'])
+            try:
+                filelist = glob.glob(os.path.join(d['workdir'], filename + '.GN'))
+                d['gainfile'] = filelist[0]
+                logger.info('Autodetected telcal file %s' % d['gainfile'])
+            except:
+                logger.debug('Failed to autodetect CASA or telcal calibration files.')
 
     # supported features: snr1, immax1, l1, m1
     if d['searchtype'] == 'image1':

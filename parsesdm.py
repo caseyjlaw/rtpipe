@@ -144,7 +144,7 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, params=''
     # summarize metadata
     logger.info('\n')
     logger.info('Metadata summary:')
-    logger.info('\t Working directory and data at %s, %s' % (d['workdir'], filename))
+    logger.info('\t Working directory and data at %s, %s' % (d['workdir'], os.path.split(d['filename'])[1]))
     logger.info('\t Using scan %d, source %s' % (int(d['scan']), d['source']))
     logger.info('\t nants, nbl: %d, %d' % (d['nants'], d['nbl']))
     logger.info('\t Freq range (%.3f -- %.3f). %d spw with %d chans.' % (d['freq'].min(), d['freq'].max(), d['nspw'], d['nchan']))
@@ -154,7 +154,7 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, params=''
 
     return d
 
-def read_bdf_segment(d, segment=-1):
+def read_bdf_segment(d, segment=-1, writebdfpkl=False):
     """ Reads bdf (sdm) format data into numpy array for realtime pipeline.
     d defines pipeline state. assumes segmenttimes defined by RT.set_pipeline.
     """
@@ -171,7 +171,7 @@ def read_bdf_segment(d, segment=-1):
         readints = 0
 
     # read (all) data
-    data = sdmreader.read_bdf(d['filename'], d['scan'], nskip=nskip, readints=readints).astype('complex64')
+    data = sdmreader.read_bdf(d['filename'], d['scan'], nskip=nskip, readints=readints, writebdfpkl=writebdfpkl).astype('complex64')
 
     # test that spw are in freq sorted order
     dfreq = n.array([d['spw_reffreq'][i+1] - d['spw_reffreq'][i] for i in range(len(d['spw_reffreq'])-1)])
