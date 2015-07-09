@@ -25,6 +25,7 @@ class Params(object):
         self.flagantsol = True; self.gainfile = ''; self.bpfile = ''; self.fileroot = ''
         self.savenoise = False; self.savecands = False
         self.dm_maxloss = 0.05; self.maxdm = 100; self.dm_pulsewidth = 3000   # dmloss is fractional sensitivity loss, maxdm in pc/cm3, width in microsec
+        self.writebdfpkl = False
                            
         # overload with the parameter file values, if provided
         if len(paramfile):

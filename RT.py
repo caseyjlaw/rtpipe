@@ -121,20 +121,18 @@ def pipeline_dataprep(d, segment):
         # calibrate data
         if os.path.exists(d['gainfile']):
             try:
-                # if CASA table
-                sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
-                sols.parsebp(d['bpfile'])
-                sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'])
-            except:
-                # if telcal file
-                try:
+                if '.GN' in d['gainfile']:
                     sols = pc.telcal_sol(d['gainfile'])
                     sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9)   # chooses solutions closest in time that match pol and source name
-                except:
-                    logger.warning('Could not parse gainfile %s as CASA or telcal file' % d['gainfile'])
-            else:
-                sols.apply(data_read, d['blarr'])
-
+                    sols.apply(data_read, d['blarr'])
+                else:
+                    # if CASA table
+                    sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
+                    sols.parsebp(d['bpfile'])
+                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'])
+                    sols.apply(data_read, d['blarr'])
+            except:
+                logger.warning('Could not parse gainfile %s.' % d['gainfile'])
         else:
             logger.info('Calibration file not found. Proceeding with no calibration applied.')
 
@@ -198,7 +196,11 @@ def pipeline_reproduce(d, segment, candloc = ()):
     with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
         readpool.apply(pipeline_dataprep, (d, segment))
 
-    if len(candloc) == 2:
+    if len(candloc) == 0:
+        logger.info('Returning prepared data...')
+        return data
+
+    elif len(candloc) == 2:
         logger.info('Reproducing data...')
         dmind, dtind = candloc
         d['dmarr'] = [d['dmarr'][dmind]]

@@ -154,9 +154,10 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, params=''
 
     return d
 
-def read_bdf_segment(d, segment=-1, writebdfpkl=False):
+def read_bdf_segment(d, segment=-1):
     """ Reads bdf (sdm) format data into numpy array for realtime pipeline.
     d defines pipeline state. assumes segmenttimes defined by RT.set_pipeline.
+    d should have 'writebdfpkl' key to define boolean for writing to bdfpkls in ASDMBinary directory.
     """
 
     # define integration range
@@ -171,7 +172,7 @@ def read_bdf_segment(d, segment=-1, writebdfpkl=False):
         readints = 0
 
     # read (all) data
-    data = sdmreader.read_bdf(d['filename'], d['scan'], nskip=nskip, readints=readints, writebdfpkl=writebdfpkl).astype('complex64')
+    data = sdmreader.read_bdf(d['filename'], d['scan'], nskip=nskip, readints=readints, writebdfpkl=d['writebdfpkl']).astype('complex64')
 
     # test that spw are in freq sorted order
     dfreq = n.array([d['spw_reffreq'][i+1] - d['spw_reffreq'][i] for i in range(len(d['spw_reffreq'])-1)])
