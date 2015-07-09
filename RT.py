@@ -138,7 +138,7 @@ def pipeline_dataprep(d, segment):
 
         # flag data
         if len(d['flaglist']):
-            logging.info('Flagging with flaglist: %s' % d['flaglist'])
+            logger.info('Flagging with flaglist: %s' % d['flaglist'])
             dataflag(d, data_read)
         else:
             logger.info('No real-time flagging.')
@@ -531,7 +531,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     else:
         d['fileroot'] = os.path.split(os.path.abspath(filename))[1]
 
-    # autodetect calibration products
+    # autodetect calibration products locally
     if not d['gainfile']:
         # first try to get CASA gain file
         try:
