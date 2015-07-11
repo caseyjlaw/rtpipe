@@ -601,7 +601,8 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     if len(d['dmarr']) == 0:
         if d.has_key('dm_maxloss') and d.has_key('maxdm') and d.has_key('dm_pulsewidth'):
             d['dmarr'] = calc_dmgrid(d, maxloss=d['dm_maxloss'], maxdm=d['maxdm'], dt=d['dm_pulsewidth'])
-            logger.info('Calculated %d dms for max sensitivity loss %.2f, maxdm %d pc/cm3, and pulse width %d ms' % (len(d['dmarr']), d['dm_maxloss'], d['maxdm'], d['dm_pulsewidth']/1000))
+            if d['maxdm'] > 0:
+                logger.info('Calculated %d dms for max sensitivity loss %.2f, maxdm %d pc/cm3, and pulse width %d ms' % (len(d['dmarr']), d['dm_maxloss'], d['maxdm'], d['dm_pulsewidth']/1000))
         else:
             d['dmarr'] = [0]
             logger.info('Can\'t calculate dm grid without dm_maxloss, maxdm, and dm_pulsewidth defined. Setting to [0].')
@@ -613,7 +614,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     if d['nsegments'] == 0:
         fringetime = calc_fringetime(d)
-        d['nsegments'] = max(1, d['scale_nsegments']*int(d['inttime']*(d['nints']-d['nskip'])/(fringetime-d['t_overlap'])))
+        d['nsegments'] = max(1, min(d['nints'], d['scale_nsegments']*int(d['inttime']*(d['nints']-d['nskip'])/(fringetime-d['t_overlap']))))  # at least 1, at most nints
 #        stopdts = n.arange(d['nskip']*d['inttime']+d['t_overlap'], d['nints']*d['inttime'], fringetime-d['t_overlap'])[1:] # old way
 #        startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
 
@@ -650,7 +651,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         logger.info('\t Products saved with %s. CASA calibration files (%s, %s)' % (d['fileroot'], d['gainfile'], d['bpfile']))
     logger.info('\t Using %d segment%s of %d ints (%.1f s) with overlap of %.1f s' % (d['nsegments'], "s"[not d['nsegments']-1:], d['readints'], d['t_segment'], d['t_overlap']))
     if d['t_overlap'] > d['t_segment']/3.:
-        logger.info('\t\t Lots of segments needed, since Max DM sweep (%.1f s) close to segment size (%.1f s)' % (d['t_overlap'], d['t_segment']))
+        logger.info('\t\t Lots of segments needed, since Max DM sweep (%.1f s) close to segment size (%.2f s)' % (d['t_overlap'], d['t_segment']))
     logger.info('\t Downsampling in time/freq by %d/%d and skipping %d ints from start of scan.' % (d['read_tdownsample'], d['read_fdownsample'], d['nskip']))
     logger.info('\t Excluding ants %s' % (d['excludeants']))
     logger.info('')
@@ -756,7 +757,7 @@ def move_phasecenter(d, l1, m1, u, v):
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
     rtlib.phaseshift_threaded(data_resamp, d, l1, m1, u, v)
 
-def calc_dmgrid(d, maxloss=0.05, dt=3000., mindm=0., maxdm=2000.):
+def calc_dmgrid(d, maxloss=0.05, dt=3000., mindm=0., maxdm=0.):
     """ Function to calculate the DM values for a given maximum sensitivity loss.
     maxloss is sensitivity loss tolerated by dm bin width. dt is assumed pulse width in microsec.
     """
@@ -773,14 +774,17 @@ def calc_dmgrid(d, maxloss=0.05, dt=3000., mindm=0., maxdm=2000.):
     dt1 = lambda dm, ddm: n.sqrt(dt**2 + tsamp**2 + ((k*dm*ch)/(freq**3))**2 + ((k*ddm*bw)/(freq**3.))**2)
     loss = lambda dm, ddm: 1-n.sqrt(dt0(dm)/dt1(dm,ddm))
 
-    # iterate over dmgrid to find optimal dm values. go higher than maxdm to be sure final list includes full range.
-    dmgrid = n.arange(mindm, maxdm, 0.05)
-    dmgrid_final = [dmgrid[0]]
-    for i in range(len(dmgrid)):
-        ddm = (dmgrid[i] - dmgrid_final[-1])/2.
-        ll = loss(dmgrid[i],ddm)
-        if ll > maxloss:
-            dmgrid_final.append(dmgrid[i])
+    if maxdm == 0:
+        return [0]
+    else:
+        # iterate over dmgrid to find optimal dm values. go higher than maxdm to be sure final list includes full range.
+        dmgrid = n.arange(mindm, maxdm, 0.05)
+        dmgrid_final = [dmgrid[0]]
+        for i in range(len(dmgrid)):
+            ddm = (dmgrid[i] - dmgrid_final[-1])/2.
+            ll = loss(dmgrid[i],ddm)
+            if ll > maxloss:
+                dmgrid_final.append(dmgrid[i])
 
     return dmgrid_final
 
