@@ -681,9 +681,9 @@ def getcandsfile(d, segment=-1):
     """ Return name of candsfile for a given dictionary. Must have d['segment'] defined.
     """
     if d.has_key('segment'):
-        return 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+        return os.path.join(d['workdir'], 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl')
     elif segment >= 0:
-        return 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(segment) + '.pkl'
+        return os.path.join(d['workdir'], 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(segment) + '.pkl')
     else:
         return ''
 
@@ -691,9 +691,9 @@ def getnoisefile(d, segment=-1):
     """ Return name of noisefile for a given dictionary. Must have d['segment'] defined.
     """
     if d.has_key('segment'):
-        return 'noise_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl'
+        return os.path.join(d['workdir'], 'noise_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl')
     elif segment >= 0:
-        return 'noise_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(segment) + '.pkl'
+        return os.path.join(d['workdir'], 'noise_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(segment) + '.pkl')
     else:
         return ''
 
