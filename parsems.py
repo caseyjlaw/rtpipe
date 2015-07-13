@@ -10,7 +10,7 @@ ms = casautil.tools.ms()
 tb = casautil.tools.table()
 qa = casautil.tools.quanta()
 
-def get_metadata(filename, scan=0, datacol='', spw=[], chans=[], selectpol=[], read_fdownsample=1, params=''):
+def get_metadata(filename, scan, datacol='', spw=[], chans=[], selectpol=[], read_fdownsample=1, params=''):
     """ Function to scan data (a small read) and define parameters used elsewhere.
     filename needs full path.
     Examples include, read/bgsub windows, image grid, memory profile.
@@ -78,14 +78,14 @@ def get_metadata(filename, scan=0, datacol='', spw=[], chans=[], selectpol=[], r
 
         # find scan info
         d['scansummary'] = ms.getscansummary()
-        d['scanlist'] = sorted(d['scansummary'].keys())
+        scanlist = sorted(d['scansummary'].keys())
 
         # find data structure
         logger.debug('Reading a little data from each scan...')
         nints_snip = 10
         orig_spws_all = {}; freq_orig_all = {}
         urange = {}; vrange = {}
-        for ss in d['scanlist']:
+        for ss in scanlist:
             # compile spws per scan
             orig_spws0 = md.spwsforscan(int(ss))
             orig_spws_all[ss] = [sorted(zip(orig_spws0, [md.chanfreqs(spw0)[0]/1e9 for spw0 in orig_spws0]), key=lambda ss:ss[1])[i][0] for i in range(len(orig_spws0))]
@@ -139,8 +139,8 @@ def get_metadata(filename, scan=0, datacol='', spw=[], chans=[], selectpol=[], r
     d['npol'] = len(pols)
 
     # refine spw/freq info
-    d['scan'] = int(d['scanlist'][scan])
-    d['orig_spws'] = n.array(d['orig_spws_all'][d['scanlist'][scan]])
+    d['scan'] = int(scanlist[scan])
+    d['orig_spws'] = n.array(d['orig_spws_all'][scanlist[scan]])
     if len(spw):
         d['spwlist'] = d['orig_spws'][spw]
     elif len(d['spw']):
@@ -149,7 +149,7 @@ def get_metadata(filename, scan=0, datacol='', spw=[], chans=[], selectpol=[], r
         d['spwlist'] = d['orig_spws']
 
     d['spw'] = sorted(d['spwlist'])
-    allfreq = d['freq_orig_all'][d['scanlist'][scan]]
+    allfreq = d['freq_orig_all'][scanlist[scan]]
     chperspw = len(allfreq)/len(d['orig_spws'])
     spwch = []
     for ss in d['orig_spws']:
@@ -170,14 +170,14 @@ def get_metadata(filename, scan=0, datacol='', spw=[], chans=[], selectpol=[], r
     d['nchan'] = len(d['freq'])
 
     # define integrations for given scan
-    d['nints'] = d['scansummary'][d['scanlist'][scan]]['0']['nRow']/(d['nbl']*d['npol'])
-    inttime0 = d['scansummary'][d['scanlist'][scan]]['0']['IntegrationTime'] # estimate of inttime from first scan
+    d['nints'] = d['scansummary'][scanlist[scan]]['0']['nRow']/(d['nbl']*d['npol'])
+    inttime0 = d['scansummary'][scanlist[scan]]['0']['IntegrationTime'] # estimate of inttime from first scan
 
     # define ideal res/npix
     d['uvres_full'] = n.round(d['dishdiameter']/(3e-1/d['freq'].min())/2).astype('int')    # delay beam larger than VLA field of view at all freqs. assumes freq in GHz.
     # **this may let vis slip out of bounds. should really define grid out to 2*max(abs(u)) and 2*max(abs(v)). in practice, very few are lost.**
-    urange = d['urange'][d['scanlist'][scan]]*d['freq'].max() * (1e9/3e8)
-    vrange = d['vrange'][d['scanlist'][scan]]*d['freq'].max() * (1e9/3e8)
+    urange = d['urange'][scanlist[scan]]*d['freq'].max() * (1e9/3e8)
+    vrange = d['vrange'][scanlist[scan]]*d['freq'].max() * (1e9/3e8)
     powers = n.fromfunction(lambda i,j: 2**i*3**j, (14,10), dtype='int')   # power array for 2**i * 3**j
     rangex = n.round(d['uvoversample']*urange).astype('int')
     rangey = n.round(d['uvoversample']*vrange).astype('int')
@@ -189,8 +189,8 @@ def get_metadata(filename, scan=0, datacol='', spw=[], chans=[], selectpol=[], r
     d['npixy_full'] = (2**p2y * 3**p3y)[0]
 
     # define times
-    d['starttime_mjd'] = d['scansummary'][d['scanlist'][scan]]['0']['BeginTime']
-    d['inttime'] = d['scansummary'][d['scanlist'][scan]]['0']['IntegrationTime']
+    d['starttime_mjd'] = d['scansummary'][scanlist[scan]]['0']['BeginTime']
+    d['inttime'] = d['scansummary'][scanlist[scan]]['0']['IntegrationTime']
 
     # summarize metadata
     logger.info('')

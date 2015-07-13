@@ -36,8 +36,7 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, params=''
         d[k] = params[k]
 
     # define scan list
-    scans, sources = sdmreader.read_metadata(d['filename'])
-    d['scanlist'] = sorted(scans.keys())
+    scans, sources = sdmreader.read_metadata(d['filename'], scan)
 
     # define source props
     d['source'] = scans[scan]['source']
