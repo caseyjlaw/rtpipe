@@ -317,11 +317,10 @@ def listscans(dicts):
             if (key[0] == mysources[mysrc]['source']):
                 ra = mysources[mysrc]['ra']
                 dec = mysources[mysrc]['dec']
-                directionCode = mysources[mysrc]['directionCode']
                 break
         raString = qa.formxxx('%.12frad'%ra,format('hms'))
         decString = qa.formxxx('%.12frad'%dec,format('dms')).replace('.',':',2)
-        logger.debug('   Total %24s (%d)  %5.1f minutes  (%.3f, %+.3f radian) %s: %s %s' % (key[0], int(mysrc), key[1], ra, dec, directionCode, raString, decString))
+        logger.debug('   Total %24s (%d)  %5.1f minutes  (%.3f, %+.3f radian): %s %s' % (key[0], int(mysrc), key[1], ra, dec, raString, decString))
     durations = duration(myscans,nocal=True)
     for key in durations:
         logger.debug('   Total %24s      %5.1f minutes (neglecting pntg, atm & sideband cal. scans)' % (key[0],key[1]))

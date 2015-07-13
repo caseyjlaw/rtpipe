@@ -483,6 +483,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     
     workdir = os.path.split(os.path.abspath(filename))[0]
+    filename = filename.rstrip('/')
 
     # option of not writing log file (need to improve later)
     if 'nologfile' in kwargs.keys(): 
