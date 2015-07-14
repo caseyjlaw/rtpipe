@@ -482,7 +482,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     """
 
     
-    workdir = os.path.split(os.path.abspath(filename))[0]
+    workdir = os.path.dirname(os.path.abspath(filename))
     filename = filename.rstrip('/')
 
     # option of not writing log file (need to improve later)
@@ -530,7 +530,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     if fileroot:
         d['fileroot'] = fileroot
     else:
-        d['fileroot'] = os.path.split(os.path.abspath(filename))[1]
+        d['fileroot'] = os.path.basename(os.path.abspath(filename))
 
     # autodetect calibration products locally
     if not d['gainfile']:
@@ -647,9 +647,9 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     logger.info('')
     logger.info('Pipeline summary:')
     if '.GN' in d['gainfile']:
-        logger.info('\t Products saved with %s. telcal calibration with %s' % (d['fileroot'], d['gainfile']))
+        logger.info('\t Products saved with %s. telcal calibration with %s' % (d['fileroot'], os.path.basename(d['gainfile'])))
     else:
-        logger.info('\t Products saved with %s. CASA calibration files (%s, %s)' % (d['fileroot'], d['gainfile'], d['bpfile']))
+        logger.info('\t Products saved with %s. CASA calibration files (%s, %s)' % (d['fileroot'], os.path.basename(d['gainfile']), os.path.basename(d['bpfile'])))
     logger.info('\t Using %d segment%s of %d ints (%.1f s) with overlap of %.1f s' % (d['nsegments'], "s"[not d['nsegments']-1:], d['readints'], d['t_segment'], d['t_overlap']))
     if d['t_overlap'] > d['t_segment']/3.:
         logger.info('\t\t Lots of segments needed, since Max DM sweep (%.1f s) close to segment size (%.2f s)' % (d['t_overlap'], d['t_segment']))

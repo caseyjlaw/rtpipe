@@ -14,17 +14,17 @@ class Params(object):
     
         # default values
         self.chans = []; self.spw = []    
-        self.dmarr = []; self.dtarr = [1]    # dmarr = [] will autodetect, given other parameters
         self.nskip = 0; self.excludeants = []; self.read_tdownsample = 1; self.read_fdownsample = 1
-        self.nthread = 8; self.nchunk = 0; self.nsegments = 0; self.scale_nsegments = 1
+        self.nthread = 1; self.nchunk = 0; self.nsegments = 0; self.scale_nsegments = 1
         self.timesub = ''
+        self.dmarr = []; self.dtarr = [1]    # dmarr = [] will autodetect, given other parameters
+        self.dm_maxloss = 0.05; self.maxdm = 0; self.dm_pulsewidth = 3000   # dmloss is fractional sensitivity loss, maxdm in pc/cm3, width in microsec
         self.searchtype = 'image1'; self.sigma_image1 = 7.; self.sigma_image2 = 7.
         self.l0 = 0.; self.m0 = 0.
         self.uvres = 0; self.npix = 0; self.uvoversample = 1.
         self.flaglist = [('badcht', 20., 0.3) , ('badap', 3., 0.2), ('blstd', 3.0, 0.05), ('badcht', 15., 0.3)]
         self.flagantsol = True; self.gainfile = ''; self.bpfile = ''; self.fileroot = ''
         self.savenoise = False; self.savecands = False
-        self.dm_maxloss = 0.05; self.maxdm = 0; self.dm_pulsewidth = 3000   # dmloss is fractional sensitivity loss, maxdm in pc/cm3, width in microsec
         self.writebdfpkl = False
                            
         # overload with the parameter file values, if provided

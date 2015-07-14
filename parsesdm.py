@@ -26,7 +26,7 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, params=''
 
     # set workdir
     d['filename'] = os.path.abspath(filename)
-    d['workdir'] = os.path.split(d['filename'])[0]
+    d['workdir'] = os.path.dirname(d['filename'])
 
     d['read_fdownsample'] = read_fdownsample
 
@@ -143,7 +143,7 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, params=''
     # summarize metadata
     logger.info('\n')
     logger.info('Metadata summary:')
-    logger.info('\t Working directory and data at %s, %s' % (d['workdir'], os.path.split(d['filename'])[1]))
+    logger.info('\t Working directory and data at %s, %s' % (d['workdir'], os.path.basename(d['filename'])))
     logger.info('\t Using scan %d, source %s' % (int(d['scan']), d['source']))
     logger.info('\t nants, nbl: %d, %d' % (d['nants'], d['nbl']))
     logger.info('\t Freq range (%.3f -- %.3f). %d spw with %d chans.' % (d['freq'].min(), d['freq'].max(), d['nspw'], d['nchan']))

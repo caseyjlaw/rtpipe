@@ -23,7 +23,7 @@ def get_metadata(filename, scan, datacol='', spw=[], chans=[], selectpol=[], rea
 
     # set misc params
     d['filename'] = os.path.abspath(filename.rstrip('/'))
-    d['workdir'] = os.path.split(d['filename'])[0]
+    d['workdir'] = os.path.dirname(d['filename'])
 
     # define parameters of pipeline via Params object
     params = pp.Params(os.path.join(d['workdir'], params))
