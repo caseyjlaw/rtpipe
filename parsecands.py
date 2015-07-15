@@ -48,7 +48,7 @@ def merge_segments(pkllist, fileroot=''):
 
     assert len(pkllist) > 0
 
-    workdir = os.path.split(pkllist[0])[0]
+    workdir = os.path.dirname(pkllist[0])
 
     if not fileroot:
         fileroot = '_'.join(pkllist[0].split('seg')[0].split('_')[1:])   # assumes filename structure
@@ -136,6 +136,7 @@ def merge_cands(pkllist, outroot='', remove=[]):
         for first in range(0,nranges,2):
             badrange0 = remove[first]
             badrange1 = remove[first+1]
+
             ww = ww & n.where( (mergetimes < badrange0) | (mergetimes > badrange1), True, False )
 
         mergeloc = mergeloc[ww]
@@ -177,7 +178,7 @@ def plot_summary(pkllist, outroot='', remove=[]):
 
     # if a list, merge them
     if isinstance(pkllist, list):
-        workdir = os.path.split(pkllist[0])[0]
+        workdir = os.path.dirname(pkllist[0])
 
         if not outroot:
             outroot = '_'.join(pkllist[0].split('_')[1:3])
@@ -433,7 +434,7 @@ def make_noisehists(pkllist, outroot, remove=[]):
     """
 
     assert len(pkllist) > 0
-    workdir = os.path.split(pkllist[0])[0]
+    workdir = os.path.dirname(pkllist[0])
 
     outname = os.path.join(workdir, 'plot_' + outroot + '_noisehist.png')
 
@@ -623,7 +624,7 @@ def plot_cand(mergepkl, snrmin=None, candnum=-1, outname='', **kwargs):
     d = pickle.load(open(mergepkl, 'r'))
     loc, prop = read_candidates(mergepkl)
     
-    if not os.path.split(d['filename'])[0]:
+    if not os.path.dirname(d['filename']):
         d['filename'] = os.path.join(d['workdir'], d['filename'])
 
     # feature columns
@@ -777,7 +778,7 @@ def inspect_cand(mergepkl, snrmin=None, candnum=-1, scan=0, **kwargs):
     d = pickle.load(open(mergepkl, 'r'))
     loc, prop = read_candidates(mergepkl)
     
-    if not os.path.split(d['filename'])[0]:
+    if not os.path.dirname(d['filename']):
         d['filename'] = os.path.join(d['workdir'], d['filename'])
 
     # feature columns
