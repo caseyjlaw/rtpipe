@@ -59,13 +59,14 @@ def pipeline(d, segments):
 
         # submit all segments to pool of 1. locking data should keep this from running away.
         for segment in segments:
-            if d['savecands'] and os.path.exists(getcandsfile(d, segment)):
+            candsfile = os.path.exists(getcandsfile(d, segment))
+            if d['savecands'] and candsfile:
                 logger.error('candsfile %s already exists. Ending processing...' % candsfile)
             else:
                 results[segment] = readpool.apply_async(pipeline_dataprep, (d, segment))   # no need for segment here? need to think through structure...
 
         # step through pool of jobs and pull data off as ready. this allows pool to continue to next segment.
-        for segment in segments:
+        for segment in results.keys():
             logger.debug('pipeline waiting on prep to complete for segment %d' % segment)
             d = results[segment].get()   # returning d is a hack here
             logger.debug('pipeline got result. now waiting on data lock for %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
