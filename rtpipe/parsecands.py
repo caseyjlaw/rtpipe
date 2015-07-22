@@ -883,3 +883,4 @@ def deg2HMS(ra='', dec='', round=False):
         return (RA, DEC)
     else:
         return RA or DEC
+

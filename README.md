@@ -13,3 +13,7 @@ Supersedes `tpipe` (http://github.com/caseyjlaw/tpipe) by defining algorithm to 
 ** sdmreader (http://github.com/caseyjlaw/sdmreader)
 ** sdmpy (http://github.com/demorest/sdmreader)
 * pyFFTW (accelerated FFTs; works with 0.9.2; https://pypi.python.org/pypi/pyFFTW)
+
+## Install
+
+    > python setup.py install
