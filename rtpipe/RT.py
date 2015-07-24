@@ -178,6 +178,7 @@ def pipeline_reproduce(d, segment, candloc = ()):
     """
 
     # set up shared arrays to fill
+    data_reproduce_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
     data_read_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
     data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
     u_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
@@ -206,7 +207,7 @@ def pipeline_reproduce(d, segment, candloc = ()):
         dmind, dtind = candloc
         d['dmarr'] = [d['dmarr'][dmind]]
         d['dtarr'] = [d['dtarr'][dtind]]
-        data = runreproduce(d, data_mem, u, v, w)
+        data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w)
         return data
 
     elif len(candloc) == 3:  # reproduce candidate image and data
@@ -214,7 +215,7 @@ def pipeline_reproduce(d, segment, candloc = ()):
         reproduceint, dmind, dtind = candloc
         d['dmarr'] = [d['dmarr'][dmind]]
         d['dtarr'] = [d['dtarr'][dtind]]
-        im, data = reproduce(d, data_mem, u, v, w, reproduceint)
+        im, data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w, reproduceint)
         return im, data
 
     else:
@@ -367,7 +368,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
     logger.info('Found %d cands in scan %d segment %d of %s. ' % (len(cands), d['scan'], d['segment'], d['filename']))
     return cands
 
-def runreproduce(d, data_resamp_mem, u, v, w, candint=-1, twindow=30):
+def runreproduce(d, data_mem, data_resamp_mem, u, v, w, candint=-1, twindow=30):
     """ Reproduce function, much like search.
     If no candint is given, it returns resampled data. Otherwise, returns image and rephased data.
     """
@@ -375,7 +376,7 @@ def runreproduce(d, data_resamp_mem, u, v, w, candint=-1, twindow=30):
     dmind = 0; dtind = 0
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
 
-    with closing(mp.Pool(1, initializer=initpool, initargs=(data_resamp_mem,))) as repropool:
+    with closing(mp.Pool(1, initializer=initresamp, initargs=(data_mem, data_resamp_mem))) as repropool:
         # dedisperse
         logger.info('Dedispersing with DM=%.1f, dt=%d...' % (d['dmarr'][dmind], d['dtarr'][dtind]))
         repropool.apply(correct_dmdt, [d, dmind, dtind, (0,d['nbl'])])
@@ -391,7 +392,7 @@ def runreproduce(d, data_resamp_mem, u, v, w, candint=-1, twindow=30):
         if candint > -1:
             # image
             logger.info('Imaging int %d with %d %d pixels...' % (candint, npixx, npixy))
-            im = pool.apply(image1wrap, [d, u, v, w, npixx, npixy, candint/d['dtarr'][dtind]])
+            im = repropool.apply(image1wrap, [d, u, v, w, npixx, npixy, candint/d['dtarr'][dtind]])
 
             snrmin = im.min()/im.std()
             snrmax = im.max()/im.std()
@@ -405,7 +406,7 @@ def runreproduce(d, data_resamp_mem, u, v, w, candint=-1, twindow=30):
 
             # rephase and trim interesting ints out
             logger.info('Rephasing to peak...')
-            pool.apply(move_phasecenter, [d, l1, m1, u, v])
+            repropool.apply(move_phasecenter, [d, l1, m1, u, v])
             minint = max(candint/d['dtarr'][dtind]-twindow/2, 0)
             maxint = min(candint/d['dtarr'][dtind]+twindow/2, len(data_resamp)/d['dtarr'][dtind])
 
@@ -413,64 +414,30 @@ def runreproduce(d, data_resamp_mem, u, v, w, candint=-1, twindow=30):
         else:
             return data_resamp
 
-def lightcurve(d, l1, m1):
+def pipeline_lightcurve(d, l1, m1):
     """ Makes lightcurve at given (l1, m1)
     """
 
-    ####    ####    ####    ####
-    # 1) Read data
-    ####    ####    ####    ####
+    d = set_pipeline(d['filename'], d['scan'], fileroot=d['fileroot'], dmarr=[0], dtarr=[1], savenoise=False, timesub='', l0=l1, m0=m1, nologfile=True)
 
-    os.chdir(d['workdir'])
+    # define memory and numpy arrays
+    data_read_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
+    data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
+    u_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    u_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    v_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    v_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    w_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    w_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    data_read = numpyview(data_read_mem, 'complex64', datashape(d)) # optional
+    lightcurve = n.empty(shape=(d['nints'], d['nchan'], d['npol']), dtype='complex64')
 
-#    for segment in range(d['nsegments']):
-    for segment in [0,1]:
-        data_mem = mps.RawArray(mps.ctypes.c_float, datasize(d)*2)  # 'long' type needed to hold whole (2 min, 5 ms) scans
-        data = numpyview(data_mem, 'complex64', datashape(d))
+    with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
+        for segment in range(d['nsegments']-1):
+            readpool.apply(pipeline_dataprep, (d, segment))
+            lightcurve[d['readints']*segment: d['readints']*(segment+1)] = data_read.mean(axis=1)
 
-        data[:] = ps.read_bdf_segment(d, segment)
-        (u,v,w) = ps.get_uvw_segment(d, segment)
-
-    ####    ####    ####    ####
-    # 2) Prepare data
-    ####    ####    ####    ####
-
-        # calibrate data
-        try:
-            sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
-            sols.parsebp(d['bpfile'])
-            sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'])
-            sols.apply(data, d['blarr'])
-        except IOError:
-            logger.error('Calibration file not found. Proceeding with no calibration applied.')
-
-        # flag data
-        if d['flagmode'] == 'standard':
-            dataflagpool(data_mem, d)
-        else:
-            logger.info('No real-time flagging.')
-
-        # mean t vis subtration
-        if d['timesub'] == 'mean':
-            meantsubpool(data_mem, d)
-        else:
-            logger.info('No mean time subtraction.')
-
-        # no dedispersion yet
-
-        # only returns significant images for now
-        vals = rtlib.imgallfullfilterxyflux(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data, d['npixx'], d['npixy'], d['uvres'], d['sigma_image1'])
-
-        rtlib.phaseshift_threaded(data, d, l1, m1, u, v)
-
-        if segment == 0:
-            phaseddata = n.ma.masked_array(data, data==0j).mean(axis=1)
-            images = vals[0]
-        else:
-            phaseddata = n.concatenate( (phaseddata, n.ma.masked_array(data, data==0j).mean(axis=1)), axis=0)
-            images = images+vals[0]
-
-    return images, phaseddata
+    return lightcurve
     
 def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     """ Function defines pipeline state for search. Takes data/scan as input.

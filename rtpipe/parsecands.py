@@ -329,7 +329,7 @@ def plot_dmcount(d, times, dts, outroot):
             ax2[dtind].axis( (mint, maxt, 0, 1.1*counts.max()) )
 
             # label high points
-            high = n.where(counts > n.median(counts) + 5*counts.std())[0]
+            high = n.where(counts > n.median(counts) + 20*counts.std())[0]
             print
             print 'Candidate clusters for dt=%d:' % (d['dtarr'][dtind])
             print '\t(Counts, Times)'
@@ -443,22 +443,7 @@ def make_noisehists(pkllist, outroot, remove=[]):
     for pkl in pkllist:
         seg, noiseperbl, flagfrac, imnoise = read_noise(pkl)
 
-        if len(remove): print 'Remove option not supported yet.'
-        ii = seg  # or scan number? or int?
-
-        scani = int(pkl.split('_sc')[1].split('.')[0])   # assumes scan name structure
-        if scani in remove:
-#            print 'Removing some noise measurements from ', pkl
-            nranges = len(remove[scani])
-            wwa = []
-            for first in range(0,nranges,2):
-                badrange0 = remove[first]
-                badrange1 = remove[first+1]
-                ww = list(n.where( (ii > badrange0) & (ii < badrange1) )[0])
-                if len(ww):
-                    wwa += ww
-            for i in wwa[::-1]:
-                junk = imnoise.pop(i)
+        if len(remove): print 'Remove option not supported for noise files yet.'
 
         noises.append(imnoise)  # TBD: filter this by remove
         minnoise = min(minnoise, imnoise.min())
@@ -672,8 +657,8 @@ def plot_cand(mergepkl, snrmin=None, candnum=-1, outname='', **kwargs):
         dtarrorig = d['dtarr']
         nsegments = len(d['segmenttimesdict'][scan])
 
-        d2 = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False, nsegments=nsegments, **kwargs)
-        im, data = rt.pipeline(d2, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
+        d2 = rt.set_pipeline(d['filename'], scan, fileroot=d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False, nsegments=nsegments, **kwargs)
+        im, data = rt.pipeline_reproduce(d2, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
 
         # calc source location
         peakl, peakm = n.where(im == im.max())
@@ -830,8 +815,8 @@ def inspect_cand(mergepkl, snrmin=None, candnum=-1, scan=0, **kwargs):
         dmarrorig = d['dmarr']
         dtarrorig = d['dtarr']
 
-        d2 = rt.set_pipeline(d['filename'], scan, d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False, nsegments=nsegments, **kwargs)
-        im, data = rt.pipeline(d2, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
+        d2 = rt.set_pipeline(d['filename'], scan, fileroot=d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False, nsegments=nsegments, **kwargs)
+        im, data = rt.pipeline_reproduce(d2, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
 
         # calc source location
         peakl, peakm = n.where(im == im.max())
