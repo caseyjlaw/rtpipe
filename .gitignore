@@ -1,0 +1,4 @@
+build
+dist
+rtpipe.egg-info
+rtpipe/*pyc
