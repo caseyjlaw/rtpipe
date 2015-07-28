@@ -39,12 +39,17 @@ class Params(object):
         File should have python-like syntax. Full file name needed.
         """
 
-        f = open(paramfile, 'r')
-        for line in f.readlines():
-            line = line.rstrip('\n').split('#')[0]   # trim out comments and trailing cr
-            if '=' in line:   # use valid lines only
-                exec(line)
-                exec('self.'+line.lstrip())
+        with open(paramfile, 'r') as f:
+            for line in f.readlines():
+                line_clean = line.rstrip('\n').split('#')[0]   # trim out comments and trailing cr
+                if '=' in line:   # use valid lines only
+                    attribute, value = line_clean.split('=')
+                    try:
+                        value_eval = eval(value.strip())
+                    except NameError:
+                        value_eval = value.strip()
+                    finally:
+                        setattr(self, attribute.strip(), value_eval)
 
     @property
     def defined(self):

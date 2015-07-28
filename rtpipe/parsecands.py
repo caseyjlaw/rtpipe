@@ -54,37 +54,37 @@ def merge_segments(pkllist, fileroot=''):
         fileroot = '_'.join(pkllist[0].split('seg')[0].split('_')[1:])   # assumes filename structure
 
     # aggregate cands over segments
-    if 'cands' in pkllist[0]:
+    if ('cands' in pkllist[0]) and (len(pkllist) > 1):
         state = pickle.load(open(pkllist[0], 'r'))
         cands = {}
         for cc in pkllist:
-            pkl = open(cc,'r')
-            state = pickle.load(pkl)
-            result = pickle.load(pkl)
+            with open(cc,'r') as pkl:
+                state = pickle.load(pkl)
+                result = pickle.load(pkl)
             for kk in result.keys():
                 cands[kk] = result[kk]
-            pkl.close()
 
         # write cands to single file
-        pkl = open(os.path.join(workdir, 'cands_' + fileroot + '.pkl'), 'w')
-        pickle.dump(state, pkl)
-        pickle.dump(cands, pkl)
-        pkl.close()
+        with open(os.path.join(workdir, 'cands_' + fileroot + '.pkl'), 'w') as pkl:
+            pickle.dump(state, pkl)
+            pickle.dump(cands, pkl)
 
     # clean up noise files
-    elif 'noise' in pkllist[0]:
+    elif ('noise' in pkllist[0]) and (len(pkllist) > 1):
         print 'Aggregating noise from %s' % pkllist
         # aggregate noise over segments
         noise = []
         for cc in pkllist:
-            pkl = open(cc,'r')
-            result = pickle.load(pkl)
-            noise += result
+            try:
+                with open(cc,'r') as pkl:
+                    result = pickle.load(pkl)
+                noise += result
+            except EOFError:
+                pass
 
         # write noise to single file
-        pkl = open(os.path.join(workdir, 'noise_' + fileroot + '.pkl'), 'w')
-        pickle.dump(noise, pkl)
-        pkl.close()
+        with open(os.path.join(workdir, 'noise_' + fileroot + '.pkl'), 'w') as pkl:
+            pickle.dump(noise, pkl)
 
 def merge_cands(pkllist, outroot='', remove=[]):
     """ Takes cands pkls from list and filteres to write new single "merge" pkl.
