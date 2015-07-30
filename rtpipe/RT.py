@@ -153,7 +153,7 @@ def pipeline_dataprep(d, segment):
 
         # save noise pickle
         if d['savenoise']:
-            noisepickle(d, data_read, u, v, w)
+            noisepickle(d, data_read, u, v, w, chunk=200)
 
         # phase to new location (not tested much yet)
         if any([d['l0'], d['m0']]):
@@ -990,7 +990,7 @@ def estimate_noiseperbl(data):
     (datameanmin, datameanmax) = rtlib.sigma_clip(datamean.flatten())
     good = n.where( (datamean>datameanmin) & (datamean<datameanmax) )
     noiseperbl = datamean[good].std()   # measure single noise for input to detect_bispectra
-    logger.info('Clipped to %d%% of data (%.3f to %.3f). Noise = %.3f.' % (100.*len(good[0])/len(datamean.flatten()), datameanmin, datameanmax, noiseperbl))
+    logger.debug('Clipped to %d%% of data (%.3f to %.3f). Noise = %.3f.' % (100.*len(good[0])/len(datamean.flatten()), datameanmin, datameanmax, noiseperbl))
     return noiseperbl
 
 def noisepickle(d, data, u, v, w, chunk=200):
@@ -1005,26 +1005,29 @@ def noisepickle(d, data, u, v, w, chunk=200):
             logger.warn('noisefile %s already exists' % noisefile)
         else:
             nints = len(data)
-            chunk = min(chunk, nints-1)  # ensure at least one measurement
+            chunk = min(chunk, nints)  # ensure at least one measurement
             results = []
-            pkl = open(noisefile, 'a')
-            for (i0, i1) in zip(range(0, nints-chunk, chunk), range(chunk, nints, chunk)):
-                imid = (i0+i1)/2
-                noiseperbl = estimate_noiseperbl(data[i0:i1])
+
+            rr = range(0, nints, chunk)
+            if len(rr) == 1: rr.append(1)   # hack. need to make sure it iterates for nints=1 case
+            for i in range(len(rr)-1):
+                imid = (rr[i]+rr[i+1])/2
+                noiseperbl = estimate_noiseperbl(data[rr[i]:rr[i+1]])
                 imstd = sample_image(d, data, u, v, w, imid, verbose=0).std()
-                zerofrac = float(len(n.where(data[i0:i1] == 0j)[0]))/data[i0:i1].size
+                zerofrac = float(len(n.where(data[rr[i]:rr[i+1]] == 0j)[0]))/data[rr[i]:rr[i+1]].size
                 results.append( (d['segment'], noiseperbl, zerofrac, imstd) )
-            pickle.dump(results, pkl)
-            pkl.close()
+
+            with open(noisefile, 'a') as pkl:
+                pickle.dump(results, pkl)
+            logger.info('Wrote %d noise measurement%s to %s.' % (len(results), 's'[:len(results)-1], noisefile))
 
 def savecands(d, cands):
     """ Save all candidates in pkl file for later aggregation and filtering.
     """
 
-    pkl = open(getcandsfile(d), 'w')
-    pickle.dump(d, pkl)
-    pickle.dump(cands, pkl)
-    pkl.close()
+    with open(getcandsfile(d), 'w') as pkl:
+        pickle.dump(d, pkl)
+        pickle.dump(cands, pkl)
 
 def datashape(d):
     return (d['readints'], d['nbl'], d['nchan'], d['npol'])
