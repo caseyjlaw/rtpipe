@@ -168,7 +168,7 @@ def read_bdf_segment(d, segment=-1):
     if segment != -1:
         assert d.has_key('segmenttimes')
 
-        readints = int(round(24*3600*(d['segmenttimes'][0,1] - d['segmenttimes'][0,0])/d['inttime'], 0))   # readints fixed to first segment for consistency with RT and avoiding rounding issues
+        readints = int(round(24*3600*(d['segmenttimes'][segment, 1] - d['segmenttimes'][segment, 0])/d['inttime'], 0))   # readints may differ from RT assumption. potential for rounding issues
         nskip = n.round(24*3600*(d['segmenttimes'][segment,0] - d['starttime_mjd'])/d['inttime'], 0).astype(int)
         logger.info('Reading segment %d/%d, times %s to %s' % (segment, len(d['segmenttimes'])-1, qa.time(qa.quantity(d['segmenttimes'][segment,0],'d'),form=['hms'], prec=9)[0], qa.time(qa.quantity(d['segmenttimes'][segment,1], 'd'), form=['hms'], prec=9)[0]))
     else:

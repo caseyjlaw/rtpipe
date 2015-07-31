@@ -597,8 +597,8 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         stoptime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['starttime_mjd']+stopdt/(24.*60*60), 'd'), form=['ymd'], prec=9)[0], 's'))[0]/(24*3600)
         segmenttimes.append((starttime, stoptime))
     d['segmenttimes'] = n.array(segmenttimes)
-    d['t_segment'] = 24*3600*(d['segmenttimes'][0,1]-d['segmenttimes'][0,0])
-    d['readints'] = int(round(d['t_segment']/d['inttime']))/d['read_tdownsample']
+    d['t_segment'] = 24*3600*(d['segmenttimes'][0,1]-d['segmenttimes'][0,0])         # not guaranteed to be the same for each segment
+    d['readints'] = int(round(d['t_segment']/d['inttime']))/d['read_tdownsample']    # not guaranteed to be the same for each segment
 
     # scaling of number of integrations beyond dt=1
     assert all(d['dtarr'])
@@ -677,10 +677,8 @@ def calc_memory_footprint(d, headroom=2.):
     toGB = 8/1024.**3   # number of complex64s to GB
     dtfactor = n.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
 
-    nints = d['t_segment']/(d['inttime']*d['read_tdownsample'])
-
     vismem = headroom * dtfactor * datasize(d) * toGB
-    immem = d['nthread'] * (nints/d['nchunk'] * d['npixx'] * d['npixy']) * toGB
+    immem = d['nthread'] * (d['readints']/d['nchunk'] * d['npixx'] * d['npixy']) * toGB
     return (vismem, immem)
 
 def calc_fringetime(d):
