@@ -14,11 +14,11 @@ logger = logging.getLogger(__name__)
 qa = casautil.tools.quanta()
 me = casautil.tools.measures()
 
-def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, params=''):
+def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, paramfile=''):
     """ Parses sdm file to define metadata for observation, including scan info, image grid parameters, pipeline memory usage, etc.
     Mirrors parsems.get_metadata(), though not all metadata set here yet.
-    If params defined, it will use it (filename or RT.Params instance ok).
-    spw/chans argument here will overload params file definition.
+    If paramfile defined, it will use it (filename or RT.Params instance ok).
+    spw/chans argument here will overload params definition.
     """
 
     # create primary state dictionary
@@ -31,12 +31,17 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, params=''
     d['read_fdownsample'] = read_fdownsample
 
     # define parameters of pipeline via Params object
-    params = pp.Params(os.path.join(d['workdir'], params))
+    
+    params = pp.Params(paramfile)
     for k in params.defined:   # fill in default params
         d[k] = params[k]
 
     # define scan list
-    scans, sources = sdmreader.read_metadata(d['filename'], scan)
+    if d.has_key('bdfdir'):   # only needed on cbe
+        bdfdir = d['bdfdir']
+    else:
+        bdfdir = None
+    scans, sources = sdmreader.read_metadata(d['filename'], scan, bdfdir=bdfdir)
 
     # define source props
     d['source'] = scans[scan]['source']
