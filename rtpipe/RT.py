@@ -605,6 +605,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         d['pols'] = [pol for pol in d['pols_orig'] if pol in d['selectpol']]
     else:
         d['pols'] = d['pols_orig']
+        d['selectpol'] = d['pols']
     d['npol'] = len(d['pols'])
 
     # scaling of number of integrations beyond dt=1
