@@ -482,7 +482,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         datacol = []
 
     # then get all metadata
-    if os.path.exists(os.path.join(filename, 'Antenna.xml')):
+    if os.path.exists(os.path.join(filename, 'Main.xml')):
         d = ps.get_metadata(filename, scan, chans=chans, spw=spw, read_fdownsample=rfd, paramfile=paramfile)   # can take file name or Params instance
         d['dataformat'] = 'sdm'
     else:
