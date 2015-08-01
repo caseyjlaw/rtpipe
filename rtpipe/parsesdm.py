@@ -141,9 +141,8 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, paramfile
             d['nints'] = nints
 
     # define pols
-    pols = [pol for pol in sdm['Polarization'][0].corrType.strip().split(' ') if pol in ['XX', 'YY', 'XY', 'YX', 'RR', 'LL', 'RL', 'LR']]
-    d['npol'] = int(sdm['Polarization'][0].numCorr)
-    d['pols'] = pols
+    d['pols_orig'] = [pol for pol in sdm['Polarization'][0].corrType.strip().split(' ') if pol in ['XX', 'YY', 'XY', 'YX', 'RR', 'LL', 'RL', 'LR']]
+    d['npol_orig'] = int(sdm['Polarization'][0].numCorr)
 
     # summarize metadata
     logger.info('\n')
@@ -153,7 +152,7 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, paramfile
     logger.info('\t nants, nbl: %d, %d' % (d['nants'], d['nbl']))
     logger.info('\t Freq range (%.3f -- %.3f). %d spw with %d chans.' % (d['freq'].min(), d['freq'].max(), d['nspw'], d['nchan']))
     logger.info('\t Scan has %d ints (%.1f s) and inttime %.3f s' % (d['nints'], d['nints']*d['inttime'], d['inttime']))
-    logger.info('\t %d polarizations: %s' % (d['npol'], d['pols']))
+    logger.info('\t %d polarizations: %s' % (d['npol_orig'], d['pols_orig']))
     logger.info('\t Ideal uvgrid npix=(%d,%d) and res=%d (oversample %.1f)' % (d['npixx_full'], d['npixy_full'], d['uvres_full'], d['uvoversample']))
 
     return d
@@ -204,7 +203,13 @@ def read_bdf_segment(d, segment=-1):
                 data2[:,:,i,:] = data[:,:,i*d['read_fdownsample']:(i+1)*d['read_fdownsample']].mean(axis=2)
         data = data2
 
-    return data.take(d['chans'], axis=2)
+    if d.has_key('selectpol'):
+        takepol = [d['pols_orig'].index(pol) for pol in d['pols']]
+        logger.debug('Selecting pols %s' % d['pols'])
+    else:
+        takepol = range(d['npol'])
+
+    return data.take(d['chans'], axis=2).take(takepol, axis=3)
 
 def get_uvw_segment(d, segment=-1):
     """ Calculates uvw for each baseline at mid time of a given segment.

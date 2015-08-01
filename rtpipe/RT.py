@@ -600,6 +600,13 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     d['t_segment'] = 24*3600*(d['segmenttimes'][0,1]-d['segmenttimes'][0,0])         # not guaranteed to be the same for each segment
     d['readints'] = int(round(d['t_segment']/d['inttime']))/d['read_tdownsample']    # not guaranteed to be the same for each segment
 
+    # pols
+    if d.has_key('selectpol'):
+        d['pols'] = [pol for pol in d['pols_orig'] if pol in d['selectpol']]
+    else:
+        d['pols'] = d['pols_orig']
+    d['npol'] = len(d['pols'])
+
     # scaling of number of integrations beyond dt=1
     assert all(d['dtarr'])
     dtfactor = n.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
@@ -624,6 +631,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         logger.info('\t\t Lots of segments needed, since Max DM sweep (%.1f s) close to segment size (%.2f s)' % (d['t_overlap'], d['t_segment']))
     logger.info('\t Downsampling in time/freq by %d/%d and skipping %d ints from start of scan.' % (d['read_tdownsample'], d['read_fdownsample'], d['nskip']))
     logger.info('\t Excluding ants %s' % (d['excludeants']))
+    logger.info('\t Using pols %s' % (d['selectpol']))
     logger.info('')
 
     logger.info('\t Search with %s and threshold %.1f.' % (d['searchtype'], d['sigma_image1']))
