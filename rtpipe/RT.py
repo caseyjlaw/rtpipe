@@ -584,7 +584,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     if d['nsegments'] == 0:
         fringetime = calc_fringetime(d)
-        d['nsegments'] = max(1, min(d['nints'], d['scale_nsegments']*int(d['inttime']*(d['nints']-d['nskip'])/(fringetime-d['t_overlap']))))  # at least 1, at most nints
+        d['nsegments'] = max(1, min(d['nints'], int(d['scale_nsegments']*d['inttime']*d['nints']/(fringetime-d['t_overlap']))))  # at least 1, at most nints
 #        stopdts = n.arange(d['nskip']*d['inttime']+d['t_overlap'], d['nints']*d['inttime'], fringetime-d['t_overlap'])[1:] # old way
 #        startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
 
@@ -597,8 +597,9 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         stoptime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['starttime_mjd']+stopdt/(24.*60*60), 'd'), form=['ymd'], prec=9)[0], 's'))[0]/(24*3600)
         segmenttimes.append((starttime, stoptime))
     d['segmenttimes'] = n.array(segmenttimes)
-    d['t_segment'] = 24*3600*(d['segmenttimes'][0,1]-d['segmenttimes'][0,0])         # not guaranteed to be the same for each segment
-    d['readints'] = int(round(d['t_segment']/d['inttime']))/d['read_tdownsample']    # not guaranteed to be the same for each segment
+    totaltimeread = 24*3600*(d['segmenttimes'][:, 1] - d['segmenttimes'][:, 0]).sum()            # not guaranteed to be the same for each segment
+    d['readints'] = n.round(totaltimeread / (d['inttime']*d['nsegments']*d['read_tdownsample'])).astype(int)
+    d['t_segment'] = totaltimeread/d['nsegments']
 
     # scaling of number of integrations beyond dt=1
     assert all(d['dtarr'])
