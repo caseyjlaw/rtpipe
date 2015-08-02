@@ -125,7 +125,10 @@ def pipeline_dataprep(d, segment):
                 if '.GN' in d['gainfile']:
                     sols = pc.telcal_sol(d['gainfile'])
                     sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9)   # chooses solutions closest in time that match pol and source name
-                    sols.apply(data_read, d['blarr'])
+                    if d['pols'] == ['XX']: polarr = [0]   # ugh
+                    if d['pols'] == ['YY']: polarr = [1]
+                    if d['pols'] == ['XX', 'YY']: polarr = [0,1]
+                    sols.apply(data_read, d['blarr'], polarr)
                 else:
                     # if CASA table
                     sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
@@ -240,7 +243,7 @@ def dataflag(d, data_read):
 
     for flag in d['flaglist']:
         mode, sig, conv = flag
-        chans = n.array(d['chans'])
+        chans = n.arange(d['nchan'])     # chans, pol are indices for splitting up work
         for pol in range(d['npol']):
             status = rtlib.dataflag(data_read, chans, pol, d, sig, mode, conv)
             logger.info(status)
@@ -254,52 +257,6 @@ def dataflagatom(chans, pol, d, sig, mode, conv):
 #    data = n.ma.masked_array(data, data==0j)  # this causes massive overflagging on 14sep03 data
 
     return rtlib.dataflag(data, chans, pol, d, sig, mode, conv)
-
-def dataflagpool(d, data_read_mem):
-    """ Parallelized flagging
-    """
-
-    logger.info('Flagging data...')
-    chperspw = len(d['freq_orig'])/len(d['spw'])
-    with closing(mp.Pool(4, initializer=initreadonly, initargs=(data_read_mem,))) as flagpool:
-        resultd = {}
-        for pol in range(d['npol']):
-            for spw in range(d['nspw']):
-                freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
-                chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                resultd[(spw,pol)] = flagpool.apply_async(dataflagatom, [chans, pol, d, 20., 'badcht', 0.3])
-        for kk in resultd.keys():
-            result = resultd[kk].get()
-            logger.info(result)
-
-        resultd = {}
-        for spw in range(d['nspw']):
-            freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
-            chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-            resultd[spw] = flagpool.apply_async(dataflagatom, [chans, 0, d, 3., 'badap', 0.2]) # pol not used here
-        for kk in resultd.keys():
-            result = resultd[kk].get()
-            logger.info(result)
-
-        resultd = {}
-        for pol in range(d['npol']):
-            for spw in range(d['nspw']):
-                freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
-                chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                resultd[(spw,pol)] = flagpool.apply_async(dataflagatom, [chans, pol, d, 3.0, 'blstd', 0.05])
-        for kk in resultd.keys():
-            result = resultd[kk].get()
-            logger.info(result)
-
-        resultd = {}
-        for pol in range(d['npol']):
-            for spw in range(d['nspw']):
-                freqs = d['freq_orig'][spw*chperspw:(spw+1)*chperspw]  # find chans for spw. only works for 2 or more sb
-                chans = n.array([i for i in xrange(len(d['freq'])) if d['freq'][i] in freqs])
-                resultd[(spw,pol)] = flagpool.apply_async(dataflagatom, [chans, pol, d, 15., 'badcht', 0.3])
-        for kk in resultd.keys():
-            result = resultd[kk].get()
-            logger.info(result)
 
 def search(d, data_mem, u_mem, v_mem, w_mem):
     """ Search function.
@@ -605,7 +562,6 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         d['pols'] = [pol for pol in d['pols_orig'] if pol in d['selectpol']]
     else:
         d['pols'] = d['pols_orig']
-        d['selectpol'] = d['pols']
     d['npol'] = len(d['pols'])
 
     # scaling of number of integrations beyond dt=1
@@ -632,7 +588,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         logger.info('\t\t Lots of segments needed, since Max DM sweep (%.1f s) close to segment size (%.2f s)' % (d['t_overlap'], d['t_segment']))
     logger.info('\t Downsampling in time/freq by %d/%d and skipping %d ints from start of scan.' % (d['read_tdownsample'], d['read_fdownsample'], d['nskip']))
     logger.info('\t Excluding ants %s' % (d['excludeants']))
-    logger.info('\t Using pols %s' % (d['selectpol']))
+    logger.info('\t Using pols %s' % (d['pols']))
     logger.info('')
 
     logger.info('\t Search with %s and threshold %.1f.' % (d['searchtype'], d['sigma_image1']))

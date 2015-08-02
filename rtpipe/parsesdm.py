@@ -203,11 +203,8 @@ def read_bdf_segment(d, segment=-1):
                 data2[:,:,i,:] = data[:,:,i*d['read_fdownsample']:(i+1)*d['read_fdownsample']].mean(axis=2)
         data = data2
 
-    if d.has_key('selectpol'):
-        takepol = [d['pols_orig'].index(pol) for pol in d['pols']]
-        logger.debug('Selecting pols %s' % d['pols'])
-    else:
-        takepol = range(d['npol'])
+    takepol = [d['pols_orig'].index(pol) for pol in d['pols']]
+    logger.debug('Selecting pols %s' % d['pols'])
 
     return data.take(d['chans'], axis=2).take(takepol, axis=3)
 

@@ -400,11 +400,11 @@ class telcal_sol():
                 self.logger.debug('Calibrator name %s not found. Ignoring.' % (calname))
 
         # select freq
-#        freqselect = n.where( n.around(1e6*self.skyfreq[self.select],-6) == n.around(self.freqs[len(self.freqs)/2],-6) )   # define selection for time
-#        if len(freqselect[0]) == 0:
-#            raise StandardError('No complete set of telcal solutions at that frequency.')
-#        self.select = self.select[freqselect[0]]    # update overall selection
-#        self.logger.info('Frequency selection cut down to %d solutions' % (len(self.select)))
+        freqselect = n.where([ff in n.around(self.freqs, -6) for ff in n.around(1e6*self.skyfreq[self.select], -6)])   # takes solution if band center is in (rounded) array of chan freqs
+        if len(freqselect[0]) == 0:
+            raise StandardError('No complete set of telcal solutions at that frequency.')
+        self.select = self.select[freqselect[0]]    # update overall selection
+        self.logger.info('Frequency selection cut down to %d solutions' % (len(self.select)))
 
         # select pol
 #        ifids = self.ifid[self.select]
@@ -524,13 +524,14 @@ class telcal_sol():
         else:
             return n.array([0])
 
-    def apply(self, data, blarr):
+    def apply(self, data, blarr, polarr=[0,1]):
         """ Applies calibration solution to data array. Assumes structure of (nint, nbl, nch, npol).
         blarr is array of size 2xnbl that gives pairs of antennas in each baseline (a la tpipe.blarr).
+        polarr gives the pol indices to iterate over. [0] == first (e.g., 'XX'). Allowed: [0], [1], [0,1].
         """
 
         # find best skyfreq for each channel
-        skyfreqs = n.unique(self.skyfreq)
+        skyfreqs = n.unique(self.skyfreq[self.select])    # one per spw
         nch_tot = len(self.freqs)
         chan_bandnum = [range(nch_tot*i/len(skyfreqs), nch_tot*(i+1)/len(skyfreqs)) for i in range(len(skyfreqs))]  # divide chans by number of spw in solution
 
@@ -546,12 +547,12 @@ class telcal_sol():
 
             for i in range(len(blarr)):
                 ant1, ant2 = blarr[i]  # ant numbers (1-based)
-                for pol in n.unique(self.polarization):
+                for pol in polarr:
                     # apply gain correction
                     invg1g2 = self.calcgain(ant1, ant2, skyfreq, pol)
-                    data[:,i,chans,pol] = data[:,i,chans,pol] * invg1g2
+                    data[:,i,chans,pol-polarr[0]] = data[:,i,chans,pol-polarr[0]] * invg1g2    # hack: lousy data pol indexing
 
                     # apply delay correction
                     d1d2 = self.calcdelay(ant1, ant2, skyfreq, pol)
                     delayrot = 2*n.pi*(d1d2[0] * 1e-9) * relfreq      # phase to rotate across band
-                    data[:,i,chans,pol] = data[:,i,chans,pol] * n.exp(-1j*delayrot[None, None, :])     # do rotation
+                    data[:,i,chans,pol-polarr[0]] = data[:,i,chans,pol-polarr[0]] * n.exp(-1j*delayrot[None, None, :])     # do rotation
