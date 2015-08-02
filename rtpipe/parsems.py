@@ -10,7 +10,7 @@ ms = casautil.tools.ms()
 tb = casautil.tools.table()
 qa = casautil.tools.quanta()
 
-def get_metadata(filename, scan, datacol='', spw=[], chans=[], selectpol=[], read_fdownsample=1, params=''):
+def get_metadata(filename, scan, datacol='', spw=[], chans=[], selectpol=[], read_fdownsample=1, paramfile=''):
     """ Function to scan data (a small read) and define parameters used elsewhere.
     filename needs full path.
     Examples include, read/bgsub windows, image grid, memory profile.
@@ -26,7 +26,7 @@ def get_metadata(filename, scan, datacol='', spw=[], chans=[], selectpol=[], rea
     d['workdir'] = os.path.dirname(d['filename'])
 
     # define parameters of pipeline via Params object
-    params = pp.Params(os.path.join(d['workdir'], params))
+    params = pp.Params(paramfile)
     for k in params.defined:   # fill in default params
         d[k] = params[k]
 

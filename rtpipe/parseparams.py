@@ -15,6 +15,7 @@ class Params(object):
         # default values
         self.chans = []; self.spw = []    
         self.nskip = 0; self.excludeants = []; self.read_tdownsample = 1; self.read_fdownsample = 1
+        self.selectpol = ['RR', 'LL', 'XX', 'YY']   # default processing assumes dual-pol
         self.nthread = 1; self.nchunk = 0; self.nsegments = 0; self.scale_nsegments = 1
         self.timesub = ''
         self.dmarr = []; self.dtarr = [1]    # dmarr = [] will autodetect, given other parameters

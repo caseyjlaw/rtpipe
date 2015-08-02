@@ -155,7 +155,11 @@ class pipe(object):
 
         # if flux calibrator available, use its model
         if self.fluxname and self.band:
-            fluxmodel = '/home/casa/packages/RHEL5/release/casapy-41.0.24668-001-64b/data/nrao/VLA/CalModels/' + self.fluxname + '_' + self.band + '.im'
+            if self.band == 'P':
+                calband = 'L'
+            else:
+                calband = self.band
+            fluxmodel = '/home/casa/packages/RHEL5/release/casapy-41.0.24668-001-64b/data/nrao/VLA/CalModels/' + self.fluxname + '_' + calband + '.im'
         else:
             fluxmodel = ''
 
@@ -165,8 +169,10 @@ class pipe(object):
         # flag data
         if len(flaglist):
             self.flagdata(msfile, flaglist=flaglist)
-        else:
+        elif os.path.exists(os.path.join(self.workdir, 'flags.txt')):
             self.flagdata(msfile, flagfile=os.path.join(self.workdir, 'flags.txt'))
+        else:
+            print 'No flagging.'
 
         # Calibrate!
         if fluxmodel:

@@ -810,7 +810,7 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
 #                    if blstd.data[i,chan] > blstdmednew + sigma*blstdstdnew:     # then measure points to flag based on a third std threshold
                 flagged += nbl
                 for j in xrange(nbl):
-                    datacal[badint[badi],j,chans[badchan[badi]],pol] = 0j
+                    datacal[badint[badi],j,chans[badchan[badi]],pol] = n.complex64(0j)
 
             summary='Blstd flagging for (chans %d-%d, pol %d), %.1f sigma: %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, 100.*flagged/datacal.size)
 
@@ -835,12 +835,12 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
                 flagged += iterint*nbl
                 for i in xrange(iterint):
                     for j in xrange(nbl):
-                        datacal[i,j,chan,pol] = 0j
+                        datacal[i,j,chan,pol] = n.complex64(0j)
             for i in badt:
                 flagged += nchan*nbl
                 for chan in xrange(len(chans)):
                     for j in xrange(nbl):
-                        datacal[i,j,chans[chan],pol] = 0j
+                        datacal[i,j,chans[chan],pol] = n.complex64(0j)
 
             summary='Bad chans/ints flagging for (chans %d-%d, pol %d), %1.f sigma: %d chans, %d ints, %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, len(badch), len(badt), 100.*flagged/datacal.size)
 
@@ -856,7 +856,7 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
                flagged += iterint*len(chans)
                for i in xrange(iterint):
                    for chan in chans:
-                       datacal[i,badbl,chan,pol] = 0j
+                       datacal[i,badbl,chan,pol] = n.complex64(0j)
 
             summary='Ringing flagging for (chans %d-%d, pol %d) at %.1f sigma: %d/%d bls, %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, len(badbls), nbl, 100.*flagged/datacal.size)
 
@@ -877,7 +877,7 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
                     flagged += iterint*len(chans)
                     for i in xrange(iterint):
                         for chan in chans:
-                            datacal[i,badbls[j],chan,badpols[j]] = 0j
+                            datacal[i,badbls[j],chan,badpols[j]] = n.complex64(0j)
 
             summary='Bad basepol flagging for chans %d-%d at %.1f sigma: ants/pols %s/%s, %3.2f %% of total flagged' % (chans[0], chans[-1], sigma, badants, ww[1], 100.*flagged/datacal.size)
 
