@@ -376,11 +376,14 @@ def runreproduce(d, data_mem, data_resamp_mem, u, v, w, candint=-1, twindow=30):
         else:
             return data_resamp
 
-def pipeline_lightcurve(d, scan, l1, m1):
+def pipeline_lightcurve(d, l1, m1, scan=-1):
     """ Makes lightcurve at given (l1, m1)
     """
 
-    d = set_pipeline(d['filename'], scan, fileroot=d['fileroot'], dmarr=[0], dtarr=[1], savenoise=False, timesub='', l0=l1, m0=m1, nologfile=True)
+    if scan == -1:
+        scan = d['scan']
+
+    d = set_pipeline(d['filename'], scan, fileroot=d['fileroot'], dmarr=[0], dtarr=[1], savenoise=False, timesub='', l0=l1, m0=m1, nologfile=True, nsegments=d['nsegments'])
 
     # define memory and numpy arrays
     data_read_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
@@ -395,8 +398,7 @@ def pipeline_lightcurve(d, scan, l1, m1):
     lightcurve = n.zeros(shape=(d['nints'], d['nchan'], d['npol']), dtype='complex64')
 
     with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
-#        for segment in range(d['nsegments']-1):
-        for segment in [112]:
+        for segment in range(d['nsegments']):
             readpool.apply(pipeline_dataprep, (d, segment))
             lightcurve[d['readints']*segment: d['readints']*(segment+1)] = data_read.mean(axis=1)
 
