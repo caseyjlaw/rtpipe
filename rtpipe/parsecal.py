@@ -214,7 +214,7 @@ class casa_sol():
         closestgain = n.where(mjddist == mjddist.min())[0][0]
 
         self.logger.info('Using gain solution for field %d at MJD %.5f, separated by %d min ' % (self.uniquefield[n.where(self.uniquemjd == self.uniquemjd[sel][closestgain])], self.uniquemjd[closestgain], mjddist[closestgain]*24*60))
-        self.gain = self.gain[closestgain,:,spws[0]:spws[1]+1,pols[0]:pols[1]+1]
+        self.gain = self.gain.take(spws, axis=2).take(pols, axis=3)[closestgain]
 
         if hasattr(self, 'bandpass'):
             bins = [n.where(n.min(n.abs(self.bpfreq-selfreq)) == n.abs(self.bpfreq-selfreq))[0][0] for selfreq in freqs]
@@ -257,23 +257,23 @@ class casa_sol():
             corr = n.ones_like(data)
             flag = n.ones_like(data.real).astype('int')
             chans_uncal = range(len(self.freqs))
-            for spw in range(len(self.gain[0])):
+            for spwi in range(len(self.spws)):
                 chsize = n.round(self.bpfreq[1]-self.bpfreq[0], 0)
-                ww = n.where( (self.freqs >= self.bpfreq[spw*1000]) & (self.freqs <= self.bpfreq[(spw+1)*1000-1]+chsize) )[0]
+                ww = n.where( (self.freqs >= self.bpfreq[self.spws[spwi]*1000]) & (self.freqs <= self.bpfreq[(self.spws[spwi]+1)*1000-1]+chsize) )[0]
                 if len(ww) == 0:
-                    self.logger.info('Gain solution frequencies not found in data for spw %d.' % (self.spws[spw]))
+                    self.logger.info('Gain solution frequencies not found in data for spw %d.' % (self.spws[spwi]))
                 firstch = ww[0]
                 lastch = ww[-1]+1
                 for ch in ww:
                     chans_uncal.remove(ch)
-                self.logger.info('Combining gain sol from spw=%d with BW chans from %d-%d' % (self.spws[spw], firstch, lastch))
+                self.logger.info('Combining gain sol from spw=%d with BW chans from %d-%d' % (self.spws[spwi], firstch, lastch))
                 for badant in n.transpose(badants):
-                    if badant[1] == spw:
+                    if badant[1] == spwi:
                         badbl = n.where((badant[0] == n.array(ant1ind)) | (badant[0] == n.array(ant2ind)))[0]
                         flag[:, badbl, firstch:lastch, badant[2]] = 0
 
-                corr1 = self.gain[ant1ind, spw, :][None, :, None, :] * self.bandpass[ant1ind, firstch:lastch, :][None, :, :, :]
-                corr2 = (self.gain[ant2ind, spw, :][None, :, None, :] * self.bandpass[ant2ind, firstch:lastch, :][None, :, :, :]).conj()
+                corr1 = self.gain[ant1ind, spwi, :][None, :, None, :] * self.bandpass[ant1ind, firstch:lastch, :][None, :, :, :]
+                corr2 = (self.gain[ant2ind, spwi, :][None, :, None, :] * self.bandpass[ant2ind, firstch:lastch, :][None, :, :, :]).conj()
 
                 corr[:, :, firstch:lastch, :] = corr1 * corr2
             if len(chans_uncal):
@@ -534,6 +534,7 @@ class telcal_sol():
         skyfreqs = n.unique(self.skyfreq[self.select])    # one per spw
         nch_tot = len(self.freqs)
         chan_bandnum = [range(nch_tot*i/len(skyfreqs), nch_tot*(i+1)/len(skyfreqs)) for i in range(len(skyfreqs))]  # divide chans by number of spw in solution
+        self.logger.info('Solutions for %d spw: (%s)' % (len(skyfreqs), skyfreqs))
 
         for j in range(len(skyfreqs)):
             skyfreq = skyfreqs[j]

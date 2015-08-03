@@ -125,7 +125,11 @@ def pipeline_dataprep(d, segment):
             try:
                 if '.GN' in d['gainfile']:
                     sols = pc.telcal_sol(d['gainfile'])
-                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9)   # chooses solutions closest in time that match pol and source name
+                    if d.has_key('calname'):
+                        calname = d['calname']
+                    else:
+                        calname = ''
+                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, calname=calname)   # chooses solutions closest in time that match pol and source name
                     if d['pols'] == ['XX']: polarr = [0]   # ugh
                     if d['pols'] == ['YY']: polarr = [1]
                     if d['pols'] == ['XX', 'YY']: polarr = [0,1]
@@ -134,7 +138,7 @@ def pipeline_dataprep(d, segment):
                     # if CASA table
                     sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
                     sols.parsebp(d['bpfile'])
-                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'])
+                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'], spws=d['spw'])
                     sols.apply(data_read, d['blarr'])
             except:
                 logger.warning('Could not parse gainfile %s.' % d['gainfile'])
