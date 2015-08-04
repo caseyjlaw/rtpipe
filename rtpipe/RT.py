@@ -57,23 +57,29 @@ def pipeline(d, segments):
     # only one needed for parallel read/process. more would overwrite memory space
     with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
 
-        # submit all segments to pool of 1. locking data should keep this from running away.
-        for segment in segments:
-            assert segment in range(d['nsegments'])
-            candsfile = os.path.exists(getcandsfile(d, segment))
-            if d['savecands'] and candsfile:
-                logger.error('candsfile %s already exists. Ending processing...' % candsfile)
-            else:
-                results[segment] = readpool.apply_async(pipeline_dataprep, (d, segment))   # no need for segment here? need to think through structure...
+        try:
+            # submit all segments to pool of 1. locking data should keep this from running away.
+            for segment in segments:
+                assert segment in range(d['nsegments'])
+                candsfile = os.path.exists(getcandsfile(d, segment))
+                if d['savecands'] and candsfile:
+                    logger.error('candsfile %s already exists. Ending processing...' % candsfile)
+                else:
+                    results[segment] = readpool.apply_async(pipeline_dataprep, (d, segment))   # no need for segment here? need to think through structure...
 
-        # step through pool of jobs and pull data off as ready. this allows pool to continue to next segment.
-        for segment in results.keys():
-            logger.debug('pipeline waiting on prep to complete for segment %d' % segment)
-            d = results[segment].get()   # returning d is a hack here
-            logger.debug('pipeline got result. now waiting on data lock for %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
-            with data_mem.get_lock():
-                logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
-                cands = search(d, data_mem, u_mem, v_mem, w_mem)
+            # step through pool of jobs and pull data off as ready. this allows pool to continue to next segment.
+            for segment in results.keys():
+                logger.debug('pipeline waiting on prep to complete for segment %d' % segment)
+                d = results[segment].get()   # returning d is a hack here
+                logger.debug('pipeline got result. now waiting on data lock for %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
+                with data_mem.get_lock():
+                    logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
+                    cands = search(d, data_mem, u_mem, v_mem, w_mem)
+        except KeyboardInterrupt:
+            logger.error('Caught Ctrl-C. Closing processing pool.')
+            readpool.terminate()
+            readpool.join()
+            raise
 
             ####    ####    ####    ####
             # 4) Save candidate info
@@ -123,23 +129,21 @@ def pipeline_dataprep(d, segment):
         # calibrate data
         if os.path.exists(d['gainfile']):
             try:
+
                 if '.GN' in d['gainfile']:
                     sols = pc.telcal_sol(d['gainfile'])
                     if d.has_key('calname'):
                         calname = d['calname']
                     else:
                         calname = ''
-                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, calname=calname)   # chooses solutions closest in time that match pol and source name
-                    if d['pols'] == ['XX']: polarr = [0]   # ugh
-                    if d['pols'] == ['YY']: polarr = [1]
-                    if d['pols'] == ['XX', 'YY']: polarr = [0,1]
-                    sols.apply(data_read, d['blarr'], polarr)
+                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, d['blarr'], calname=calname, pols=d['pols'])   # chooses solutions closest in time that match pol and source name
+                    sols.apply(data_read)
                 else:
                     # if CASA table
                     sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
                     sols.parsebp(d['bpfile'])
-                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, radec=d['radec'], spws=d['spw'])
-                    sols.apply(data_read, d['blarr'])
+                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, d['blarr'], radec=d['radec'], spwind=d['spw'], pols=d['pols'])
+                    sols.apply(data_read)
             except:
                 logger.warning('Could not parse gainfile %s.' % d['gainfile'])
         else:
@@ -400,7 +404,8 @@ def pipeline_lightcurve(d, l1, m1, scan=-1):
     with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
         for segment in range(d['nsegments']):
             readpool.apply(pipeline_dataprep, (d, segment))
-            lightcurve[d['readints']*segment: d['readints']*(segment+1)] = data_read.mean(axis=1)
+            nskip = (24*3600*(d['segmenttimes'][segment,0] - d['starttime_mjd'])/d['inttime']).astype(int)   # insure that lc is set as what is read
+            lightcurve[nskip: nskip+d['readints']] = data_read.mean(axis=1)
 
     return lightcurve
     
