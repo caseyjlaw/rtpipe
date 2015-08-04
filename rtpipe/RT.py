@@ -140,9 +140,16 @@ def pipeline_dataprep(d, segment):
                     sols.apply(data_read)
                 else:
                     # if CASA table
+
+                    # option to select calibrator
+                    if d.has_key('calradec'):
+                        calradec = d['calradec']  # optionally defined
+                    else:
+                        calradec = d['radec']    # always defined
+
                     sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
                     sols.parsebp(d['bpfile'])
-                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, d['blarr'], radec=d['radec'], spwind=d['spw'], pols=d['pols'])
+                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, d['blarr'], radec=calradec, spwind=d['spw'], pols=d['pols'])
                     sols.apply(data_read)
             except:
                 logger.warning('Could not parse gainfile %s.' % d['gainfile'])

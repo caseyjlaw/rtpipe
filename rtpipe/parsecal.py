@@ -206,9 +206,9 @@ class casa_sol():
         # select by smallest time distance for source within some angular region of target
         if len(radec):
             ra, dec = radec
-            calra = n.array([self.radec[i][0] for i in range(len(self.radec))])
-            caldec = n.array([self.radec[i][1] for i in range(len(self.radec))])
-            fields = n.where( (calra - ra < n.radians(dist)) & (caldec - dec < n.radians(dist)) )[0]
+            calra = n.array(self.radec)[:,0]
+            caldec = n.array(self.radec)[:,1]
+            fields = n.where( (n.abs(calra - ra) < n.radians(dist)) & (n.abs(caldec - dec) < n.radians(dist)) )[0]
             if len(fields) == 0:
                 self.logger.warn('Warning: no close calibrator found. Removing radec restriction.')
                 fields = n.unique(self.uniquefield)
