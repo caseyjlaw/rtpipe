@@ -184,7 +184,7 @@ def read_bdf_segment(d, segment=-1):
         rollch = n.sum([d['spw_nchan'][ss] for ss in range(n.where(dfreq < 0)[0][0]+1)])
         data = n.roll(data, rollch, axis=2)
     else:
-        raise StandardError, 'SPW out of order and can\'t be permuted to increasing order.'
+        raise StandardError, 'SPW out of order and can\'t be permuted to increasing order: %s' % str(d['spw_reffreq'])
 
     # optionally integrate (downsample)
     if ((d['read_tdownsample'] > 1) or (d['read_fdownsample'] > 1)):

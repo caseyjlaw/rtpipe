@@ -436,11 +436,17 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     filename = filename.rstrip('/')
 
     # option of not writing log file (need to improve later)
+    if 'silent' in kwargs.keys():
+        loglevel = 100
+        logger.setLevel(loglevel)
+    else:
+        loglevel = logging.INFO
+        
     if 'nologfile' in kwargs.keys(): 
         pass
     else:
         fh = logging.FileHandler(os.path.join(workdir, 'rtpipe_%d.log' % int(round(time.time()))))
-        fh.setLevel(logging.INFO)
+        fh.setLevel(loglevel)
         fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         logger.addHandler(fh)
 
