@@ -60,7 +60,7 @@ def pipeline(d, segments):
         try:
             # submit all segments to pool of 1. locking data should keep this from running away.
             for segment in segments:
-                assert segment in range(d['nsegments'])
+                assert segment in range(d['nsegments']), 'Segment %d not in range of %d nsegments' % (segment, d['nsegments'])
                 candsfile = os.path.exists(getcandsfile(d, segment))
                 if d['savecands'] and candsfile:
                     logger.error('candsfile %s already exists. Ending processing...' % candsfile)
@@ -75,6 +75,7 @@ def pipeline(d, segments):
                 with data_mem.get_lock():
                     logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
                     cands = search(d, data_mem, u_mem, v_mem, w_mem)
+
         except KeyboardInterrupt:
             logger.error('Caught Ctrl-C. Closing processing pool.')
             readpool.terminate()
@@ -594,7 +595,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     d['npol'] = len(d['pols'])
 
     # scaling of number of integrations beyond dt=1
-    assert all(d['dtarr'])
+    assert all(d['dtarr']), 'dtarr must be larger than 0'
     dtfactor = n.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
 
     # calculate number of thermal noise candidates per segment
