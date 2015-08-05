@@ -15,7 +15,7 @@ ctypedef n.long_t CTYPE_t
 DTYPE = n.complex64
 ctypedef n.complex64_t DTYPE_t
 
-cpdef beamonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=2] v, n.ndarray[DTYPE_t, ndim=3] data, unsigned int npixx, unsigned int npixy, unsigned int res):
+cpdef beamonefullxy(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n.float32_t, ndim=2, mode='c'] v, n.ndarray[DTYPE_t, ndim=3, mode='c'] data, unsigned int npixx, unsigned int npixy, unsigned int res):
     # Same as imgonefullxy, but returns dirty beam
     # Ignores uv points off the grid
     # flips xy gridding! im on visibility flux scale!
@@ -67,7 +67,7 @@ cpdef beamonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndi
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cpdef imgonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=2] v, n.ndarray[DTYPE_t, ndim=3] data, unsigned int npixx, unsigned int npixy, unsigned int uvres, verbose=1):
+cpdef imgonefullxy(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n.float32_t, ndim=2, mode='c'] v, n.ndarray[DTYPE_t, ndim=3, mode='c'] data, unsigned int npixx, unsigned int npixy, unsigned int uvres, verbose=1):
     # Same as imgallfullxy, but one flux scaled image
     # Defines uvgrid filter before loop
     # flips xy gridding!
@@ -126,7 +126,7 @@ cpdef imgonefullxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cpdef imgallfullfilterxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=2] v, n.ndarray[DTYPE_t, ndim=4] data, unsigned int npixx, unsigned int npixy, unsigned int res, float thresh):
+cpdef imgallfullfilterxy(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n.float32_t, ndim=2, mode='c'] v, n.ndarray[DTYPE_t, ndim=4, mode='c'] data, unsigned int npixx, unsigned int npixy, unsigned int res, float thresh):
     # Same as imgallfull, but returns both pos and neg candidates
     # Defines uvgrid filter before loop
     # flips xy gridding!
@@ -143,8 +143,8 @@ cpdef imgallfullfilterxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t
     cdef unsigned int p
     cdef unsigned int cellu
     cdef unsigned int cellv
-    cdef n.ndarray[DTYPE_t, ndim=3] grid = n.zeros((len0,npixx,npixy), dtype='complex64', order='F')
-    cdef arr = pyfftw.n_byte_align_empty((npixx,npixy), 32, dtype='complex64', order='F')
+    cdef n.ndarray[DTYPE_t, ndim=3] grid = n.zeros((len0,npixx,npixy), dtype='complex64')
+    cdef arr = pyfftw.n_byte_align_empty((npixx,npixy), 32, dtype='complex64')
     cdef float snr
 
     # put uv data on grid
@@ -192,7 +192,7 @@ cpdef imgallfullfilterxy(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=2] v, n.ndarray[DTYPE_t, ndim=4] data, unsigned int npixx, unsigned int npixy, unsigned int res, float thresh):
+cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n.float32_t, ndim=2, mode='c'] v, n.ndarray[DTYPE_t, ndim=4, mode='c'] data, unsigned int npixx, unsigned int npixy, unsigned int res, float thresh):
     # Same as imgallfull, but returns only candidates and rolls images
     # Defines uvgrid filter before loop
     # flips xy gridding!
@@ -499,7 +499,7 @@ cdef n.ndarray[DTYPE_t, ndim=2] fringe_rotation(float dl, float dm, n.ndarray[n.
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-cpdef phaseshift(n.ndarray[DTYPE_t, ndim=4] data, d, float l1, float m1, n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=2] v, verbose=0):
+cpdef phaseshift(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, d, float l1, float m1, n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=2] v, verbose=0):
     """ Shift phase center to (l1, m1).
     Assumes single uv over all times in data. Reasonable for up to a second or so of data.
     """
@@ -536,7 +536,7 @@ cpdef phaseshift(n.ndarray[DTYPE_t, ndim=4] data, d, float l1, float m1, n.ndarr
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-cpdef phaseshift_threaded(n.ndarray[DTYPE_t, ndim=4] data, d, float l1, float m1, n.ndarray[n.float32_t, ndim=1] u, n.ndarray[n.float32_t, ndim=1] v, verbose=0):
+cpdef phaseshift_threaded(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, d, float l1, float m1, n.ndarray[n.float32_t, ndim=1, mode='c'] u, n.ndarray[n.float32_t, ndim=1, mode='c'] v, verbose=0):
     """ Shift phase center to (l1, m1).
     Assumes single uv over all times in data. Reasonable for up to a second or so of data.
     """

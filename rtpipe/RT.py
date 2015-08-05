@@ -172,12 +172,16 @@ def pipeline_dataprep(d, segment):
 
         # save noise pickle
         if d['savenoise']:
-            noisepickle(d, data_read, u, v, w, chunk=200)
+            noisepickle(d, data_read, u_read, v_read, w_read, chunk=200)
 
         # phase to new location (not tested much yet)
-        if any([d['l0'], d['m0']]):
-            logger.info('Rephasing data to (l, m)=(%.3f, %.3f).' % (d['l0'], d['m0']))
-            rtlib.phaseshift_threaded(data_read, d, d['l0'], d['m0'], u, v)
+        if any([d['l1'], d['m1']]):
+            logger.info('Rephasing data to (l, m)=(%.3f, %.3f).' % (d['l1'], d['m1']))
+            rtlib.phaseshift_threaded(data_read, d, d['l1'], d['m1'], u_read, v_read)
+            d['l0'] = d['l1']
+            d['m0'] = d['m1']
+        else:
+            logger.debug('Not rephasing.')
 
         logger.debug('prep finished data_read mods and waiting for data lock for segment %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
         with data_mem.get_lock():
@@ -371,14 +375,11 @@ def runreproduce(d, data_mem, data_resamp_mem, u, v, w, candint=-1, twindow=30):
             snrmax = im.max()/im.std()
             logger.info('Made image with SNR min, max: %.1f, %.1f' % (snrmin, snrmax))
             if snrmax > -1*snrmin:
-                peakl, peakm = n.where(im == im.max())
+                l1, m1 = calc_lm(d, im, minmax='max')
             else:
-                peakl, peakm = n.where(im == im.min())
-            l1 = (npixx/2. - peakl[0])/(npixx*d['uvres'])
-            m1 = (npixy/2. - peakm[0])/(npixy*d['uvres'])
+                l1, m1 = calc_lm(d, im, minmax='min')
 
             # rephase and trim interesting ints out
-            logger.info('Rephasing to peak...')
             repropool.apply(move_phasecenter, [d, l1, m1, u, v])
             minint = max(candint/d['dtarr'][dtind]-twindow/2, 0)
             maxint = min(candint/d['dtarr'][dtind]+twindow/2, len(data_resamp)/d['dtarr'][dtind])
@@ -387,18 +388,19 @@ def runreproduce(d, data_mem, data_resamp_mem, u, v, w, candint=-1, twindow=30):
         else:
             return data_resamp
 
-def pipeline_lightcurve(d, l1, m1, scan=-1):
+def pipeline_lightcurve(d, l1, m1, scan=-1, segments=[]):
     """ Makes lightcurve at given (l1, m1)
     """
 
-    if scan == -1:
-        scan = d['scan']
+    if scan == -1: scan = d['scan']
+    if segments == []: segments = range(d['nsegments'])
 
-    d = set_pipeline(d['filename'], scan, fileroot=d['fileroot'], dmarr=[0], dtarr=[1], savenoise=False, timesub='', l0=l1, m0=m1, nologfile=True, nsegments=d['nsegments'])
+    d = set_pipeline(d['filename'], scan, fileroot=d['fileroot'], dmarr=[0], dtarr=[1], l1=l1, m1=m1, savenoise=False, timesub='', nologfile=True, nsegments=d['nsegments'])
 
     # define memory and numpy arrays
-    data_read_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
     data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
+    data_read_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
+    data_resamp_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
     u_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
     u_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
     v_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
@@ -409,13 +411,15 @@ def pipeline_lightcurve(d, l1, m1, scan=-1):
     lightcurve = n.zeros(shape=(d['nints'], d['nchan'], d['npol']), dtype='complex64')
 
     with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
-        for segment in range(d['nsegments']):
+        for segment in segments:
+            logger.info('Reading data...')
             readpool.apply(pipeline_dataprep, (d, segment))
+
             nskip = (24*3600*(d['segmenttimes'][segment,0] - d['starttime_mjd'])/d['inttime']).astype(int)   # insure that lc is set as what is read
             lightcurve[nskip: nskip+d['readints']] = data_read.mean(axis=1)
 
     return lightcurve
-    
+
 def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     """ Function defines pipeline state for search. Takes data/scan as input.
     fileroot is base name for associated products (cal files, noise, cands). if blank, it is set to filename.
@@ -693,16 +697,21 @@ def correct_dmdt(d, dmind, dtind, blrange):
     data_resamp[:, bl0:bl1] = data[:, bl0:bl1]
     rtlib.dedisperse_resample(data_resamp, d['freq'], d['inttime'], d['dmarr'][dmind], d['dtarr'][dtind], blrange, verbose=0)        # dedisperses data.
 
-def calc_lm(d, im, pix=()):
+def calc_lm(d, im, pix=(), minmax='max'):
     """ Helper function to calculate location of image pixel in (l,m) coords.
     Assumes peak pixel, but input can be provided in pixel units.
+    minmax defines whether to look for image maximum or minimum.
     """
 
-    if len(pix) == 0:
-        peakl, peakm = n.where(im == im.max())
+    if len(pix) == 0:  # default is to get pixel from image
+        if minmax == 'max':
+            peakl, peakm = n.where(im == im.max())
+        elif minmax == 'min':
+            peakl, peakm = n.where(im == im.min())
         peakl = peakl[0]; peakm = peakm[0]
-    elif len(pix) == 2:
+    elif len(pix) == 2:   # can also specify
         peakl, peakm = pix
+
     npixx, npixy = im.shape
     l1 = (npixx/2. - peakl)/(npixx*d['uvres'])
     m1 = (npixy/2. - peakm)/(npixy*d['uvres'])
@@ -761,11 +770,9 @@ def image1(d, u, v, w, dmind, dtind, beamnum, irange):
     feat = {}
     for i in xrange(len(candints)):
         if snr[i] > 0:
-            peakl, peakm = n.where(ims[i] == ims[i].max())
+            l1, m1 = calc_lm(d, ims[i], minmax='max')
         else:
-            peakl, peakm = n.where(ims[i] == ims[i].min())
-        l1 = (d['npixx']/2. - peakl[0])/(d['npixx']*d['uvres'])
-        m1 = (d['npixy']/2. - peakm[0])/(d['npixy']*d['uvres'])
+            l1, m1 = calc_lm(d, ims[i], minmax='min')
         logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im=%.1f @ (%.2e,%.2e).' % ((i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], l1, m1))
         candid =  (d['segment'], (i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
 
@@ -813,19 +820,15 @@ def image2(d, i0, i1, u, v, w, dmind, dtind, beamnum):
         if abs(snr2) > d['sigma_image2']:
             # calc loc in first image
             if snr[i] > 0:
-                peakl, peakm = n.where(ims[i] == ims[i].max())
+                l1, m1 = calc_lm(d, ims[i], minmax='max')
             else:
-                peakl, peakm = n.where(ims[i] == ims[i].min())
-            l1 = (d['npixx']/2. - peakl[0])/(d['npixx']*d['uvres'])
-            m1 = (d['npixy']/2. - peakm[0])/(d['npixy']*d['uvres'])
+                l1, m1 = calc_lm(d, ims[i], minmax='min')
 
             # calc src loc in second image
             if snr2 > 0:
-                peakl, peakm = n.where(im2 == im2.max())
+                l2, m2 = calc_lm(d, im2, minmax='max')
             else:
-                peakl, peakm = n.where(im2 == im2.min())
-            l2 = (d['npixx_full']/2. - peakl[0])/(d['npixx_full']*d['uvres'])
-            m2 = (d['npixy_full']/2. - peakm[0])/(d['npixy_full']*d['uvres'])
+                l2, m2 = calc_lm(d, im2, minmax='min')
             logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f @ (%.2e,%.2e).' % ((i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2, l2, m2))
             candid =  (d['segment'], (i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
 
@@ -889,19 +892,15 @@ def image2w(d, i0, i1, u, v, w, dmind, dtind, beamnum, bls, uvkers):
         if abs(snr2) > d['sigma_image2']:
             # calc loc in first image
             if snr[i] > 0:
-                peakl, peakm = n.where(ims[i] == ims[i].max())
+                l1, m1 = calc_lm(d, ims[i], minmax='max')
             else:
-                peakl, peakm = n.where(ims[i] == ims[i].min())
-            l1 = (d['npixx']/2. - peakl[0])/(d['npixx']*d['uvres'])
-            m1 = (d['npixy']/2. - peakm[0])/(d['npixy']*d['uvres'])
+                l1, m1 = calc_lm(d, ims[i], minmax='min')
 
             # calc src loc in second image
             if snr2 > 0:
-                peakl, peakm = n.where(im2 == im2.max())
+                l2, m2 = calc_lm(d, im2, minmax='max')
             else:
-                peakl, peakm = n.where(im2 == im2.min())
-            l2 = (npix/2. - peakl[0])/(npix*d['uvres'])
-            m2 = (npix/2. - peakm[0])/(npix*d['uvres'])
+                l2, m2 = calc_lm(d, im2, minmax='min')
             logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f @ (%.2e,%.2e).' % ((i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2, l2, m2))
             candid =  (d['segment'], (i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
 
