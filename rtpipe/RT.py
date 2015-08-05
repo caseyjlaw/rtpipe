@@ -175,8 +175,8 @@ def pipeline_dataprep(d, segment):
             noisepickle(d, data_read, u_read, v_read, w_read, chunk=200)
 
         # phase to new location (not tested much yet)
-        if any([d['l1'], d['m1']]):
-            logger.info('Rephasing data to (l, m)=(%.3f, %.3f).' % (d['l1'], d['m1']))
+        if any([d.has_key('l1'), d.has_key('m1')]):
+            logger.info('Rephasing data to (l, m)=(%.4f, %.4f).' % (d['l1'], d['m1']))
             rtlib.phaseshift_threaded(data_read, d, d['l1'], d['m1'], u_read, v_read)
             d['l0'] = d['l1']
             d['m0'] = d['m1']
