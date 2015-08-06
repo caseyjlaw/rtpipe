@@ -54,7 +54,7 @@ def merge_segments(pkllist, fileroot=''):
         fileroot = '_'.join(pkllist[0].split('seg')[0].split('_')[1:])   # assumes filename structure
 
     # aggregate cands over segments
-    if ('cands' in pkllist[0]) and (len(pkllist) > 1):
+    if 'cands' in pkllist[0]:
         print 'Aggregating cands from %s' % pkllist
         state = pickle.load(open(pkllist[0], 'r'))
         cands = {}
@@ -71,7 +71,7 @@ def merge_segments(pkllist, fileroot=''):
             pickle.dump(cands, pkl)
 
     # clean up noise files
-    elif ('noise' in pkllist[0]) and (len(pkllist) > 1):
+    elif 'noise' in pkllist[0]:
         print 'Aggregating noise from %s' % pkllist
         # aggregate noise over segments
         noise = []
