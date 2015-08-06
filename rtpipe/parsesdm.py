@@ -179,7 +179,7 @@ def read_bdf_segment(d, segment=-1):
     # test that spw are in freq sorted order
     # only one use case supported: rolled spw
     dfreq = n.array([d['spw_reffreq'][i+1] - d['spw_reffreq'][i] for i in range(len(d['spw_reffreq'])-1)])
-    if len(n.where(dfreq < 0)[0]) == 1:      # if spw are permuted, then roll them
+    if len(n.where(dfreq < 0)[0]) == 1:      # if spw are permuted, then roll them. !! not a perfect test of permutability!!
         logger.warn('Rolling spw frequencies to increasing order: %s' % str(d['spw_reffreq']))
         rollch = n.sum([d['spw_nchan'][ss] for ss in range(n.where(dfreq < 0)[0][0]+1)])
         data = n.roll(data, rollch, axis=2)

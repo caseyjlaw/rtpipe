@@ -437,12 +437,13 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     # option of not writing log file (need to improve later)
     if 'silent' in kwargs.keys():
-        loglevel = 100
-        logger.setLevel(loglevel)
+        loglevel = logging.ERROR
     else:
         loglevel = logging.INFO
+
+    logger.setLevel(loglevel)
         
-    if 'nologfile' in kwargs.keys(): 
+    if ('nologfile' in kwargs.keys()) or ('silent' in kwargs.keys()):
         pass
     else:
         fh = logging.FileHandler(os.path.join(workdir, 'rtpipe_%d.log' % int(round(time.time()))))
