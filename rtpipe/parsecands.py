@@ -55,6 +55,7 @@ def merge_segments(pkllist, fileroot=''):
 
     # aggregate cands over segments
     if ('cands' in pkllist[0]) and (len(pkllist) > 1):
+        print 'Aggregating cands from %s' % pkllist
         state = pickle.load(open(pkllist[0], 'r'))
         cands = {}
         for cc in pkllist:
@@ -85,6 +86,9 @@ def merge_segments(pkllist, fileroot=''):
         # write noise to single file
         with open(os.path.join(workdir, 'noise_' + fileroot + '.pkl'), 'w') as pkl:
             pickle.dump(noise, pkl)
+
+    else:
+        print 'Don\'t know what to do with pkllist: %s' % (str(pkllist))
 
 def merge_cands(pkllist, outroot='', remove=[]):
     """ Takes cands pkls from list and filteres to write new single "merge" pkl.
