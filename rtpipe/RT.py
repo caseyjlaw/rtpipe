@@ -76,19 +76,17 @@ def pipeline(d, segments):
                     logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
                     cands = search(d, data_mem, u_mem, v_mem, w_mem)
 
+            # save candidate info
+            candcount += len(cands)
+            if d['savecands']:
+                logger.info('Saving %d candidates...' % (len(cands)))
+                savecands(d, cands)
+
         except KeyboardInterrupt:
             logger.error('Caught Ctrl-C. Closing processing pool.')
             readpool.terminate()
             readpool.join()
             raise
-
-            ####    ####    ####    ####
-            # 4) Save candidate info
-            ####    ####    ####    ####
-            candcount += len(cands)
-            if d['savecands']:
-                logger.info('Saving %d candidates...' % (len(cands)))
-                savecands(d, cands)
 
     return candcount
 
