@@ -181,9 +181,10 @@ def read_bdf_segment(d, segment=-1):
     dfreq = n.array([d['spw_reffreq'][i+1] - d['spw_reffreq'][i] for i in range(len(d['spw_reffreq'])-1)])
     dfreqneg = [df for df in dfreq if df < 0]
     if len(dfreqneg) <= 1:      # if spw are permuted, then roll them. !! not a perfect test of permutability!!
-        logger.warn('Rolling spw frequencies to increasing order: %s' % str(d['spw_reffreq']))
-        rollch = n.sum([d['spw_nchan'][ss] for ss in range(n.where(dfreq < 0)[0][0]+1)])
-        data = n.roll(data, rollch, axis=2)
+        if len(dfreqneg) == 1:
+            logger.warn('Rolling spw frequencies to increasing order: %s' % str(d['spw_reffreq']))
+            rollch = n.sum([d['spw_nchan'][ss] for ss in range(n.where(dfreq < 0)[0][0]+1)])
+            data = n.roll(data, rollch, axis=2)
     else:
         raise StandardError, 'SPW out of order and can\'t be permuted to increasing order: %s' % str(d['spw_reffreq'])
 
