@@ -416,6 +416,7 @@ def pipeline_lightcurve(d, l1=0, m1=0, segments=[], scan=-1):
     w_read = numpyview(w_read_mem, 'float32', d['nbl'], raw=False)
     lightcurve = n.zeros(shape=(d['nints'], d['nchan'], d['npol']), dtype='complex64')
 
+    phasecenters = []
     with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
         for segment in segments:
             logger.info('Reading data...')
@@ -431,11 +432,12 @@ def pipeline_lightcurve(d, l1=0, m1=0, segments=[], scan=-1):
 
             logger.info('Rephasing data to (l, m)=(%.4f, %.4f).' % (l2, m2))
             rtlib.phaseshift_threaded(data_read, d, l2, m2, u_read, v_read)
+            phasecenters.append( (l2,m2) )
 
             nskip = (24*3600*(d['segmenttimes'][segment,0] - d['starttime_mjd'])/d['inttime']).astype(int)   # insure that lc is set as what is read
             lightcurve[nskip: nskip+d['readints']] = data_read.mean(axis=1)
 
-    return lightcurve
+    return phasecenters, lightcurve
 
 def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     """ Function defines pipeline state for search. Takes data/scan as input.
