@@ -173,14 +173,17 @@ def pipeline_dataprep(d, segment):
         if d['savenoise']:
             noisepickle(d, data_read, u_read, v_read, w_read, chunk=200)
 
-        # phase to new location (not tested much yet)
-        if any([d.has_key('l1'), d.has_key('m1')]):
-            logger.info('Rephasing data to (l, m)=(%.4f, %.4f).' % (d['l1'], d['m1']))
-            rtlib.phaseshift_threaded(data_read, d, d['l1'], d['m1'], u_read, v_read)
-            d['l0'] = d['l1']
-            d['m0'] = d['m1']
-        else:
-            logger.debug('Not rephasing.')
+        # phase to new location if l1,m1 set and nonzero value
+        try:
+            if any([d['l1'], d['m1']]):
+                logger.info('Rephasing data to (l, m)=(%.4f, %.4f).' % (d['l1'], d['m1']))
+                rtlib.phaseshift_threaded(data_read, d, d['l1'], d['m1'], u_read, v_read)
+                d['l0'] = d['l1']
+                d['m0'] = d['m1']
+            else:
+                logger.debug('Not rephasing.')
+        except KeyError:
+            pass
 
         logger.debug('prep finished data_read mods and waiting for data lock for segment %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
         with data_mem.get_lock():
@@ -387,14 +390,15 @@ def runreproduce(d, data_mem, data_resamp_mem, u, v, w, candint=-1, twindow=30):
         else:
             return data_resamp
 
-def pipeline_lightcurve(d, l1, m1, scan=-1, segments=[]):
+def pipeline_lightcurve(d, l1=0, m1=0, segments=[], scan=-1):
     """ Makes lightcurve at given (l1, m1)
+    l1, m1 define phase center. if not set, then image max is used.
     """
 
     if scan == -1: scan = d['scan']
     if segments == []: segments = range(d['nsegments'])
 
-    d = set_pipeline(d['filename'], scan, fileroot=d['fileroot'], dmarr=[0], dtarr=[1], l1=l1, m1=m1, savenoise=False, timesub='', nologfile=True, nsegments=d['nsegments'])
+    d = set_pipeline(d['filename'], scan, fileroot=d['fileroot'], dmarr=[0], dtarr=[1], savenoise=False, timesub='', nologfile=True, nsegments=d['nsegments'])
 
     # define memory and numpy arrays
     data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
@@ -407,12 +411,26 @@ def pipeline_lightcurve(d, l1, m1, scan=-1, segments=[]):
     w_read_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
     w_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
     data_read = numpyview(data_read_mem, 'complex64', datashape(d)) # optional
+    u_read = numpyview(u_read_mem, 'float32', d['nbl'], raw=False)
+    v_read = numpyview(v_read_mem, 'float32', d['nbl'], raw=False)
+    w_read = numpyview(w_read_mem, 'float32', d['nbl'], raw=False)
     lightcurve = n.zeros(shape=(d['nints'], d['nchan'], d['npol']), dtype='complex64')
 
     with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
         for segment in segments:
             logger.info('Reading data...')
             readpool.apply(pipeline_dataprep, (d, segment))
+
+            # get image peak for rephasing
+            if not any([l1, m1]):
+                im = sample_image(d, data_read, u_read, v_read, w_read, i=-1, verbose=1, imager='xy')
+                l2, m2 = calc_lm(d, im)
+            else:
+                l2 = l1
+                m2 = m1
+
+            logger.info('Rephasing data to (l, m)=(%.4f, %.4f).' % (l2, m2))
+            rtlib.phaseshift_threaded(data_read, d, l2, m2, u_read, v_read)
 
             nskip = (24*3600*(d['segmenttimes'][segment,0] - d['starttime_mjd'])/d['inttime']).astype(int)   # insure that lc is set as what is read
             lightcurve[nskip: nskip+d['readints']] = data_read.mean(axis=1)
@@ -440,7 +458,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         loglevel = logging.INFO
 
     logger.setLevel(loglevel)
-        
+    
     if ('nologfile' in kwargs.keys()) or ('silent' in kwargs.keys()):
         pass
     else:
