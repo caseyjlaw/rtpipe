@@ -1,18 +1,17 @@
 # rtpipe
 
 ... or 'real-time pipeline' is a package for searching for fast transients in radio interferometer data. 
-Supersedes `tpipe` (http://github.com/caseyjlaw/tpipe) by defining algorithm to break long (large) data into smaller, independent pieces.
+Supersedes [tpipe](http://github.com/caseyjlaw/tpipe). Uses a paradigm that defines how to break long (large) data into smaller, independent pieces with a single treatment (flagging, image gridding, calibration, etc.).
 
 ## Requirements
 
-* Python 2.7 recommended
+* Python 2.7
 * Standard scientific Python stuff: numpy, scipy, matplotlib, multiprocessing
-* pwkit (to build casapy-free CASA; http://github.com/pkgw/pwkit)
-* Cython (works with 0.19.1)
-* To work with SDM data:
-** sdmreader (http://github.com/caseyjlaw/sdmreader)
-** sdmpy (http://github.com/demorest/sdmreader)
-* pyFFTW (accelerated FFTs; works with 0.9.2; https://pypi.python.org/pypi/pyFFTW)
+* [pwkit](http://github.com/pkgw/pwkit) (for access to CASA libraries)
+* Cython (tested with 0.19.1)
+* [sdmreader](http://github.com/caseyjlaw/sdmreader) (for reading SDM format data)
+* [sdmpy](http://github.com/demorest/sdmreader) (for reading SDM format data)
+* [pyFFTW](https://pypi.python.org/pypi/pyFFTW) (accelerated FFTs; tested with 0.92)
 
 ## Install
 
