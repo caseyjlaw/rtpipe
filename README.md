@@ -1,9 +1,11 @@
-# rtpipe
+rtpipe
+==
 
 ... or 'real-time pipeline' is a package for searching for fast transients in radio interferometer data. 
 Supersedes [tpipe](http://github.com/caseyjlaw/tpipe). Uses a paradigm that defines how to break long (large) data into smaller, independent pieces with a single treatment (flagging, image gridding, calibration, etc.).
 
-## Requirements
+Requirements
+---
 
 * Python 2.7
 * Standard scientific Python stuff: numpy, scipy, matplotlib, multiprocessing
@@ -13,6 +15,12 @@ Supersedes [tpipe](http://github.com/caseyjlaw/tpipe). Uses a paradigm that defi
 * [sdmpy](http://github.com/demorest/sdmreader) (for reading SDM format data)
 * [pyFFTW](https://pypi.python.org/pypi/pyFFTW) (accelerated FFTs; tested with 0.92)
 
-## Install
+Install
+---
+    python setup.py install
 
-    > python setup.py install
+Contributors
+---
+[Casey Law](http://www.twitter.com/caseyjlaw)
+
+and others...
