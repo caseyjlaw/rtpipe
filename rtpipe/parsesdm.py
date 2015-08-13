@@ -14,11 +14,10 @@ logger = logging.getLogger(__name__)
 qa = casautil.tools.quanta()
 me = casautil.tools.measures()
 
-def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, paramfile=''):
+def get_metadata(filename, scan, paramfile='', **kwargs):
     """ Parses sdm file to define metadata for observation, including scan info, image grid parameters, pipeline memory usage, etc.
-    Mirrors parsems.get_metadata(), though not all metadata set here yet.
+    Mirrors parsems.get_metadata().
     If paramfile defined, it will use it (filename or RT.Params instance ok).
-    spw/chans argument here will overload params definition.
     """
 
     # create primary state dictionary
@@ -28,13 +27,15 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, paramfile
     d['filename'] = os.path.abspath(filename)
     d['workdir'] = os.path.dirname(d['filename'])
 
-    d['read_fdownsample'] = read_fdownsample
-
     # define parameters of pipeline via Params object
-    
     params = pp.Params(paramfile)
     for k in params.defined:   # fill in default params
         d[k] = params[k]
+
+    # overload with provided kwargs
+    for key in kwargs.keys():
+        logger.info('Setting %s to %s' % (key, kwargs[key]))
+        d[key] = kwargs[key]
 
     # define scan list
     if d.has_key('bdfdir'):   # only needed on cbe
@@ -61,9 +62,7 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, paramfile
         d['spw_chansize'] = [float(row.chanWidthArray.strip().split(' ')[2]) for row in sdm['SpectralWindow']]   # GMRT uses array of all channel starts
 
     # select spw. note that spw selection not fully supported yet.
-    if len(spw):
-        d['spw'] = spw
-    else:
+    if not len(d['spw']):
         d['spw'] = d['spw_orig']
 
     spwch = []
@@ -77,14 +76,12 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, paramfile
 #    d['freq_orig'] = n.array(spwch, dtype='float32')/1e9  # without downsample
 
     # select subset of channels
-    if len(chans):
-        d['chans'] = chans
-    else:
+    if not len(d['chans']):
         d['chans'] = range(len(d['freq_orig']))
 
     d['nspw'] = len(d['spw'])
     d['freq'] = d['freq_orig'][d['chans']]
-    d['nchan'] = len(d['freq'])
+    d['nchan'] = len(d['chans'])
 
     # define image params
     d['urange'] = {}; d['vrange'] = {}
@@ -117,10 +114,13 @@ def get_metadata(filename, scan, spw=[], chans=[], read_fdownsample=1, paramfile
         d['ants'] = [int(ant.name.lstrip('ea')) for ant in sdm['Antenna']]
     elif 'GMRT' in sdm['ExecBlock'][0]['telescopeName']:        
         d['ants'] = [int(ant.antennaId.split('_')[1]) for ant in sdm['Antenna']]
+
+   # remove unwanted ants
+    for ant in d['excludeants']:
+        d['ants'].remove(ant)
     d['nants'] = len(d['ants'])
-#    d['blarr'] = n.array([[d['ants'][i],d['ants'][j]] for i in range(d['nants'])  for j in range(i+1, d['nants'])])
-    d['blarr'] = n.array([[d['ants'][i],d['ants'][j]] for j in range(d['nants']) for i in range(0,j)])
-    d['nbl'] = len(d['blarr'])
+#    d['blarr'] = n.array([[d['ants'][i],d['ants'][j]] for j in range(d['nants']) for i in range(0,j)])
+    d['nbl'] = d['nants']*(d['nants']-1)/2
 
     # define times
     d['starttime_mjd'] = scans[d['scan']]['startmjd']

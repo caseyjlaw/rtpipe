@@ -128,14 +128,13 @@ def pipeline_dataprep(d, segment):
         # calibrate data
         if os.path.exists(d['gainfile']):
             try:
-
                 if '.GN' in d['gainfile']:
                     sols = pc.telcal_sol(d['gainfile'])
                     if d.has_key('calname'):
                         calname = d['calname']
                     else:
                         calname = ''
-                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, d['blarr'], calname=calname, pols=d['pols'])   # chooses solutions closest in time that match pol and source name
+                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, rtlib.calc_blarr(d), calname=calname, pols=d['pols'])   # chooses solutions closest in time that match pol and source name
                     sols.apply(data_read)
                 else:
                     # if CASA table
@@ -148,7 +147,7 @@ def pipeline_dataprep(d, segment):
 
                     sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
                     sols.parsebp(d['bpfile'])
-                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, d['blarr'], radec=calradec, spwind=d['spw'], pols=d['pols'])
+                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, rtlib.calc_blarr(d), radec=calradec, spwind=d['spw'], pols=d['pols'])
                     sols.apply(data_read)
             except:
                 logger.warning('Could not parse gainfile %s.' % d['gainfile'])
@@ -470,36 +469,31 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         logger.addHandler(fh)
 
     # define metadata (state) dict. chans/spw is special because it goes in to get_metadata call
-    if 'chans' in kwargs.keys(): 
-        chans=kwargs['chans']
-    else:
-        chans = []
-    if 'spw' in kwargs.keys(): 
-        spw=kwargs['spw']
-    else:
-        spw = []
-    if 'read_fdownsample' in kwargs.keys(): 
-        rfd=kwargs['read_fdownsample']
-    else:
-        rfd = 1
-    if 'datacol' in kwargs.keys(): 
-        datacol=kwargs['datacol']
-    else:
-        datacol = []
+    # if 'chans' in kwargs.keys(): 
+    #     chans=kwargs['chans']
+    # else:
+    #     chans = []
+    # if 'spw' in kwargs.keys(): 
+    #     spw=kwargs['spw']
+    # else:
+    #     spw = []
+    # if 'read_fdownsample' in kwargs.keys(): 
+    #     rfd=kwargs['read_fdownsample']
+    # else:
+    #     rfd = 1
+    # if 'datacol' in kwargs.keys(): 
+    #     datacol=kwargs['datacol']
+    # else:
+    #     datacol = []
 
     # then get all metadata
     if os.path.exists(os.path.join(filename, 'Main.xml')):
-        d = ps.get_metadata(filename, scan, chans=chans, spw=spw, read_fdownsample=rfd, paramfile=paramfile)   # can take file name or Params instance
+#        d = ps.get_metadata(filename, scan, chans=chans, spw=spw, read_fdownsample=rfd, paramfile=paramfile, **kwargs)   # can take file name or Params instance
+        d = ps.get_metadata(filename, scan, paramfile=paramfile, **kwargs)   # can take file name or Params instance
         d['dataformat'] = 'sdm'
     else:
-        d = pm.get_metadata(filename, scan, chans=chans, spw=spw, read_fdownsample=rfd, paramfile=paramfile)
+        d = pm.get_metadata(filename, scan, chans=chans, spw=spw, read_fdownsample=rfd, paramfile=paramfile, **kwargs)
         d['dataformat'] = 'ms'
-
-    # overload with provided kwargs
-    for key in kwargs.keys():
-        if kwargs.keys().index(key) == 0: logger.info('')
-        logger.info('Setting %s to %s' % (key, kwargs[key]))
-        d[key] = kwargs[key]
 
     # define rootname for in/out cal/products
     if fileroot:
@@ -536,14 +530,6 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     elif 'image2' in d['searchtype']:
         d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'snr2', 'immax2', 'l2', 'm2']   # features returned by image1
     d['featureind'] = ['segment', 'int', 'dmind', 'dtind', 'beamnum']  # feature index. should be stable.
-
-    # redefine good antennas
-    if len(d['excludeants']):
-        for ant in d['excludeants']:
-            d['ants'].remove(ant)
-        d['nants'] = len(n.unique(d['blarr']))
-        d['blarr'] = n.array( [(ant1,ant2) for (ant1,ant2) in d['blarr'] if ((ant1 not in d['excludeants']) and (ant2 not in d['excludeants']))] )
-        d['nbl'] = len(d['blarr'])
 
     # set imaging parameters to use
     if d['uvres'] == 0:

@@ -65,14 +65,17 @@ def get_metadata(filename, scan, datacol='', spw=[], chans=[], selectpol=[], rea
         md = ms.metadata()
 
         # define ants and baselines
-        d['nants'] = md.nantennas()
         if 'VLA' in md.observatorynames()[0]:
             d['ants'] = [int(md.antennanames(aa)[0][2:]) for aa in range(d['nants'])]
         elif 'GMRT' in md.observatorynames()[0]:
             d['ants'] = md.antennaids()
 
-        d['nbl'] = md.nbaselines()
-        d['blarr'] = n.array([[d['ants'][i],d['ants'][j]] for i in range(d['nants'])  for j in range(i+1, d['nants'])])
+        for ant in d['excludeants']:   # remove unwanted ants
+            d['ants'].remove(ant)
+        d['nants'] = len(d['ants'])
+
+#        d['nbl'] = md.nbaselines()
+#        d['blarr'] = n.array([[d['ants'][i],d['ants'][j]] for i in range(d['nants'])  for j in range(i+1, d['nants'])])
         # find spw info
         d['scans'] = md.scannumbers()
 

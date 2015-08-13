@@ -461,7 +461,7 @@ cpdef make_triples(d):
 
     ants = d['ants']
     nants = d['nants']
-    blarr = d['blarr']
+    blarr = calc_blarr(d)
 
     cdef int t
     cdef int ant1
@@ -505,7 +505,7 @@ cpdef phaseshift(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, d, float l1, float m
     """
 
     cdef n.ndarray[complex, ndim=2] frot
-    cdef n.ndarray[float, ndim=1] freq = d['freq']
+    cdef n.ndarray[float, ndim=1] freq = d['freq_orig'][d['chans']]
     cdef n.ndarray[float, ndim=1] freq_orig = d['freq_orig']
     cdef float dl = l1 - d['l0']
     cdef float dm = m1 - d['m0']
@@ -542,7 +542,7 @@ cpdef phaseshift_threaded(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, d, float l1
     """
 
     cdef n.ndarray[DTYPE_t, ndim=2] frot
-    cdef n.ndarray[float, ndim=1] freq = d['freq']
+    cdef n.ndarray[float, ndim=1] freq = d['freq_orig'][d['chans']]
     cdef n.ndarray[float, ndim=1] freq_orig = d['freq_orig']
     cdef float dl = l1 - d['l0']
     cdef float dm = m1 - d['m0']
@@ -567,6 +567,17 @@ cpdef phaseshift_threaded(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, d, float l1
     else:
         if verbose:
             print 'No phase rotation needed'
+
+def calc_blarr(d):
+    """ Helper function to make blarr a function instead of big list in d.
+    ms and sdm format data have different bl orders.
+    Could extend this to define useful subsets of baselines for (1) parallelization and (2) data weighting, and (3) data selection.
+    """
+
+    if d['dataformat'] == 'sdm':
+        return n.array([ [d['ants'][i],d['ants'][j]] for j in range(d['nants']) for i in range(0,j) if ((d['ants'][i] not in d['excludeants']) and (d['ants'][j] not in d['excludeants']))])
+    elif d['dataformat'] == 'ms':
+        return n.array([[d['ants'][i],d['ants'][j]] for i in range(d['nants'])  for j in range(i+1, d['nants']) if ((d['ants'][i] not in d['excludeants']) and (d['ants'][j] not in d['excludeants']))])
 
 cpdef n.ndarray[n.int_t, ndim=1] calc_delay(n.ndarray[float, ndim=1] freq, float inttime, float dm):
     """ Function to calculate delay for each channel in integrations.
@@ -607,7 +618,7 @@ cpdef dedisperse(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, d, float dm, int ver
 #    cdef n.ndarray[DTYPE_t, ndim=4] data1 = n.empty_like(data)
 
     # calc relative delay per channel. only shift minimally
-    cdef n.ndarray[short, ndim=1] newdelay = calc_delay(d['freq'], d['inttime'], dm)
+    cdef n.ndarray[short, ndim=1] newdelay = calc_delay(d['freq_orig'][d['chans']], d['inttime'], dm)
     cdef n.ndarray[short, ndim=1] relativedelay = newdelay - d['datadelay']
 
     shape = n.shape(data)
@@ -861,16 +872,17 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
             summary='Ringing flagging for (chans %d-%d, pol %d) at %.1f sigma: %d/%d bls, %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, len(badbls), nbl, 100.*flagged/datacal.size)
 
         elif mode == 'badap':
+            blarr = calc_blarr(d)
             bpa = n.abs(datacal[:,:,chans]).mean(axis=2).mean(axis=0)
-            bpa_ant = n.array([ (bpa[n.where(n.any(d['blarr'] == i, axis=1))[0]]).mean(axis=0) for i in n.unique(d['blarr']) ])
+            bpa_ant = n.array([ (bpa[n.where(n.any(blarr == i, axis=1))[0]]).mean(axis=0) for i in n.unique(blarr) ])
             bpa_ant = n.ma.masked_invalid(bpa_ant)
             ww = n.where(bpa_ant > n.ma.median(bpa_ant) + sigma * bpa_ant.std())
-            badants = n.unique(d['blarr'])[ww[0]]
+            badants = n.unique(blarr)[ww[0]]
             if len(badants):
-                badbls = n.where(n.any(d['blarr'] == badants[0], axis=1))[0]   # initialize
+                badbls = n.where(n.any(blarr == badants[0], axis=1))[0]   # initialize
                 badpols = n.array([ww[1][0]]*len(badbls))
                 for i in xrange(1, len(badants)):
-                    newbadbls = n.where(n.any(d['blarr'] == badants[i], axis=1))[0]
+                    newbadbls = n.where(n.any(blarr == badants[i], axis=1))[0]
                     badbls = n.concatenate( (badbls, newbadbls) )
                     badpols = n.concatenate( (badpols, [ww[1][i]]*len(newbadbls)) )
                 for j in xrange(len(badbls)):
