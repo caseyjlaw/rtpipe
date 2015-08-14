@@ -128,29 +128,31 @@ def pipeline_dataprep(d, segment):
         # calibrate data
         if os.path.exists(d['gainfile']):
             try:
-                if '.GN' in d['gainfile']:
-                    sols = pc.telcal_sol(d['gainfile'])
+                if '.GN' in d['gainfile']: # if telcal file
                     if d.has_key('calname'):
                         calname = d['calname']
                     else:
                         calname = ''
-                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, rtlib.calc_blarr(d), calname=calname, pols=d['pols'])   # chooses solutions closest in time that match pol and source name
-                    sols.apply(data_read)
-                else:
-                    # if CASA table
+                    radec = (); spwind = []  # set unused options for telcal_sol
 
-                    # option to select calibrator
+                    sols = pc.telcal_sol(d['gainfile'])   # parse gainfile
+                else:   # if CASA table
                     if d.has_key('calradec'):
-                        calradec = d['calradec']  # optionally defined
+                        radec = d['calradec']  # optionally defined cal location
                     else:
-                        calradec = d['radec']    # always defined
+                        radec = d['radec']    # always defined
 
-                    sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])
-                    sols.parsebp(d['bpfile'])
-                    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, rtlib.calc_blarr(d), radec=calradec, spwind=d['spw'], pols=d['pols'])
-                    sols.apply(data_read)
+                    spwind = d['spw']
+                    calname = ''  # unused for casa_sol
+
+                    sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])   # parse gainfile
+                    sols.parsebp(d['bpfile'])   # parse bpfile
             except:
                 logger.warning('Could not parse gainfile %s.' % d['gainfile'])
+            finally:
+                # if gainfile parsed ok, choose best solution for data
+                sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, rtlib.calc_blarr(d), calname=calname, pols=d['pols'], radec=radec, spwind=spwind)
+                sols.apply(data_read)
         else:
             logger.info('Calibration file not found. Proceeding with no calibration applied.')
 

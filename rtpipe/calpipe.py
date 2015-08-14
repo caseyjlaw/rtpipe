@@ -167,7 +167,7 @@ class pipe(object):
         msfile = self.genms()
 
         # flag data
-        if len(flaglist):
+        if flaglist:
             self.flagdata(msfile, flaglist=flaglist)
         elif os.path.exists(os.path.join(self.workdir, 'flags.txt')):
             self.flagdata(msfile, flagfile=os.path.join(self.workdir, 'flags.txt'))
@@ -200,6 +200,8 @@ class pipe(object):
                 cfg.antenna = antsel
                 cfg.uvrange = uvrange
                 tl.gaincal(cfg)
+            else:
+                print '%s exists' % g0name
 
             if not os.path.exists(b1name):
                 print 'Starting bp cal...'
@@ -220,6 +222,8 @@ class pipe(object):
                 cfg.antenna = antsel
                 cfg.uvrange = uvrange
                 tl.gaincal(cfg)
+            else:
+                print '%s exists' % b1name
 
             if not os.path.exists(g1name) or not os.path.exists(g2name):
                 print 'Starting gain cal...'
@@ -245,6 +249,8 @@ class pipe(object):
                 cfg.fluxtable = g2name
                 cfg.reference = self.fluxname_full
                 tl.fluxscale(cfg)
+            else:
+                print 'either %s or %s exist' % (g1name, g2name)
 
         else:    # without fluxscale
             if not os.path.exists(g0name):
@@ -263,6 +269,8 @@ class pipe(object):
                 cfg.antenna = antsel
                 cfg.uvrange = uvrange
                 tl.gaincal(cfg)
+            else:
+                print '%s exists' % g0name
 
             if not os.path.exists(b1name):
                 print 'Starting bp cal...'
@@ -283,6 +291,8 @@ class pipe(object):
                 cfg.antenna = antsel
                 cfg.uvrange = uvrange
                 tl.gaincal(cfg)
+            else:
+                print '%s exists' % b1name
 
             if not os.path.exists(g1name):
                 print 'Starting gain cal...'
@@ -300,5 +310,7 @@ class pipe(object):
                 cfg.antenna = antsel
                 cfg.uvrange = uvrange
                 tl.gaincal(cfg)
+            else:
+                print '%s exists' % g1name
 
         return 0

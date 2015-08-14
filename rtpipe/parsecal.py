@@ -109,7 +109,7 @@ class casa_sol():
         nsol = len(self.uniquemjd)
 
         self.logger.info('Parsed gain table solutions for %d solutions (skipping %d), %d ants, %d spw, and %d pols' % (nsol, len(skip), nants, nspw, npol))
-        self.logger.info('Unique solution times: %s' % str(self.uniquemjd))
+        self.logger.info('Unique solution fields/times: %s' % str(zip(self.uniquefield, self.uniquemjd)))
 
         self.gain = n.zeros( (nsol, nants, nspw, npol), dtype='complex' )
         flags = n.zeros( (nsol, nants, nspw, npol), dtype='complex' )
@@ -181,7 +181,7 @@ class casa_sol():
 #        self.bpfreq = 1e9*n.concatenate( (frequenciesGHz[0], frequenciesGHz[nants]), axis=0)    # freq values at bp bins
 #        self.logger.info('Parsed bp table solutions for %d solutions, %d ants, %d spw, and %d pols' % (nUniqueTimesBP, nants, nSpws, nPolarizations))
 
-    def set_selection(self, time, freqs, blarr, radec=(), dist=10., spwind=[0,1], pols=['RR','YY']):
+    def set_selection(self, time, freqs, blarr, calname='', radec=(), dist=1, spwind=[], pols=['XX','YY']):
         """ Set select parameter that defines time, spw, and pol solutions to apply.
         time defines the time to find solutions near in mjd.
         freqs defines frequencies to select bandpass solution
@@ -189,9 +189,12 @@ class casa_sol():
         radec (radian tuple) and dist (deg) define optional location of source for filtering solutions.
         spwind is list of indices to be used (e.g., [0,2,4,10])
         pols is from d['pols'] (e.g., ['RR']). single or dual parallel allowed.
+        calname not used. here for uniformity with telcal_sol.
         """
 
         self.spwind = spwind
+        if calname:
+            self.logger.warn('calname option not used for casa_sol. Applied based on radec.')
 
         # define pol index
         if 'X' in ''.join(pols) or 'Y' in ''.join(pols):
@@ -204,7 +207,7 @@ class casa_sol():
         self.ant2ind = [n.where(ant2 == n.unique(blarr))[0][0] for (ant1,ant2) in blarr]
 
         # select by smallest time distance for source within some angular region of target
-        if len(radec):
+        if radec:
             ra, dec = radec
             calra = n.array(self.radec)[:,0]
             caldec = n.array(self.radec)[:,1]
@@ -240,7 +243,7 @@ class casa_sol():
             gamp = n.abs(self.gain)   # gain amp for selected time
 
 #        badgain = n.where(gamp < gamp.mean() - sig*gamp.std())
-        badgain = n.where( (gamp < n.median(gamp) - sig*gamp.std()) | gamp.mask)
+        badgain = n.where( (gamp < gamp.mean() - sig*gamp.std()) | gamp.mask)
         self.logger.info('Flagging low/bad gains for ant/spw/pol: %s %s %s' % (str(self.antnum[badgain[0]]), str(badgain[1]), str(badgain[2])))
 
         badants = badgain
@@ -287,6 +290,21 @@ class casa_sol():
         else:
             for spw in range(len(self.gain[0,0])):
                 pass
+
+    def plot(self):
+        """ Quick visualization of calibration solution.
+        """
+        import pylab as p
+        p.clf()
+        fig = p.figure(1)
+        nspw = len(self.gain[0])
+        ext = n.ceil(n.sqrt(nspw))  # find best squre plot (simplest)
+        for spw in range(len(self.gain[0])):
+            ax = fig.add_subplot(ext, ext, spw+1)
+            for pol in [0,1]:
+                ax.scatter(range(len(self.gain)), n.abs(self.gain.data[:,spw,pol]), color=n.array(['k','y']).take(self.gain.mask[:,spw,pol]), marker=['x','.'][pol])
+
+        fig.show()
 
 def openBpolyFile(caltable, debug=False):
     logger = logging.getLogger(__name__)
@@ -382,19 +400,26 @@ class telcal_sol():
         self.logger = logging.getLogger(__name__)
         self.logger.info('Read telcalfile %s' % telcalfile)
 
-    def set_selection(self, time, freqs, blarr, calname='', pols=['RR','YY']):
+    def set_selection(self, time, freqs, blarr, calname='', radec=(), dist=0, spwind=[], pols=['XX','YY']):
         """ Set select parameter that defines spectral window, time, or any other selection.
         time (in mjd) defines the time to find solutions near for given calname.
         freqs (in Hz) is frequencies in data.
         blarr is array of size 2xnbl that gives pairs of antennas in each baseline (a la tpipe.blarr).
         calname defines the name of the calibrator to use. if blank, uses only the time selection.
         pols is from d['pols'] (e.g., ['RR']). single or dual parallel allowed.
+        radec, dist, spwind not used. here for uniformity with casa_sol.
         """
 
         self.freqs = freqs
         self.chansize = freqs[1]-freqs[0]
         self.select = self.complete   # use only complete solution sets (set during parse)
         self.blarr = blarr
+        if spwind:
+            self.logger.warn('spwind option not used for telcal_sol. Applied based on freqs.')
+        if radec:
+            self.logger.warn('radec option not used for telcal_sol. Applied based on calname.')
+        if dist:
+            self.logger.warn('dist option not used for telcal_sol. Applied based on calname.')
 
         # define pol index
         if 'X' in ''.join(pols) or 'Y' in ''.join(pols):
@@ -410,7 +435,7 @@ class telcal_sol():
                     nameselect = n.where(self.source[self.select] == ss)   # define selection for name
                     self.select = self.select[nameselect]       # update overall selection
                     self.logger.debug('Selection down to %d solutions with %s' % (len(self.select), calname))
-            if len(nameselect) == 0:
+            if not nameselect:
                 self.logger.debug('Calibrator name %s not found. Ignoring.' % (calname))
 
         # select freq
