@@ -16,7 +16,7 @@ def read_candidates(candsfile):
     with open(candsfile, 'rb') as pkl:
         d = pickle.load(pkl)
         cands = pickle.load(pkl)
-    if len(cands) == 0:
+    if cands == 0:
         print 'No cands found from %s.' % candsfile
         return (n.array([]), n.array([]))
 
@@ -46,7 +46,7 @@ def merge_segments(pkllist, fileroot=''):
     Output single pkl per scan with root name fileroot.
     """
 
-    assert len(pkllist) > 0
+    assert pkllist > 0, 'pkllist is empty'
 
     workdir = os.path.dirname(pkllist[0])
 
@@ -132,7 +132,7 @@ def merge_cands(pkllist, outroot='', remove=[]):
     mergetimes = n.array(mergetimes)
 
     # filter by remove, if needed
-    if len(remove):
+    if remove:
         mergetimes -= mergetimes.min()
 
         ww = n.ones(len(mergetimes), dtype=bool)  # initialize pass filter
@@ -255,7 +255,7 @@ def int2mjd(d, loc):
 
     # needs to take merge pkl dict
 
-    if len(loc):
+    if loc:
         intcol = d['featureind'].index('int')
         segmentcol = d['featureind'].index('segment')
         if d.has_key('segmenttimesdict'):  # using merged pkl
@@ -325,7 +325,7 @@ def plot_dmcount(d, times, dts, outroot):
     for dtind in range(len(uniquedts)):
         good = n.where(dts == dtind)[0]
         ax2[dtind] = fig2.add_subplot(str(len(uniquedts)) + '1' + str(dtind+1))
-        if len(good):
+        if good:
             bins = n.round(times[good]).astype('int')
             counts = n.bincount(bins)
 
@@ -447,7 +447,7 @@ def make_noisehists(pkllist, outroot, remove=[]):
     for pkl in pkllist:
         seg, noiseperbl, flagfrac, imnoise = read_noise(pkl)
 
-        if len(remove): print 'Remove option not supported for noise files yet.'
+        if remove: print 'Remove option not supported for noise files yet.'
 
         noises.append(imnoise)  # TBD: filter this by remove
         minnoise = min(minnoise, imnoise.min())
@@ -492,13 +492,13 @@ def make_psrrates(pkllist, nbins=60, period=0.156):
         loc, prop = read_candidates(pklfile)
 
         ffm = []
-        if len(loc):
+        if loc:
             times = int2mjd(state, loc)
 
             for (mint,maxt) in zip(n.arange(times.min()-period/2,times.max()+period/2,period), n.arange(times.min()+period/2,times.max()+3*period/2,period)):
                 ff = prop[:,immaxcol]
                 mm = ff[n.where( (times >= mint) & (times < maxt) )]
-                if len(mm):
+                if mm:
                     ffm.append(mm.max())
             ffm.sort()
 
@@ -534,11 +534,11 @@ def make_psrrates(pkllist, nbins=60, period=0.156):
             f2.append((rr,f2m[-num1]))
 
         if len(pkllist) == 4:
-            if len(f3m):
+            if f3m:
                 if (num1 > 0) and (num1 <= len(f3m)):
                     f3.append((rr,f3m[-num1]))
 
-    if len(f3):
+    if f3:
         return {0: n.array(f0).transpose(), 1: n.array(f1).transpose(), 2: n.array(f2).transpose(), 3: n.array(f3).transpose()}
     else:
         return {0: n.array(f0).transpose(), 1: n.array(f1).transpose(), 2: n.array(f2).transpose()}
