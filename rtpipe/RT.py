@@ -128,23 +128,17 @@ def pipeline_dataprep(d, segment):
         # calibrate data
         if os.path.exists(d['gainfile']):
             try:
+                radec = (); spwind = []; calname = ''  # set defaults
                 if '.GN' in d['gainfile']: # if telcal file
                     if d.has_key('calname'):
                         calname = d['calname']
-                    else:
-                        calname = ''
-                    radec = (); spwind = []  # set unused options for telcal_sol
 
                     sols = pc.telcal_sol(d['gainfile'])   # parse gainfile
                 else:   # if CASA table
                     if d.has_key('calradec'):
                         radec = d['calradec']  # optionally defined cal location
-                    else:
-                        radec = d['radec']    # always defined
 
                     spwind = d['spw']
-                    calname = ''  # unused for casa_sol
-
                     sols = pc.casa_sol(d['gainfile'], flagants=d['flagantsol'])   # parse gainfile
                     sols.parsebp(d['bpfile'])   # parse bpfile
             except:
