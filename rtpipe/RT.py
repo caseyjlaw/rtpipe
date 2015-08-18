@@ -77,7 +77,7 @@ def pipeline(d, segments):
 
                 # save candidate info
                 if d['savecands']:
-                    logger.info('Saving %d candidates for segment %d...' % (len(cands)), segment)
+                    logger.info('Saving %d candidates for segment %d...' % (len(cands), segment))
                     savecands(d, cands)
 
         except KeyboardInterrupt:

@@ -44,55 +44,60 @@ def read_noise(noisefile):
         flagfrac.append(noise[2]); imnoise.append(noise[3])
     return (n.array(seg), n.array(noiseperbl), n.array(flagfrac), n.array(imnoise))
 
-def merge_segments(pkllist, fileroot=''):
+def merge_segments(fileroot, scan, cleanup=True):
     """ Merges cands/noise pkl files from multiple segments to single cands/noise file.
     Output single pkl per scan with root name fileroot.
+    if cleanup, it will remove segments after merging.
     """
 
-    assert pkllist > 0, 'pkllist is empty'
-    assert pkllist[0][0] == pkllist[-1][0], 'all files in pkllist should be same type (cands or noise)'
+    candslist = glob.glob('cands_' + fileroot + '_sc' + str(scan) + 'seg*.pkl')
+    noiselist = glob.glob('noise_' + fileroot + '_sc' + str(scan) + 'seg*.pkl')
+    candssegs = [candsfile.rstrip('.pkl').split('seg')[1] for candsfile in candslist]
+    noisesegs = [noisefile.rstrip('.pkl').split('seg')[1] for noisefile in noiselist]
 
-    workdir = os.path.dirname(pkllist[0])
-
-    if not fileroot:
-        fileroot = '_'.join(pkllist[0].split('seg')[0].split('_')[1:])   # assumes filename structure
+    assert candslist and noiselist, 'Either candslist (length %d) or noiselist (length %d) is empty.' % (len(candslist), len(noiselist))
+    assert candssegs.sort() == noisesegs.sort(), 'Different segments in candslist (%s) and noiselist (%s)' % (str(candssegs), str(noisesegs))
+    assert not os.path.exists('cands_' + fileroot + '_sc' + str(scan) + '.pkl'), 'Merged candsfile already exists for scan %d?' % scan
+    assert not os.path.exists('noise_' + fileroot + '_sc' + str(scan) + '.pkl'), 'Merged noisefile already exists for scan %d?' % scan
 
     # aggregate cands over segments
-    if 'cands' in pkllist[0]:
-        logger.info('Aggregating cands from %s' % pkllist)
-        state = pickle.load(open(pkllist[0], 'r'))
-        cands = {}
-        for cc in pkllist:
-            with open(cc,'r') as pkl:
-                state = pickle.load(pkl)
-                result = pickle.load(pkl)
-            for kk in result.keys():
-                cands[kk] = result[kk]
+    logger.info('Aggregating cands over segments %s' % str(candssegs))
+    logger.debug('%s' % candslist)
+    cands = {}
+    for candsfile in candslist:
+        with open(candsfile, 'r') as pkl:
+            state = pickle.load(pkl)
+            result = pickle.load(pkl)
+        for kk in result.keys():
+            cands[kk] = result[kk]
+        segment = state.pop('segment')  # remove this key, as it has no meaning after merging segments
 
-        # write cands to single file
-        with open(os.path.join(workdir, 'cands_' + fileroot + '.pkl'), 'w') as pkl:
-            pickle.dump(state, pkl)
-            pickle.dump(cands, pkl)
+    # write cands to single file
+    with open('cands_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
+        pickle.dump(state, pkl)
+        pickle.dump(cands, pkl)
 
-    # clean up noise files
-    elif 'noise' in pkllist[0]:
-        logger.info('Aggregating noise from %s' % pkllist)
-        # aggregate noise over segments
-        noise = []
-        for cc in pkllist:
-            try:
-                with open(cc,'r') as pkl:
-                    result = pickle.load(pkl)
-                noise += result
-            except EOFError:
-                pass
+    # aggregate noise over segments
+    logger.info('Aggregating noise over segments %s' % str(noisesegs))
+    logger.debug('%s' % noiselist)
 
-        # write noise to single file
-        with open(os.path.join(workdir, 'noise_' + fileroot + '.pkl'), 'w') as pkl:
-            pickle.dump(noise, pkl)
+    noise = []
+    for noisefile in noiselist:
+        with open(noisefile, 'r') as pkl:
+            result = pickle.load(pkl)   # gets all noises for segment as list
+        noise += result
 
-    else:
-        logger.warn('Don\'t know what to do with pkllist: %s' % (str(pkllist)))
+    # write noise to single file
+    with open('noise_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
+        pickle.dump(noise, pkl)
+
+    if cleanup:
+        if os.path.exists('cands_' + fileroot + '_sc' + str(scan) + '.pkl'):
+            for candsfile in candslist:
+                os.remove(candsfile)
+        if os.path.exists('noise_' + fileroot + '_sc' + str(scan) + '.pkl'):
+            for noisefile in noiselist:
+                os.remove(noisefile)
 
 def merge_cands(pkllist, outroot='', remove=[]):
     """ Takes cands pkls from list and filteres to write new single "merge" pkl.
