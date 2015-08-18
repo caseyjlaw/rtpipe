@@ -13,12 +13,13 @@ from functools import partial
 
 # setup CASA and logging
 qa = casautil.tools.quanta()
-logger = logging.getLogger('rtpipe')
-if not len(logger.handlers):
-    logger.setLevel(logging.INFO)
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.INFO)
-    logger.addHandler(ch)
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+#if not len(logger.handlers):
+#    logger.setLevel(logging.INFO)
+#    ch = logging.StreamHandler()
+#    ch.setLevel(logging.INFO)
+#    logger.addHandler(ch)
 
 def pipeline(d, segments):
     """ Transient search pipeline running on single node.

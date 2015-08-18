@@ -9,6 +9,7 @@ import rtpipe.RT as rt
 import logging
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 def read_candidates(candsfile):
     """ Reads candidate pkl file into numpy array.
@@ -184,26 +185,23 @@ def merge_cands(pkllist, outroot='', remove=[]):
     pickle.dump(cands, pkl)
     pkl.close()
 
-def plot_summary(pkllist, outroot='', remove=[]):
+def plot_summary(fileroot, scans, remove=[]):
     """ Take pkl list or merge file to produce comprehensive candidate screening plots.
     Starts as dm-t plots, includes dt and peak pixel location.
     """
 
-    # if a list, merge them
-    if isinstance(pkllist, list):
-        workdir = os.path.dirname(pkllist[0])
-
-        if not outroot:
-            outroot = '_'.join(pkllist[0].split('_')[1:3])
-        merge_cands(pkllist, outroot=outroot, remove=remove)
-        mergepkl = os.path.join(workdir, 'cands_' + outroot + '_merge.pkl')
-    elif isinstance(pkllist, str):
-        logger.info('Assuming input is mergepkl. Not using remove!')
-        if not outroot:
-            outroot = '_'.join(pkllist.split('_')[1:3])
-        mergepkl = pkllist
+    mergepkl = 'cands_' + fileroot + '_merge.pkl'
+    # if fileroot is not merge file...
+    if fileroot != mergepkl:
+        pkllist = []
+        for scan in scans:
+            pklfile = 'cands_' + fileroot + '_sc' + str(scan) + '.pkl'
+            if os.path.exists(pklfile):
+                pkllist.append(pklfile)
+        merge_cands(pkllist, outroot=fileroot, remove=remove)
     else:
-        logger.warn('Not valid input.')
+        logger.info('fileroot seems to be mergefile...')
+        outroot = fileroot.split('_')[1]
 
     d = pickle.load(open(mergepkl, 'r'))
     locs, props = read_candidates(mergepkl)
@@ -235,28 +233,59 @@ def plot_summary(pkllist, outroot='', remove=[]):
 
     # dmt plot
     logger.info('Plotting DM-time distribution...')
-    plot_dmt(d, times, dms, dts, snrs, outroot)
+    plot_dmt(d, times, dms, dts, snrs, fileroot)
 
     # dmcount plot
     logger.info('Plotting DM count distribution...')
-    plot_dmcount(d, times, dts, outroot)
+    plot_dmcount(d, times, dts, fileroot)
 
     # norm prob plot
     logger.info('Plotting normal probability distribution...')
-    plot_normprob(d, snrs, outroot)
+    plot_normprob(d, snrs, fileroot)
 
     # source location plot
     logger.info('Plotting (l,m) distribution...')
-    plot_lm(d, snrs, l1s, m1s, outroot)
+    plot_lm(d, snrs, l1s, m1s, fileroot)
 
-def plot_noise(pkllist, outroot='', remove=[]):
-    """ Takes merged noise pkl and visualizes it.
+def plot_noise(fileroot, scans, remove=[]):
+    """ Takes noise pkls and visualizes it as hist of image noise values.
     """
 
-    if not outroot:
-        outroot = '_'.join(pkllist[0].split('_')[1:3])
+    pkllist = []
+    for scan in scans:
+        pklfile = 'noise_' + fileroot + '_sc' + str(scan) + '.pkl'
+        if os.path.exists(pklfile):
+            pkllist.append(pklfile)
 
-    make_noisehists(pkllist, outroot, remove=remove)
+    assert len(pkllist) > 0
+    outname = 'plot_' + fileroot + '_noisehist.png'
+
+    noises = []; minnoise = 1e8; maxnoise = 0
+    logger.info('Reading %d noise files' % len(pkllist))
+    for pkl in pkllist:
+        seg, noiseperbl, flagfrac, imnoise = read_noise(pkl)
+
+        if remove: logger.warn('Remove option not supported for noise files yet.')
+
+        noises.append(imnoise)  # TBD: filter this by remove
+        minnoise = min(minnoise, imnoise.min())
+        maxnoise = max(maxnoise, imnoise.max())
+
+    bins = n.linspace(minnoise, maxnoise, 50)
+    fig = plt.Figure(figsize=(10,10))
+    ax = fig.add_subplot(211, axisbg='white')
+    stuff = ax.hist(noises, bins=bins, histtype='bar', lw='none', ec='none')
+    ax.set_title('Histograms of noise samples')
+    ax.set_xlabel('Image RMS (Jy)')
+    ax.set_ylabel('Number of noise measurements')
+    ax2 = fig.add_subplot(212, axisbg='white')
+    stuff = ax2.hist(n.array([noises[i][j] for i in range(len(noises)) for j in range(len(noises[i]))]), bins=bins, cumulative=-1, normed=True, log=False, histtype='bar', lw='none', ec='none')
+    ax2.set_xlabel('Image RMS (Jy)')
+    ax2.set_ylabel('Number with noise > image RMS')
+
+    canvas = FigureCanvasAgg(fig)
+    canvas.print_figure(outname)
+    logger.info('Saved noise hist to %s' % outname)
 
 def int2mjd(d, loc):
     """ Function to convert segment+integration into mjd seconds.
@@ -264,7 +293,7 @@ def int2mjd(d, loc):
 
     # needs to take merge pkl dict
 
-    if loc:
+    if len(loc):
         intcol = d['featureind'].index('int')
         segmentcol = d['featureind'].index('segment')
         if d.has_key('segmenttimesdict'):  # using merged pkl
@@ -334,7 +363,7 @@ def plot_dmcount(d, times, dts, outroot):
     for dtind in range(len(uniquedts)):
         good = n.where(dts == dtind)[0]
         ax2[dtind] = fig2.add_subplot(str(len(uniquedts)) + '1' + str(dtind+1))
-        if good:
+        if len(good):
             bins = n.round(times[good]).astype('int')
             counts = n.bincount(bins)
 
@@ -441,41 +470,6 @@ def plot_lm(d, snrs, l1s, m1s, outroot):
     canvas4 = FigureCanvasAgg(fig4)
     canvas4.print_figure(outname)
 
-def make_noisehists(pkllist, outroot, remove=[]):
-    """ Cumulative hist of image noise levels.
-    """
-
-    assert len(pkllist) > 0
-    workdir = os.path.dirname(pkllist[0])
-
-    outname = os.path.join(workdir, 'plot_' + outroot + '_noisehist.png')
-
-    noises = []; minnoise = 1e8; maxnoise = 0
-    logger.info('Reading %d noise files' % len(pkllist))
-    for pkl in pkllist:
-        seg, noiseperbl, flagfrac, imnoise = read_noise(pkl)
-
-        if remove: logger.warn('Remove option not supported for noise files yet.')
-
-        noises.append(imnoise)  # TBD: filter this by remove
-        minnoise = min(minnoise, imnoise.min())
-        maxnoise = max(maxnoise, imnoise.max())
-
-    bins = n.linspace(minnoise, maxnoise, 50)
-    fig = plt.Figure(figsize=(10,10))
-    ax = fig.add_subplot(211, axisbg='white')
-    stuff = ax.hist(noises, bins=bins, histtype='bar', lw='none', ec='none')
-    ax.set_title('Histograms of noise samples')
-    ax.set_xlabel('Image RMS (Jy)')
-    ax.set_ylabel('Number of noise measurements')
-    ax2 = fig.add_subplot(212, axisbg='white')
-    stuff = ax2.hist(n.array([noises[i][j] for i in range(len(noises)) for j in range(len(noises[i]))]), bins=bins, cumulative=-1, normed=True, log=False, histtype='bar', lw='none', ec='none')
-    ax2.set_xlabel('Image RMS (Jy)')
-    ax2.set_ylabel('Number with noise > image RMS')
-
-    canvas = FigureCanvasAgg(fig)
-    canvas.print_figure(outname)
-
 def make_psrrates(pkllist, nbins=60, period=0.156):
     """ Visualize cands in set of pkl files from pulsar observations.
     Input pkl list assumed to start with on-axis pulsar scan, followed by off-axis scans.
@@ -500,7 +494,7 @@ def make_psrrates(pkllist, nbins=60, period=0.156):
         loc, prop = read_candidates(pklfile)
 
         ffm = []
-        if loc:
+        if (loc):
             times = int2mjd(state, loc)
 
             for (mint,maxt) in zip(n.arange(times.min()-period/2,times.max()+period/2,period), n.arange(times.min()+period/2,times.max()+3*period/2,period)):
