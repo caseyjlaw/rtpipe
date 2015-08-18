@@ -53,7 +53,6 @@ def pipeline(d, segments):
     data_read = numpyview(data_read_mem, 'complex64', datashape(d)) # optional
                 
     results = {}
-    candcount = 0
     # only one needed for parallel read/process. more would overwrite memory space
     with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
 
@@ -76,19 +75,16 @@ def pipeline(d, segments):
                     logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
                     cands = search(d, data_mem, u_mem, v_mem, w_mem)
 
-            # save candidate info
-            candcount += len(cands)
-            if d['savecands']:
-                logger.info('Saving %d candidates...' % (len(cands)))
-                savecands(d, cands)
+                # save candidate info
+                if d['savecands']:
+                    logger.info('Saving %d candidates for segment %d...' % (len(cands)), segment)
+                    savecands(d, cands)
 
         except KeyboardInterrupt:
             logger.error('Caught Ctrl-C. Closing processing pool.')
             readpool.terminate()
             readpool.join()
             raise
-
-    return candcount
 
 def pipeline_dataprep(d, segment):
     """ Single-threaded pipeline for data prep that can be started in a pool.

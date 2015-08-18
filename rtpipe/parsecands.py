@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import pickle, types, glob, os
 import rtpipe.RT as rt
+import logging
+
+logger = logging.getLogger(__name__)
 
 def read_candidates(candsfile):
     """ Reads candidate pkl file into numpy array.
@@ -17,7 +20,7 @@ def read_candidates(candsfile):
         d = pickle.load(pkl)
         cands = pickle.load(pkl)
     if cands == 0:
-        print 'No cands found from %s.' % candsfile
+        logger.info('No cands found from %s.' % candsfile)
         return (n.array([]), n.array([]))
 
     # select set of values 
@@ -26,7 +29,7 @@ def read_candidates(candsfile):
         loc.append( list(kk) )
         prop.append( list(cands[kk]) )    #[snrcol], cands[kk][l1col], cands[kk][m1col]) )
 
-    print 'Read %d candidates from %s.' % (len(loc), candsfile)
+    logger.info('Read %d candidates from %s.' % (len(loc), candsfile))
     return n.array(loc).astype(int), n.array(prop)
 
 def read_noise(noisefile):
@@ -47,6 +50,7 @@ def merge_segments(pkllist, fileroot=''):
     """
 
     assert pkllist > 0, 'pkllist is empty'
+    assert pkllist[0][0] == pkllist[-1][0], 'all files in pkllist should be same type (cands or noise)'
 
     workdir = os.path.dirname(pkllist[0])
 
@@ -55,7 +59,7 @@ def merge_segments(pkllist, fileroot=''):
 
     # aggregate cands over segments
     if 'cands' in pkllist[0]:
-        print 'Aggregating cands from %s' % pkllist
+        logger.info('Aggregating cands from %s' % pkllist)
         state = pickle.load(open(pkllist[0], 'r'))
         cands = {}
         for cc in pkllist:
@@ -72,7 +76,7 @@ def merge_segments(pkllist, fileroot=''):
 
     # clean up noise files
     elif 'noise' in pkllist[0]:
-        print 'Aggregating noise from %s' % pkllist
+        logger.info('Aggregating noise from %s' % pkllist)
         # aggregate noise over segments
         noise = []
         for cc in pkllist:
@@ -88,7 +92,7 @@ def merge_segments(pkllist, fileroot=''):
             pickle.dump(noise, pkl)
 
     else:
-        print 'Don\'t know what to do with pkllist: %s' % (str(pkllist))
+        logger.warn('Don\'t know what to do with pkllist: %s' % (str(pkllist)))
 
 def merge_cands(pkllist, outroot='', remove=[]):
     """ Takes cands pkls from list and filteres to write new single "merge" pkl.
@@ -103,7 +107,7 @@ def merge_cands(pkllist, outroot='', remove=[]):
 
     pkllist = [pkllist[i] for i in range(len(pkllist)) if ('merge' not in pkllist[i]) and ('seg' not in pkllist[i])]
     pkllist.sort(key=lambda i: int(i.rstrip('.pkl').split('_sc')[1]))  # assumes filename structure
-    print 'Aggregating cands from %s' % pkllist
+    logger.info('Aggregating cands from %s' % pkllist)
 
     # get sample state dict. not representative of all scans
     mergeloc = []; mergeprop = []; mergetimes = []
@@ -163,7 +167,7 @@ def merge_cands(pkllist, outroot='', remove=[]):
     d['remove'] = remove
     d['segmenttimesdict'] = segmenttimesdict
 
-    print 'Writing filtered set of %d candidates to %s' % (len(mergeloc), mergepkl)
+    logger.info('Writing filtered set of %d candidates to %s' % (len(mergeloc), mergepkl))
 
     # build and write up new dict
     cands = {}
@@ -189,18 +193,18 @@ def plot_summary(pkllist, outroot='', remove=[]):
         merge_cands(pkllist, outroot=outroot, remove=remove)
         mergepkl = os.path.join(workdir, 'cands_' + outroot + '_merge.pkl')
     elif isinstance(pkllist, str):
-        print 'Assuming input is mergepkl. Not using remove!'
+        logger.info('Assuming input is mergepkl. Not using remove!')
         if not outroot:
             outroot = '_'.join(pkllist.split('_')[1:3])
         mergepkl = pkllist
     else:
-        print 'Not valid input.'
+        logger.warn('Not valid input.')
 
     d = pickle.load(open(mergepkl, 'r'))
     locs, props = read_candidates(mergepkl)
 
     if not len(locs):
-        print 'No candidates in mergepkl.'
+        logger.info('No candidates in mergepkl.')
         return
 
     # compile candidates over all pkls
@@ -225,19 +229,19 @@ def plot_summary(pkllist, outroot='', remove=[]):
     m1s = props[:, m1col]
 
     # dmt plot
-    print 'Plotting DM-time distribution...'
+    logger.info('Plotting DM-time distribution...')
     plot_dmt(d, times, dms, dts, snrs, outroot)
 
     # dmcount plot
-    print 'Plotting DM count distribution...'
+    logger.info('Plotting DM count distribution...')
     plot_dmcount(d, times, dts, outroot)
 
     # norm prob plot
-    print 'Plotting normal probability distribution...'
+    logger.info('Plotting normal probability distribution...')
     plot_normprob(d, snrs, outroot)
 
     # source location plot
-    print 'Plotting (l,m) distribution...'
+    logger.info('Plotting (l,m) distribution...')
     plot_lm(d, snrs, l1s, m1s, outroot)
 
 def plot_noise(pkllist, outroot='', remove=[]):
@@ -334,13 +338,12 @@ def plot_dmcount(d, times, dts, outroot):
 
             # label high points
             high = n.where(counts > n.median(counts) + 20*counts.std())[0]
-            print
-            print 'Candidate clusters for dt=%d:' % (d['dtarr'][dtind])
-            print '\t(Counts, Times)'
+            logger.info('Candidate clusters for dt=%d:' % (d['dtarr'][dtind]))
+            logger.info('\t(Counts, Times)')
             for ii in high:
-#                print 'For dt=%d, %d candidates at %d s' % (d['dtarr'][dtind], counts[ii], ii)
+#                logger.info('For dt=%d, %d candidates at %d s' % (d['dtarr'][dtind], counts[ii], ii))
                 ww = n.where(bins == ii)[0]
-                print counts[ii], times[good][ww][0]
+                logger.info('%s %s' % (str(counts[ii]), str(times[good][ww][0])))
 
             if dtind == uniquedts[-1]:
                 plt.setp(ax2[dtind].get_xticklabels(), visible=True)
@@ -443,11 +446,11 @@ def make_noisehists(pkllist, outroot, remove=[]):
     outname = os.path.join(workdir, 'plot_' + outroot + '_noisehist.png')
 
     noises = []; minnoise = 1e8; maxnoise = 0
-    print 'Reading %d noise files' % len(pkllist)
+    logger.info('Reading %d noise files' % len(pkllist))
     for pkl in pkllist:
         seg, noiseperbl, flagfrac, imnoise = read_noise(pkl)
 
-        if remove: print 'Remove option not supported for noise files yet.'
+        if remove: logger.warn('Remove option not supported for noise files yet.')
 
         noises.append(imnoise)  # TBD: filter this by remove
         minnoise = min(minnoise, imnoise.min())
@@ -478,14 +481,14 @@ def make_psrrates(pkllist, nbins=60, period=0.156):
     state = pickle.load(open(pkllist[0], 'r'))  # assume single state for all scans
     if 'image2' in state['searchtype']:
         immaxcol = state['features'].index('immax2')
-        print 'Using immax2 for flux.'
+        logger.info('Using immax2 for flux.')
     elif 'image1' in state['searchtype']:
         try:
             immaxcol = state['features'].index('immax1')
-            print 'Using immax1 for flux.'
+            logger.info('Using immax1 for flux.')
         except:
             immaxcol = state['features'].index('snr1')
-            print 'Warning: Using snr1 for flux.'
+            logger.info('Warning: Using snr1 for flux.')
 
     # read cands
     for pklfile in pkllist:
@@ -502,7 +505,7 @@ def make_psrrates(pkllist, nbins=60, period=0.156):
                     ffm.append(mm.max())
             ffm.sort()
 
-        print 'Found %d unique pulses.' % len(ffm)
+        logger.info('Found %d unique pulses.' % len(ffm))
         # calculate params
         if pkllist.index(pklfile) == 0:
             duration0 = times.max() - times.min()
@@ -588,11 +591,11 @@ def plot_psrrates(pkllist, outname=''):
 
     # find typical ratio. avoid pulsar period saturation and low-count regimes (high and low ends)
     if len(rates) == 4:
-        print 'flux ratio, lowest common (1/0, 2/0, 3/0):', (r10[len(r30)-1], r20[len(r30)-1], r30[-1])
-        print 'flux ratio, high end (1/0, 2/0, 3/0):', (r10[-1], r20[-1], r30[-1])
+        logger.info('flux ratio, lowest common (1/0, 2/0, 3/0):', (r10[len(r30)-1], r20[len(r30)-1], r30[-1]))
+        logger.info('flux ratio, high end (1/0, 2/0, 3/0):', (r10[-1], r20[-1], r30[-1]))
     elif len(rates) == 3:
-        print 'flux ratio, lowest common (1/0, 2/0):', (r10[len(r20)-1], r20[-1])
-        print 'flux ratio, high end (1/0, 2/0):', (r10[-1], r20[-1])
+        logger.info('flux ratio, lowest common (1/0, 2/0):', (r10[len(r20)-1], r20[-1]))
+        logger.info('flux ratio, high end (1/0, 2/0):', (r10[-1], r20[-1]))
 
     plt.savefig(outname)
 
@@ -607,7 +610,7 @@ def plot_cand(mergepkl, snrmin=None, candnum=-1, outname='', **kwargs):
     #     merge_cands(pkllist, outroot=outroot)
     #     mergepkl = 'cands_' + outroot + '_merge.pkl'
     # elif isinstance(pkllist, str):
-    #     print 'Assuming input is mergepkl'
+    #     logger.info('Assuming input is mergepkl')
     #     mergepkl = pkllist
 
     d = pickle.load(open(mergepkl, 'r'))
@@ -646,12 +649,12 @@ def plot_cand(mergepkl, snrmin=None, candnum=-1, outname='', **kwargs):
     prop = prop[sortord][snrinds]
 
     if candnum < 0:
-        print 'Getting candidates...'
+        logger.info('Getting candidates...')
         for i in range(len(loc)):
-            print i, loc[i], prop[i, snrcol]
+            logger.info("%d %s %s" % (i, str(loc[i]), str(prop[i, snrcol])))
         return (loc, prop[:,snrcol])
     else:
-        print 'Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum])
+        logger.info('Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum]))
         scan = loc[candnum, scancol]
         segment = loc[candnum, segmentcol]
         dmind = loc[candnum, dmindcol]
@@ -671,10 +674,10 @@ def plot_cand(mergepkl, snrmin=None, candnum=-1, outname='', **kwargs):
         m1 = (ypix/2. - peakm[0])/(ypix*d['uvres'])
         pt_ra, pt_dec = d['radec']
         src_ra, src_dec = source_location(pt_ra, pt_dec, l1, m1)
-        print 'Peak (RA, Dec):', src_ra, src_dec
+        logger.info('Peak (RA, Dec): %.3f, %.3f' % (src_ra, src_dec))
 
         # plot it
-        print 'Plotting...'
+        logger.info('Plotting...')
         fig = plt.Figure(figsize=(8.5,8))
         ax = fig.add_subplot(221, axisbg='white')
 
@@ -802,11 +805,11 @@ def inspect_cand(mergepkl, snrmin=None, candnum=-1, scan=0, **kwargs):
 
     if candnum < 0:
         for i in range(len(loc)):
-            print i, loc[i], prop[i, snrcol]
-        print 'Returning candidate (loc, snr) ...'
+            logger.info("%d %s %s" % (i, str(loc[i]), str(prop[i, snrcol])))
+        logger.info('Returning candidate (loc, snr) ...')
         return (loc, prop[:,snrcol])
     else:
-        print 'Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum])
+        logger.info('Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum]))
         if not scan:
             scan = loc[candnum, scancol]
             nsegments = len(d['segmenttimesdict'][scan])
@@ -829,9 +832,9 @@ def inspect_cand(mergepkl, snrmin=None, candnum=-1, scan=0, **kwargs):
         m1 = (ypix/2. - peakm[0])/(ypix*d['uvres'])
         pt_ra, pt_dec = d['radec']
         src_ra, src_dec = source_location(pt_ra, pt_dec, l1, m1)
-        print 'Peak (RA, Dec):', src_ra, src_dec
+        logger.info('Peak (RA, Dec): %.3f, %.3f' % (src_ra, src_dec))
 
-        print 'Returning candidate d, im, data'
+        logger.info('Returning candidate d, im, data')
         return d2, im, data
 
 def source_location(pt_ra, pt_dec, l1, m1):
