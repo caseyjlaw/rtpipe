@@ -233,7 +233,7 @@ def plot_summary(fileroot, scans, remove=[]):
 
     # dmt plot
     logger.info('Plotting DM-time distribution...')
-    plot_dmt(d, times, dms, dts, snrs, fileroot)
+    plot_dmt(d, times, dms, dts, snrs, l1s, m1s, fileroot)
 
     # dmcount plot
     logger.info('Plotting DM count distribution...')
@@ -305,11 +305,14 @@ def int2mjd(d, loc):
     else:
         return n.array([])
 
-def plot_dmt(d, times, dms, dts, snrs, outroot):
+def plot_dmt(d, times, dms, dts, snrs, l1s, m1s, outroot):
     """ Plots DM versus time for each dt value.
     """
 
     outname = os.path.join(d['workdir'], 'plot_' + outroot + '_dmt.png')
+
+    # encode location (position angle) as color in scatter plot
+    color = lambda l1,m1: [plt.cm.jet(X=(n.angle(n.complex(l1[i], m1[i])) + n.pi) / (2*n.pi), alpha=0.5) for i in range(len(l1))]
 
     mint = times.min(); maxt = times.max()
     dtsunique = n.unique(dts)
@@ -323,8 +326,8 @@ def plot_dmt(d, times, dms, dts, snrs, outroot):
         # plot positive cands
         good = n.where( (dts == dtind) & (snrs > 0))[0]
         sizes = (snrs[good]-snrmin)**5   # set scaling to give nice visual sense of SNR
-        ax[dtind].scatter(times[good], dms[good], s=sizes, facecolor='none', alpha=0.3, clip_on=False)
-        # plot positive cands
+        ax[dtind].scatter(times[good], dms[good], s=sizes, marker='o', c=color(l1s[good], m1s[good]), clip_on=False)
+        # plot negative cands
         good = n.where( (dts == dtind) & (snrs < 0))[0]
         sizes = (n.abs(snrs[good])-snrmin)**5   # set scaling to give nice visual sense of SNR
         ax[dtind].scatter(times[good], dms[good], s=sizes, marker='x', edgecolors='k', alpha=0.3, clip_on=False)
