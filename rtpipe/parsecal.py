@@ -499,13 +499,17 @@ class telcal_sol():
             if ('NO_ANTSOL_SOLUTIONS_FOUND' in line) or ('ERROR' in line):
                 continue
 
-            mjd.append(float(fields[MJD])); utc.append(fields[UTC]); lstd.append(float(fields[LSTD])); lsts.append(fields[LSTS])
-            ifid.append(fields[IFID]); skyfreq.append(float(fields[SKYFREQ])); antname.append(fields[ANT])
-            amp.append(float(fields[AMP])); phase.append(float(fields[PHASE])); residual.append(float(fields[RESIDUAL]))
-            delay.append(float(fields[DELAY])); flagged.append('true' == (fields[FLAGGED]))
-            zeroed.append('true' == (fields[ZEROED])); ha.append(float(fields[HA])); az.append(float(fields[AZ]))
-            el.append(float(fields[EL])); source.append(fields[SOURCE])
-#            flagreason.append('')  # 18th field not yet implemented
+            try:
+                mjd.append(float(fields[MJD])); utc.append(fields[UTC]); lstd.append(float(fields[LSTD])); lsts.append(fields[LSTS])
+                ifid.append(fields[IFID]); skyfreq.append(float(fields[SKYFREQ])); antname.append(fields[ANT])
+                amp.append(float(fields[AMP])); phase.append(float(fields[PHASE])); residual.append(float(fields[RESIDUAL]))
+                delay.append(float(fields[DELAY])); flagged.append('true' == (fields[FLAGGED]))
+                zeroed.append('true' == (fields[ZEROED])); ha.append(float(fields[HA])); az.append(float(fields[AZ]))
+                el.append(float(fields[EL])); source.append(fields[SOURCE])
+#                flagreason.append('')  # 18th field not yet implemented
+            except ValueError:
+                self.logger.warn('Trouble parsing line of telcal file. Skipping.')
+                continue
 
         self.mjd = n.array(mjd); self.utc = n.array(utc); self.lstd = n.array(lstd); self.lsts = n.array(lsts)
         self.ifid = n.array(ifid); self.skyfreq = n.array(skyfreq); self.antname = n.array(antname); self.amp = n.array(amp) 
