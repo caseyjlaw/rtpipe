@@ -10,7 +10,7 @@ ms = casautil.tools.ms()
 tb = casautil.tools.table()
 qa = casautil.tools.quanta()
 
-def get_metadata(filename, scan, datacol='', spw=[], chans=[], selectpol=[], read_fdownsample=1, paramfile=''):
+def get_metadata(filename, scan, paramfile='', **kwargs):
     """ Function to scan data (a small read) and define parameters used elsewhere.
     filename needs full path.
     Examples include, read/bgsub windows, image grid, memory profile.
@@ -30,7 +30,12 @@ def get_metadata(filename, scan, datacol='', spw=[], chans=[], selectpol=[], rea
     for k in params.defined:   # fill in default params
         d[k] = params[k]
 
-    assert read_fdownsample == 1, 'read_fdownsample not yet implemented for MS files.'
+    # overload with provided kwargs
+    for key in kwargs.keys():
+        logger.info('Setting %s to %s' % (key, kwargs[key]))
+        d[key] = kwargs[key]
+
+    assert d['read_fdownsample'] == 1, 'read_fdownsample not yet implemented for MS files.'
 
     # read metadata either from pickle or ms file
     pklname = d['filename'].rstrip('.ms') + '_init2.pkl'
@@ -144,7 +149,7 @@ def get_metadata(filename, scan, datacol='', spw=[], chans=[], selectpol=[], rea
     # refine spw/freq info
     d['scan'] = int(scanlist[scan])
     d['orig_spws'] = n.array(d['orig_spws_all'][scanlist[scan]])
-    if len(spw):
+    if len(d['spw']):
         d['spwlist'] = d['orig_spws'][spw]
     elif len(d['spw']):
         d['spwlist'] = d['orig_spws'][d['spw']]
@@ -162,7 +167,7 @@ def get_metadata(filename, scan, datacol='', spw=[], chans=[], selectpol=[], rea
            
     d['nspw'] = len(d['spwlist'])
 
-    if len(chans):
+    if len(d['chans']):
         d['freq'] = d['freq_orig'][chans]
         d['chans'] = chans
     elif len(d['chans']):

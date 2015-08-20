@@ -480,12 +480,13 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     #     datacol = []
 
     # then get all metadata
+    assert os.path.exists(filename)
+
     if os.path.exists(os.path.join(filename, 'Main.xml')):
-#        d = ps.get_metadata(filename, scan, chans=chans, spw=spw, read_fdownsample=rfd, paramfile=paramfile, **kwargs)   # can take file name or Params instance
         d = ps.get_metadata(filename, scan, paramfile=paramfile, **kwargs)   # can take file name or Params instance
         d['dataformat'] = 'sdm'
     else:
-        d = pm.get_metadata(filename, scan, chans=chans, spw=spw, read_fdownsample=rfd, paramfile=paramfile, **kwargs)
+        d = pm.get_metadata(filename, scan, paramfile=paramfile, **kwargs)
         d['dataformat'] = 'ms'
 
     # define rootname for in/out cal/products
