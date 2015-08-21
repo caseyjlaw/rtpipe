@@ -3,14 +3,13 @@
 # claw, 14jun03
 #
 
+import logging
+logger = logging.getLogger(__name__)
 import numpy as n
 import os, shutil, subprocess, glob, string
 import casautil, tasklib
 import sdmreader, sdmpy
 import rtpipe.parseparams as pp
-import logging
-
-logger = logging.getLogger(__name__)
 qa = casautil.tools.quanta()
 me = casautil.tools.measures()
 
@@ -36,6 +35,12 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
     for key in kwargs.keys():
         logger.info('Setting %s to %s' % (key, kwargs[key]))
         d[key] = kwargs[key]
+
+    if 'silent' in kwargs.keys():
+        loglevel = logging.ERROR
+    else:
+        loglevel = logging.INFO
+    logger.setLevel(loglevel)
 
     # define scan list
     if d.has_key('bdfdir'):   # only needed on cbe
