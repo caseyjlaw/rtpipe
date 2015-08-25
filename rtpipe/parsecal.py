@@ -539,24 +539,25 @@ class telcal_sol():
         """ Calculates the complex gain product (g1*g2) for a pair of antennas.
         """
 
-        select = n.where( (self.skyfreq[self.select] == skyfreq) & (self.polarization[self.select] == pol) )
+        select = self.select[n.where( (self.skyfreq[self.select] == skyfreq) & (self.polarization[self.select] == pol) )[0]]
+        self.logger.debug('select %s' % (str(select)))
 
         ind1 = n.where(ant1 == self.antnum[select])
         ind2 = n.where(ant2 == self.antnum[select])
         g1 = self.amp[select][ind1]*n.exp(1j*n.radians(self.phase[select][ind1]))
         g2 = self.amp[select][ind2]*n.exp(-1j*n.radians(self.phase[select][ind2]))
-        if len(g1*g2) > 0:
-            invg1g2 = 1/(g1*g2)
-            invg1g2[n.where( (g1 == 0j) | (g2 == 0j) )] = 0.
-            return invg1g2
-        else:
-            return n.array([0])
+        try:
+            assert (g1[0] != 0j) and (g2[0] != 0j)
+            invg1g2 = 1./(g1[0]*g2[0])
+        except (AssertionError, IndexError):
+            invg1g2 = 0
+        return invg1g2
 
     def calcdelay(self, ant1, ant2, skyfreq, pol):
         """ Calculates the relative delay (d1-d2) for a pair of antennas in ns.
         """
 
-        select = n.where( (self.skyfreq[self.select] == skyfreq) & (self.polarization[self.select] == pol) )
+        select = self.select[n.where( (self.skyfreq[self.select] == skyfreq) & (self.polarization[self.select] == pol) )[0]]
 
         ind1 = n.where(ant1 == self.antnum[select])
         ind2 = n.where(ant2 == self.antnum[select])

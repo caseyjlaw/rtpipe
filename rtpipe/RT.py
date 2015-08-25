@@ -144,6 +144,7 @@ def pipeline_dataprep(d, segment):
                 sols.apply(data_read)
             except:
                 logger.warning('Could not parse or apply gainfile %s.' % d['gainfile'])
+                raise
         else:
             logger.info('Calibration file not found. Proceeding with no calibration applied.')
 
