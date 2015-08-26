@@ -23,7 +23,7 @@ class Params(object):
         self.searchtype = 'image1'; self.sigma_image1 = 7.; self.sigma_image2 = 7.
         self.l0 = 0.; self.m0 = 0.
         self.uvres = 0; self.npix = 0; self.uvoversample = 1.
-        self.flaglist = [('badcht', 20., 0.3) , ('badap', 3., 0.2), ('blstd', 3.0, 0.05), ('badcht', 15., 0.3)]
+        self.flaglist = [('badcht', 15., 0.3) , ('badap', 3., 0.2), ('blstd', 3.0, 0.05)]
         self.flagantsol = True; self.gainfile = ''; self.bpfile = ''; self.fileroot = ''
         self.savenoise = False; self.savecands = False
         self.writebdfpkl = False

@@ -839,8 +839,8 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
                 meanampmednew = n.ma.median(meanamp)
                 meanampstdnew = meanamp.std()
 
-            badch = chans[n.where( (meanamp.mean(axis=0) > meanampmednew + sigma*meanampstdnew/n.sqrt(len(meanamp))) | (meanamp.mean(axis=0).mask==True) )[0]]
-            badt = n.where( (meanamp.mean(axis=1) > meanampmednew + sigma*meanampstdnew/n.sqrt(len(meanamp[0]))) | (meanamp.mean(axis=1).mask==True) )[0]
+            badch = chans[n.where( (meanamp.mean(axis=0) > meanampmednew + sigma*meanampstdnew) | (meanamp.mean(axis=0).mask==True) )[0]]
+            badt = n.where( (meanamp.mean(axis=1) > meanampmednew + sigma*meanampstdnew) | (meanamp.mean(axis=1).mask==True) )[0]
 
             for chan in badch:
                 flagged += iterint*nbl
