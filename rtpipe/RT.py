@@ -571,36 +571,56 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     d['datadelay'] = [rtlib.calc_delay(d['freq'], d['inttime'],dm).max() for dm in d['dmarr']]
     d['nints'] = d['nints'] - d['nskip']
 
-    if d['nsegments'] == 0:
-        fringetime = calc_fringetime(d)
-        d['nsegments'] = max(1, min(d['nints'], int(d['scale_nsegments']*d['inttime']*d['nints']/(fringetime-d['t_overlap']))))  # at least 1, at most nints
-#        stopdts = n.arange(d['nskip']*d['inttime']+d['t_overlap'], d['nints']*d['inttime'], fringetime-d['t_overlap'])[1:] # old way
-#        startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
-
-# this fails for corner case of rounding near 0.5 ints
-#    stopdts = n.linspace(d['nskip']*d['inttime']+d['t_overlap'], d['nints']*d['inttime'], d['nsegments']+1)[1:]   # nseg+1 assures that at least one seg made
-#    startdts = n.concatenate( ([d['nskip']*d['inttime']], stopdts[:-1]-d['t_overlap']) )
-
-# this casts to int (flooring) to avoid 0.5 int rounding issue. 
-    stopdts = n.linspace(d['nskip']+d['t_overlap']/d['inttime'], d['nints'], d['nsegments']+1)[1:]   # nseg+1 assures that at least one seg made
-    startdts = n.concatenate( ([d['nskip']], stopdts[:-1]-d['t_overlap']/d['inttime']) )
-
-    segmenttimes = []
-    for (startdt, stopdt) in zip(d['inttime']*startdts, d['inttime']*stopdts):
-        starttime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['starttime_mjd']+startdt/(24*3600),'d'),form=['ymd'], prec=9)[0], 's'))[0]/(24*3600)
-        stoptime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['starttime_mjd']+stopdt/(24*3600), 'd'), form=['ymd'], prec=9)[0], 's'))[0]/(24*3600)
-        segmenttimes.append((starttime, stoptime))
-    d['segmenttimes'] = n.array(segmenttimes)
-    totaltimeread = 24*3600*(d['segmenttimes'][:, 1] - d['segmenttimes'][:, 0]).sum()            # not guaranteed to be the same for each segment
-    d['readints'] = n.round(totaltimeread / (d['inttime']*d['nsegments']*d['read_tdownsample'])).astype(int)
-    d['t_segment'] = totaltimeread/d['nsegments']
-
     # pols
     if d.has_key('selectpol'):
         d['pols'] = [pol for pol in d['pols_orig'] if pol in d['selectpol']]
     else:
         d['pols'] = d['pols_orig']
     d['npol'] = len(d['pols'])
+
+    # split imaging into chunks. ideally one per thread, but can modify to fit available memory
+    if d['nchunk'] == 0:
+        d['nchunk'] = d['nthread']
+
+    # define number of segments to break data
+    if d['nsegments'] == 0:
+        fringetime = calc_fringetime(d)
+        d['nsegments'] = max(1, min(d['nints'], int(d['scale_nsegments']*d['inttime']*d['nints']/(fringetime-d['t_overlap']))))  # at least 1, at most nints
+
+        # this casts to int (flooring) to avoid 0.5 int rounding issue. 
+        stopdts = n.linspace(d['nskip']+d['t_overlap']/d['inttime'], d['nints'], d['nsegments']+1)[1:]   # nseg+1 assures that at least one seg made
+        startdts = n.concatenate( ([d['nskip']], stopdts[:-1]-d['t_overlap']/d['inttime']) )
+            
+        segmenttimes = []
+        for (startdt, stopdt) in zip(d['inttime']*startdts, d['inttime']*stopdts):
+            starttime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['starttime_mjd']+startdt/(24*3600),'d'),form=['ymd'], prec=9)[0], 's'))[0]/(24*3600)
+            stoptime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['starttime_mjd']+stopdt/(24*3600), 'd'), form=['ymd'], prec=9)[0], 's'))[0]/(24*3600)
+            segmenttimes.append((starttime, stoptime))
+        d['segmenttimes'] = n.array(segmenttimes)
+        totaltimeread = 24*3600*(d['segmenttimes'][:, 1] - d['segmenttimes'][:, 0]).sum()            # not guaranteed to be the same for each segment
+        d['readints'] = n.round(totaltimeread / (d['inttime']*d['nsegments']*d['read_tdownsample'])).astype(int)
+        d['t_segment'] = totaltimeread/d['nsegments']
+
+        # if auto nsegment definition makes segment too large, try to scale it down to fit in memory_limit (if provided)
+        if d.has_key('memory_limit'):
+            while calc_memory_footprint(d, visonly=True) > d['memory_limit']:
+                logger.info("For nsegments=%d, pipeline would read %d GB of visibilities and exceed limit of %d. Iterating to better memory fit." % (d['nsegments'], calc_memory_footprint(d, visonly=True), d['memory_limit']))
+                d['scale_nsegments'] = d['scale_nsegments'] * (calc_memory_footprint(d, visonly=True)/float(d['memory_limit']))
+                d['nsegments'] = max(1, min(d['nints'], int(d['scale_nsegments']*d['inttime']*d['nints']/(fringetime-d['t_overlap']))))  # at least 1, at most nints
+
+                # this casts to int (flooring) to avoid 0.5 int rounding issue. 
+                stopdts = n.linspace(d['nskip']+d['t_overlap']/d['inttime'], d['nints'], d['nsegments']+1)[1:]   # nseg+1 assures that at least one seg made
+                startdts = n.concatenate( ([d['nskip']], stopdts[:-1]-d['t_overlap']/d['inttime']) )
+            
+                segmenttimes = []
+                for (startdt, stopdt) in zip(d['inttime']*startdts, d['inttime']*stopdts):
+                    starttime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['starttime_mjd']+startdt/(24*3600),'d'),form=['ymd'], prec=9)[0], 's'))[0]/(24*3600)
+                    stoptime = qa.getvalue(qa.convert(qa.time(qa.quantity(d['starttime_mjd']+stopdt/(24*3600), 'd'), form=['ymd'], prec=9)[0], 's'))[0]/(24*3600)
+                    segmenttimes.append((starttime, stoptime))
+                d['segmenttimes'] = n.array(segmenttimes)
+                totaltimeread = 24*3600*(d['segmenttimes'][:, 1] - d['segmenttimes'][:, 0]).sum()            # not guaranteed to be the same for each segment
+                d['readints'] = n.round(totaltimeread / (d['inttime']*d['nsegments']*d['read_tdownsample'])).astype(int)
+                d['t_segment'] = totaltimeread/d['nsegments']
 
     # scaling of number of integrations beyond dt=1
     assert all(d['dtarr']), 'dtarr must be larger than 0'
@@ -610,10 +630,6 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     ntrials = d['readints'] * dtfactor * len(d['dmarr']) * d['npixx'] * d['npixy']
     qfrac = 1 - (erf(d['sigma_image1']/n.sqrt(2)) + 1)/2.
     nfalse = int(qfrac*ntrials)
-
-    # split imaging into chunks. ideally one per thread, but can modify to fit available memory
-    if d['nchunk'] == 0:
-        d['nchunk'] = d['nthread']
 
     logger.info('')
     logger.info('Pipeline summary:')
@@ -636,6 +652,8 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     (vismem, immem) = calc_memory_footprint(d)
     if d.has_key('memory_limit'):    # if preference given, then test
+        assert vismem < d['memory_limit'], 'Visibility reading requires %d GB, but memory limit is %d GB. Try forcing nsegments to value larger than %d.' % (vismem, d['memory_limit'], d['nsegments'])
+
         if vismem+immem > d['memory_limit']:
             logger.info('')
             while vismem+immem > d['memory_limit']:
@@ -670,7 +688,7 @@ def getnoisefile(d, segment=-1):
     else:
         return ''
 
-def calc_memory_footprint(d, headroom=2.):
+def calc_memory_footprint(d, headroom=2., visonly=False):
     """ Given pipeline state dict, this function calculates the memory required
     to store visibilities and make images.
     headroom scales memory size from ideal to realistic. only used for vismem.
@@ -681,8 +699,11 @@ def calc_memory_footprint(d, headroom=2.):
     dtfactor = n.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
 
     vismem = headroom * dtfactor * datasize(d) * toGB
-    immem = d['nthread'] * (d['readints']/d['nchunk'] * d['npixx'] * d['npixy']) * toGB
-    return (vismem, immem)
+    if visonly:
+        return vismem
+    else:
+        immem = d['nthread'] * (d['readints']/d['nchunk'] * d['npixx'] * d['npixy']) * toGB
+        return (vismem, immem)
 
 def calc_fringetime(d):
     """ Estimate largest time span of a "segment".
