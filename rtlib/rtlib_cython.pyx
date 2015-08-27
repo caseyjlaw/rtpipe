@@ -895,9 +895,7 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
 
         else:
             summary = 'Flagmode not recognized.'
-            print 'Not a recognized flag mode.'
     else:
-        summary = 'Data already flagged.'
-        print 'Data already flagged.'
+        summary = 'Data already flagged for chans %d-%d, pol %d' % (chans[0], chans[-1], pol)
 
     return summary
