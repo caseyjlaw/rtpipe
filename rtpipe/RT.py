@@ -822,11 +822,14 @@ def image1(d, u, v, w, dmind, dtind, beamnum, irange):
             elif feature == 'im40':  # 40 pixel image peak cutout
                 peakx, peaky = n.where(ims[i] == ims[i].max())
                 sizex, sizey = ims[i].shape
-                xmin = max(0, peakx - 20); xmax = min(peakx + 20, sizex)
+                # set image window with min=0 and max=size
+                xmin = max(0, peakx - 20); xmax = min(peakx + 20, sizex)   
                 ymin = max(0, peaky - 20); ymax = min(peaky + 20, sizey)
                 ff.append(ims[i][xmin:xmax,ymin:ymax])
             elif feature == 'spec20':  # 20 int spectrum cutout
-                imin = max(0, (i0+candints[i])*d['dtarr'][dtind], - 10); imax = min( (i0+candints[i])*d['dtarr'][dtind], + 10, len(data_resamp))
+                # set int window with min 0 and max len()
+                imin = max(0, (i0+candints[i])*d['dtarr'][dtind] - 10)
+                imax = min( (i0+candints[i])*d['dtarr'][dtind] + 10, len(data_resamp))
                 data_cut = data_resamp[imin:imax].copy()
                 rtlib.phaseshift_threaded(data_cut, d, l1, m1, u, v)
                 ff.append(data_cut.mean(axis=1))
