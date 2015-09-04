@@ -227,9 +227,9 @@ def plot_summary(fileroot, scans, remove=[]):
     times -= times.min()
     dts = locs[:, dtindcol]
     dms = n.array(d['dmarr'])[locs[:,dmindcol]]
-    snrs = props[:, snrcol]
-    l1s = props[:, l1col]
-    m1s = props[:, m1col]
+    snrs = n.array([props[i, snrcol] for i in range(len(props))])
+    l1s = n.array([props[i, l1col] for i in range(len(props))])
+    m1s = n.array([props[i, m1col] for i in range(len(props))])
 
     # dmt plot
     logger.info('Plotting DM-time distribution...')
@@ -501,7 +501,7 @@ def make_psrrates(pkllist, nbins=60, period=0.156):
             times = int2mjd(state, loc)
 
             for (mint,maxt) in zip(n.arange(times.min()-period/2,times.max()+period/2,period), n.arange(times.min()+period/2,times.max()+3*period/2,period)):
-                ff = prop[:,immaxcol]
+                ff = n.array([prop[i,immaxcol] for i in range(len(prop))])
                 mm = ff[n.where( (times >= mint) & (times < maxt) )]
                 if mm:
                     ffm.append(mm.max())
@@ -642,13 +642,14 @@ def plot_cand(mergepkl, snrmin=None, candnum=-1, outname='', **kwargs):
     dmindcol = d['featureind'].index('dmind')
 
     # sort and prep candidate list
-    snrs = prop[:,snrcol]
+    snrs = n.array([prop[i,snrcol] for i in range(len(prop))])
     if isinstance(snrmin, type(None)):
         snrmin = min(snrs)
     sortord = snrs.argsort()
     snrinds = n.where(snrs[sortord] > snrmin)[0]
     loc = loc[sortord][snrinds]
-    prop = prop[sortord][snrinds]
+    prop = n.array([prop[i][:4] for i in range(len(prop))][sortord][snrinds])  # total hack to get prop as list to sort
+#    prop = prop[sortord][snrinds]  # original
 
     if candnum < 0:
         logger.info('Getting candidates...')
@@ -797,13 +798,13 @@ def inspect_cand(mergepkl, snrmin=None, candnum=-1, scan=0, **kwargs):
     dmindcol = d['featureind'].index('dmind')
 
     # sort and prep candidate list
-    snrs = prop[:,snrcol]
+    snrs = n.array([prop[i,snrcol] for i in range(len(prop))])
     if isinstance(snrmin, type(None)):
         snrmin = min(snrs)
     sortord = snrs.argsort()
     snrinds = n.where(snrs[sortord] > snrmin)[0]
     loc = loc[sortord][snrinds]
-    prop = prop[sortord][snrinds]
+    prop = n.array([prop[i][:4] for i in range(len(prop))][sortord][snrinds])  # total hack to get prop as list to sort
 
     if candnum < 0:
         for i in range(len(loc)):
