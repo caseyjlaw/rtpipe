@@ -138,7 +138,7 @@ def merge_cands(pkllist, outroot='', remove=[]):
             mergetimes.append(times[i])
 
     mergeloc = n.array(mergeloc)
-    mergeprop = n.array(mergeprop)
+    mergeprop = mergeprop
     mergetimes = n.array(mergetimes)
 
     # filter by remove, if needed
@@ -154,7 +154,7 @@ def merge_cands(pkllist, outroot='', remove=[]):
             ww = ww & n.where( (mergetimes < badrange0) | (mergetimes > badrange1), True, False )
 
         mergeloc = mergeloc[ww]
-        mergeprop = mergeprop[ww]
+        mergeprop = mergeprop[ww[0]]
 
 # **todo**
     # if the scan has any candidates, add nints to count
@@ -227,9 +227,9 @@ def plot_summary(fileroot, scans, remove=[]):
     times -= times.min()
     dts = locs[:, dtindcol]
     dms = n.array(d['dmarr'])[locs[:,dmindcol]]
-    snrs = n.array([props[i, snrcol] for i in range(len(props))])
-    l1s = n.array([props[i, l1col] for i in range(len(props))])
-    m1s = n.array([props[i, m1col] for i in range(len(props))])
+    snrs = n.array([props[i][snrcol] for i in range(len(props))])
+    l1s = n.array([props[i][l1col] for i in range(len(props))])
+    m1s = n.array([props[i][m1col] for i in range(len(props))])
 
     # dmt plot
     logger.info('Plotting DM-time distribution...')
@@ -501,7 +501,7 @@ def make_psrrates(pkllist, nbins=60, period=0.156):
             times = int2mjd(state, loc)
 
             for (mint,maxt) in zip(n.arange(times.min()-period/2,times.max()+period/2,period), n.arange(times.min()+period/2,times.max()+3*period/2,period)):
-                ff = n.array([prop[i,immaxcol] for i in range(len(prop))])
+                ff = n.array([prop[i][immaxcol] for i in range(len(prop))])
                 mm = ff[n.where( (times >= mint) & (times < maxt) )]
                 if mm:
                     ffm.append(mm.max())
@@ -642,20 +642,20 @@ def plot_cand(mergepkl, snrmin=None, candnum=-1, outname='', **kwargs):
     dmindcol = d['featureind'].index('dmind')
 
     # sort and prep candidate list
-    snrs = n.array([prop[i,snrcol] for i in range(len(prop))])
-    if isinstance(snrmin, type(None)):
-        snrmin = min(snrs)
-    sortord = snrs.argsort()
-    snrinds = n.where(snrs[sortord] > snrmin)[0]
-    loc = loc[sortord][snrinds]
-    prop = n.array([prop[i][:4] for i in range(len(prop))][sortord][snrinds])  # total hack to get prop as list to sort
+    snrs = n.array([prop[i][snrcol] for i in range(len(prop))])
+#    if isinstance(snrmin, type(None)):
+#        snrmin = min(snrs)
+#    sortord = snrs.argsort()
+#    snrinds = n.where(snrs[sortord] > snrmin)[0]
+#    loc = loc[sortord][snrinds]
+#    prop = n.array([prop[i][snrcol] for i in range(len(prop))][sortord][snrinds])  # total hack to get prop as list to sort
 #    prop = prop[sortord][snrinds]  # original
 
     if candnum < 0:
         logger.info('Getting candidates...')
         for i in range(len(loc)):
-            logger.info("%d %s %s" % (i, str(loc[i]), str(prop[i, snrcol])))
-        return (loc, prop[:,snrcol])
+            logger.info("%d %s %s" % (i, str(loc[i]), str(prop[i][snrcol])))
+        return (loc, n.array([prop[i][snrcol] for i in range(len(prop))]))
     else:
         logger.info('Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum]))
         scan = loc[candnum, scancol]
@@ -690,8 +690,8 @@ def plot_cand(mergepkl, snrmin=None, candnum=-1, outname='', **kwargs):
         times = times0[candnum]
         dms0 = n.array(dmarrorig)[list(loc[:,dmindcol])]
         dms = dmarrorig[loc[candnum,dmindcol]]
-        snr0 = prop[:, snrcol]
-        snr = prop[candnum, snrcol]
+        snr0 = prop[:][snrcol]
+        snr = prop[candnum][snrcol]
         snrmin = 0.8 * min(d['sigma_image1'], d['sigma_image2'])
         # plot positive
         good = n.where(snr0 > 0)
@@ -798,19 +798,19 @@ def inspect_cand(mergepkl, snrmin=None, candnum=-1, scan=0, **kwargs):
     dmindcol = d['featureind'].index('dmind')
 
     # sort and prep candidate list
-    snrs = n.array([prop[i,snrcol] for i in range(len(prop))])
-    if isinstance(snrmin, type(None)):
-        snrmin = min(snrs)
-    sortord = snrs.argsort()
-    snrinds = n.where(snrs[sortord] > snrmin)[0]
-    loc = loc[sortord][snrinds]
-    prop = n.array([prop[i][:4] for i in range(len(prop))][sortord][snrinds])  # total hack to get prop as list to sort
+    snrs = n.array([prop[i][snrcol] for i in range(len(prop))])
+#    if isinstance(snrmin, type(None)):
+#        snrmin = min(snrs)
+#    sortord = snrs.argsort()
+#    snrinds = n.where(snrs[sortord] > snrmin)[0]
+#    loc = loc[sortord][snrinds]
+#    prop = n.array([prop[i][snrcol] for i in range(len(prop))][sortord][snrinds])  # total hack to get prop as list to sort
 
     if candnum < 0:
         for i in range(len(loc)):
-            logger.info("%d %s %s" % (i, str(loc[i]), str(prop[i, snrcol])))
+            logger.info("%d %s %s" % (i, str(loc[i]), str(prop[i][snrcol])))
         logger.info('Returning candidate (loc, snr) ...')
-        return (loc, prop[:,snrcol])
+        return (loc, n.array([prop[i][snrcol] for i in range(len(prop))]))
     else:
         logger.info('Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum]))
         if not scan:
