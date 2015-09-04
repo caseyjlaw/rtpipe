@@ -31,7 +31,7 @@ def read_candidates(candsfile):
         prop.append( list(cands[kk]) )    #[snrcol], cands[kk][l1col], cands[kk][m1col]) )
 
     logger.info('Read %d candidates from %s.' % (len(loc), candsfile))
-    return n.array(loc).astype(int), n.array(prop)
+    return n.array(loc).astype(int), prop
 
 def read_noise(noisefile):
     """ Function to read a noise file and parse columns.

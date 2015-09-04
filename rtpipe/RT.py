@@ -258,9 +258,10 @@ def dataflag(d, data_read):
 
     for flag in d['flaglist']:
         mode, sig, conv = flag
+        resultlist = []
+#        with closing(mp.Pool(4, initializer=initreadonly, initargs=(data_read_mem,))) as flagpool:
         for ss in d['spw']:
             chans = n.array([chan for chan in range(d['nchan']*ss/d['nspw'], d['nchan']*(ss+1)/d['nspw']) if chan in d['chans']])
-#        chans = n.arange(d['nchan'])     # chans, pol are indices for splitting up work
             for pol in range(d['npol']):
                 status = rtlib.dataflag(data_read, chans, pol, d, sig, mode, conv)
                 logger.info(status)
@@ -290,7 +291,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
 
     logger.debug('Search of segment %d' % d['segment'])
 
-    beamnum = 0
+    beamnum = 0   # not yet implemented
     cands = {}
 
     candsfile = getcandsfile(d)
@@ -524,6 +525,8 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     # supported features: snr1, immax1, l1, m1
     if d['searchtype'] == 'image1':
         d['features'] = ['snr1', 'immax1', 'l1', 'm1']   # features returned by image1
+    elif d['searchtype'] == 'image1full':
+        d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'im40', 'spec20']
     elif 'image2' in d['searchtype']:
         d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'snr2', 'immax2', 'l2', 'm2']   # features returned by image1
     d['featureind'] = ['segment', 'int', 'dmind', 'dtind', 'beamnum']  # feature index. should be stable.
@@ -816,6 +819,17 @@ def image1(d, u, v, w, dmind, dtind, beamnum, irange):
                 ff.append(l1)
             elif feature == 'm1':
                 ff.append(m1)
+            elif feature == 'im40':  # 40 pixel image peak cutout
+                peakx, peaky = n.where(ims[i] == ims[i].max())
+                sizex, sizey = ims[i].shape
+                xmin = max(0, peakx - 20); xmax = min(peakx + 20, sizex)
+                ymin = max(0, peaky - 20); ymax = min(peaky + 20, sizey)
+                ff.append(ims[i][xmin:xmax,ymin:ymax])
+            elif feature == 'spec20':  # 20 int spectrum cutout
+                imin = max(0, (i0+candints[i])*d['dtarr'][dtind], - 10); imax = min( (i0+candints[i])*d['dtarr'][dtind], + 10, len(data_resamp))
+                data_cut = data_resamp[imin:imax].copy()
+                rtlib.phaseshift_threaded(data_cut, d, l1, m1, u, v)
+                ff.append(data_cut.mean(axis=1))
 
         feat[candid] = list(ff)
     return feat
