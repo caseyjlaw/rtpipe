@@ -305,6 +305,49 @@ def int2mjd(d, loc):
     else:
         return n.array([])
 
+def find_island(candsfile, candnum):
+    """ Given list of cands and the location of one of them, find neighbors in dm-int space.
+    """
+
+    d = pickle.load(open(candsfile, 'r'))
+    loc, prop = read_candidates(mergepkl)
+    loc = list(loc)
+
+    scancol = d['featureind'].index('scan')
+    segmentcol = d['featureind'].index('segment')
+    intcol = d['featureind'].index('int')
+    dtindcol = d['featureind'].index('dtind')
+    dmindcol = d['featureind'].index('dmind')
+
+    islands = []
+    while len(loc):
+        scan,segment,intind,dtind,dmind = loc.pop()
+#        if ..
+        islands.append((intind,dmind))
+
+def plot_full(candsfile, cands, mode='im'):
+    """ Plot 'full' features, such as cutout image and spectrum.
+    """
+
+    d = pickle.load(open(candsfile, 'r'))
+    loc, prop = read_candidates(candsfile)
+    npixx, npixy = prop[0][4].shape
+    nints, nchan, npol = prop[0][5].shape
+
+    bin = 10
+    plt.figure(1)
+    for i in cands:
+        if mode == 'spec':
+            rr = n.array([n.abs(prop[i][5][:,i0:i0+bin,0].mean(axis=1)) for i0 in range(0,nchan,bin)])
+            ll = n.array([n.abs(prop[i][5][:,i0:i0+bin,1].mean(axis=1)) for i0 in range(0,nchan,bin)])
+            sh = ll.shape
+            data = n.concatenate( (rr, n.zeros(shape=(sh[0], sh[1]/2)), ll), axis=1)
+        elif mode == 'im':
+            data = prop[i][4]
+        plt.subplot(n.sqrt(len(cands)), n.sqrt(len(cands)), cands.index(i))
+        plt.imshow(data, interpolation='nearest')
+    plt.show()
+
 def plot_dmt(d, times, dms, dts, snrs, l1s, m1s, outroot):
     """ Plots DM versus time for each dt value.
     """
