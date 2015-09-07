@@ -68,18 +68,24 @@ def pipeline(d, segments):
                     results[segment] = readpool.apply_async(pipeline_dataprep, (d, segment))   # no need for segment here? need to think through structure...
 
             # step through pool of jobs and pull data off as ready. this allows pool to continue to next segment.
-            for segment in results.keys():
-                logger.debug('pipeline waiting on prep to complete for segment %d' % segment)
-                d = results[segment].get()   # returning d is a hack here
-                logger.debug('pipeline got result. now waiting on data lock for %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
-                with data_mem.get_lock():
-                    logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
-                    cands = search(d, data_mem, u_mem, v_mem, w_mem)
+            while results.keys():
+                for segment in results.keys():
+                    logger.debug('pipeline waiting on prep to complete for segment %d' % segment)
+                    if results[segment].ready():
+                        job = results.pop(segment)   # returning d is a hack here
+                        d = job.get()
+                    else:
+                        continue
+                    
+                    logger.debug('pipeline got result. now waiting on data lock for %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
+                    with data_mem.get_lock():
+                        logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
+                        cands = search(d, data_mem, u_mem, v_mem, w_mem)
 
-                # save candidate info
-                if d['savecands']:
-                    logger.info('Saving %d candidates for segment %d...' % (len(cands), segment))
-                    savecands(d, cands)
+                    # save candidate info
+                    if d['savecands']:
+                        logger.info('Saving %d candidates for segment %d...' % (len(cands), segment))
+                        savecands(d, cands)
 
         except KeyboardInterrupt:
             logger.error('Caught Ctrl-C. Closing processing pool.')
