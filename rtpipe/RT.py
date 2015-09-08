@@ -43,6 +43,8 @@ def pipeline(d, segments):
     if type(segments) == int:
         segments = [segments]
 
+    logger.info('Starting search of %s, scan %d, segments %s' % (d['filename'], d['scan'], str(segments)))
+
     # set up shared arrays to fill
     data_read_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2);  data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
     u_read_mem = mps.Array(mps.ctypes.c_float, d['nbl']);  u_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
