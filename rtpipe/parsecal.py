@@ -462,6 +462,9 @@ class telcal_sol():
         # select by smallest time distance for source
         mjddist = n.abs(time - n.unique(self.mjd[self.select]))
         closest = n.where(mjddist == mjddist.min())
+        if len(closest[0]) > 1:
+            self.logger.info('Multiple closest solutions in time (%s). Taking first.' % (str(closest[0])))
+            closest = closest[0][0]
         timeselect = n.where(self.mjd[self.select] == n.unique(self.mjd[self.select])[closest])   # define selection for time
         self.select = self.select[timeselect[0]]    # update overall selection
         self.logger.info('Selection down to %d solutions separated from given time by %d minutes' % (len(self.select), mjddist[closest]*24*60))
