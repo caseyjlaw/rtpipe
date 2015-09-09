@@ -395,10 +395,25 @@ class telcal_sol():
     Parses .GN file and provides tools for applying to data of shape (nints, nbl, nch, npol)
     """
 
-    def __init__(self, telcalfile):
-        self.parseGN(telcalfile)
+    def __init__(self, telcalfile, flagants=True):
         self.logger = logging.getLogger(__name__)
-        self.logger.info('Read telcalfile %s' % telcalfile)
+
+        if os.path.exists(gainfile):
+            self.parseGN(telcalfile)
+            self.logger.info('Read telcalfile %s' % telcalfile)
+            if flagants:
+                self.flagants()
+        else:
+            self.logger.warn('Gainfile not found.')
+            raise IOError
+
+    def flagants(self, threshold=50):
+        """ Flags solutions with amplitude more than threshold larger than median.
+        """
+
+        badsols = n.where(n.median(self.amp)/self.amp >threshold)[0]
+        for sol in n.where(n.median(sols.amp)/sols.amp > 50)[0]: 
+            sols.flagged[sol] = True
 
     def set_selection(self, time, freqs, blarr, calname='', radec=(), dist=0, spwind=[], pols=['XX','YY']):
         """ Set select parameter that defines spectral window, time, or any other selection.
