@@ -416,7 +416,7 @@ class telcal_sol():
         if len(badsols):
             self.logger.info('Solutions %s flagged (times %s, ants %s, freqs %s) for low gain amplitude.' % (str(badsols), self.mjd[badsols], self.antname[badsols], self.ifid[badsols]))
             for sol in n.where(n.median(self.amp)/self.amp > 50)[0]: 
-                sols.flagged[sol] = True
+                self.flagged[sol] = True
 
     def set_selection(self, time, freqs, blarr, calname='', radec=(), dist=0, spwind=[], pols=['XX','YY']):
         """ Set select parameter that defines spectral window, time, or any other selection.
