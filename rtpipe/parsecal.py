@@ -398,7 +398,7 @@ class telcal_sol():
     def __init__(self, telcalfile, flagants=True):
         self.logger = logging.getLogger(__name__)
 
-        if os.path.exists(gainfile):
+        if os.path.exists(telcalfile):
             self.parseGN(telcalfile)
             self.logger.info('Read telcalfile %s' % telcalfile)
             if flagants:
@@ -411,9 +411,12 @@ class telcal_sol():
         """ Flags solutions with amplitude more than threshold larger than median.
         """
 
-        badsols = n.where(n.median(self.amp)/self.amp >threshold)[0]
-        for sol in n.where(n.median(sols.amp)/sols.amp > 50)[0]: 
-            sols.flagged[sol] = True
+        # identify very low gain amps not already flagged
+        badsols = n.where( (n.median(self.amp)/self.amp > threshold) and (self.flagged == False))[0]
+        if len(badsols):
+            self.logger.info('Solutions %s flagged (times %s, ants %s, freqs %s) for low gain amplitude.' % (str(badsols), self.mjd[badsols], self.antname[badsols], self.ifid[badsols]))
+            for sol in n.where(n.median(self.amp)/self.amp > 50)[0]: 
+                sols.flagged[sol] = True
 
     def set_selection(self, time, freqs, blarr, calname='', radec=(), dist=0, spwind=[], pols=['XX','YY']):
         """ Set select parameter that defines spectral window, time, or any other selection.
