@@ -614,12 +614,9 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     # scaling of number of integrations beyond dt=1
     assert all(d['dtarr']), 'dtarr must be larger than 0'
-    dtfactor = n.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
 
     # calculate number of thermal noise candidates per segment
-    ntrials = d['readints'] * dtfactor * len(d['dmarr']) * d['npixx'] * d['npixy']
-    qfrac = 1 - (erf(d['sigma_image1']/n.sqrt(2)) + 1)/2.
-    nfalse = int(qfrac*ntrials)
+    nfalse = calc_nfalse(d)
 
     logger.info('')
     logger.info('Pipeline summary:')
@@ -677,6 +674,16 @@ def getnoisefile(d, segment=-1):
         return os.path.join(d['workdir'], 'noise_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(segment) + '.pkl')
     else:
         return ''
+
+def calc_nfalse(d):
+    """ Calculate the number of thermal-noise false positives per segment.
+    """
+
+    dtfactor = n.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
+    ntrials = d['readints'] * dtfactor * len(d['dmarr']) * d['npixx'] * d['npixy']
+    qfrac = 1 - (erf(d['sigma_image1']/n.sqrt(2)) + 1)/2.
+    nfalse = int(qfrac*ntrials)
+    return nfalse
 
 def calc_segment_times(d):
     """ Helper function for set_pipeline to define segmenttimes list, given nsegments definition
