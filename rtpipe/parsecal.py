@@ -415,7 +415,7 @@ class telcal_sol():
         badsols = n.where( (n.median(self.amp)/self.amp > threshold) & (self.flagged == False))[0]
         if len(badsols):
             self.logger.info('Solutions %s flagged (times %s, ants %s, freqs %s) for low gain amplitude.' % (str(badsols), self.mjd[badsols], self.antname[badsols], self.ifid[badsols]))
-            for sol in n.where(n.median(self.amp)/self.amp > 50)[0]: 
+            for sol in badsols:
                 self.flagged[sol] = True
 
     def set_selection(self, time, freqs, blarr, calname='', radec=(), dist=0, spwind=[], pols=['XX','YY']):
