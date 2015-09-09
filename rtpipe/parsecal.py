@@ -406,7 +406,7 @@ class telcal_sol():
         freqs (in Hz) is frequencies in data.
         blarr is array of size 2xnbl that gives pairs of antennas in each baseline (a la tpipe.blarr).
         calname defines the name of the calibrator to use. if blank, uses only the time selection.
-        pols is from d['pols'] (e.g., ['RR']). single or dual parallel allowed.
+        pols is from d['pols'] (e.g., ['RR']). single or dual parallel allowed. not yet implemented.
         radec, dist, spwind not used. here for uniformity with casa_sol.
         """
 
@@ -547,8 +547,8 @@ class telcal_sol():
 
         ind1 = n.where(ant1 == self.antnum[select])
         ind2 = n.where(ant2 == self.antnum[select])
-        g1 = self.amp[select][ind1]*n.exp(1j*n.radians(self.phase[select][ind1]))
-        g2 = self.amp[select][ind2]*n.exp(-1j*n.radians(self.phase[select][ind2]))
+        g1 = self.amp[select][ind1]*n.exp(1j*n.radians(self.phase[select][ind1])) * self.flagged[select][ind1]
+        g2 = self.amp[select][ind2]*n.exp(-1j*n.radians(self.phase[select][ind2])) * self.flagged[select][ind2]
         try:
             assert (g1[0] != 0j) and (g2[0] != 0j)
             invg1g2 = 1./(g1[0]*g2[0])
