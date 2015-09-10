@@ -517,7 +517,8 @@ class telcal_sol():
                 i += 1
                 continue
 
-            if ('NO_ANTSOL_SOLUTIONS_FOUND' in line) or ('ERROR' in line):
+            if ('NO_ANTSOL_SOLUTIONS_FOUND' in line):
+                # keep ERROR solutions now that flagging works
                 continue
 
             try:
@@ -563,10 +564,14 @@ class telcal_sol():
         select = self.select[n.where( (self.skyfreq[self.select] == skyfreq) & (self.polarization[self.select] == pol) )[0]]
         self.logger.debug('select %s' % (str(select)))
 
-        ind1 = n.where(ant1 == self.antnum[select])
-        ind2 = n.where(ant2 == self.antnum[select])
-        g1 = self.amp[select][ind1]*n.exp(1j*n.radians(self.phase[select][ind1])) * (not self.flagged.astype(int)[select][ind1][0])
-        g2 = self.amp[select][ind2]*n.exp(-1j*n.radians(self.phase[select][ind2])) * (not self.flagged.astype(int)[select][ind2][0])
+        if len(select):  # for when telcal solutions don't exist
+            ind1 = n.where(ant1 == self.antnum[select])
+            ind2 = n.where(ant2 == self.antnum[select])
+            g1 = self.amp[select][ind1]*n.exp(1j*n.radians(self.phase[select][ind1])) * (not self.flagged.astype(int)[select][ind1][0])
+            g2 = self.amp[select][ind2]*n.exp(-1j*n.radians(self.phase[select][ind2])) * (not self.flagged.astype(int)[select][ind2][0])
+        else:
+            g1 = [0]; g2 = [0]
+
         try:
             assert (g1[0] != 0j) and (g2[0] != 0j)
             invg1g2 = 1./(g1[0]*g2[0])
