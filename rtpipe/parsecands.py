@@ -62,7 +62,7 @@ def merge_segments(fileroot, scan, cleanup=True):
 
     # aggregate cands over segments
     if not candslist and not noiselist:
-        logger.warn('candslist and noiselist are empty.' % (len(candslist), len(noiselist)))
+        logger.warn('candslist and noiselist are empty.'
         return
     else:
         logger.info('Aggregating cands over segments %s' % str(candssegs))
