@@ -56,17 +56,23 @@ def merge_segments(fileroot, scan, cleanup=True):
     candssegs = [candsfile.rstrip('.pkl').split('seg')[1] for candsfile in candslist]
     noisesegs = [noisefile.rstrip('.pkl').split('seg')[1] for noisefile in noiselist]
 
+    # test for good list with segments
     assert candssegs.sort() == noisesegs.sort(), 'Different segments in candslist (%s) and noiselist (%s)' % (str(candssegs), str(noisesegs))
-    assert not os.path.exists('cands_' + fileroot + '_sc' + str(scan) + '.pkl'), 'Merged candsfile already exists for scan %d?' % scan
-    assert not os.path.exists('noise_' + fileroot + '_sc' + str(scan) + '.pkl'), 'Merged noisefile already exists for scan %d?' % scan
+    if os.path.exists('cands_' + fileroot + '_sc' + str(scan) + '.pkl'):
+        logger.info('Merged candsfile already exists for scan %d?' % scan)
+        return
 
-    # aggregate cands over segments
+    if os.path.exists('noise_' + fileroot + '_sc' + str(scan) + '.pkl'):
+        logger.info('Merged noisefile already exists for scan %d?' % scan)
+        return
+
     if not candslist and not noiselist:
-        logger.warn('candslist and noiselist are empty.'
+        logger.warn('candslist and noiselist are empty.')
         return
     else:
         logger.info('Aggregating cands over segments %s' % str(candssegs))
 
+    # aggregate cands over segments
     logger.debug('%s' % candslist)
     cands = {}
     for candsfile in candslist:
