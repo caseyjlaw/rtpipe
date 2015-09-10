@@ -64,8 +64,8 @@ def pipeline(d, segments):
             # submit all segments to pool of 1. locking data should keep this from running away.
             for segment in segments:
                 assert segment in range(d['nsegments']), 'Segment %d not in range of %d nsegments' % (segment, d['nsegments'])
-                candsfile = os.path.exists(getcandsfile(d, segment))
-                if d['savecands'] and candsfile:
+                candsfile = getcandsfile(d, segment)
+                if d['savecands'] and os.path.exists(candsfile):
                     logger.error('candsfile %s already exists. Ending processing...' % candsfile)
                 else:
                     results[segment] = readpool.apply_async(pipeline_dataprep, (d, segment))   # no need for segment here? need to think through structure...
