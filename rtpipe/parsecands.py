@@ -129,11 +129,6 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=-999, snrmax=999):
         outroot = '_'.join(pkllist[0].split('_')[1:3])
     mergepkl = 'cands_' + outroot + '_merge.pkl'
 
-    if 'snr2' in d['features']:
-        snrcol = d['features'].index('snr2')
-    elif 'snr1' in d['features']:
-        snrcol = d['features'].index('snr1')
-
     pkllist = [pkllist[i] for i in range(len(pkllist)) if ('merge' not in pkllist[i]) and ('seg' not in pkllist[i])]
     pkllist.sort(key=lambda i: int(i.rstrip('.pkl').split('_sc')[1]))  # assumes filename structure
     logger.info('Aggregating cands from %s' % pkllist)
@@ -145,6 +140,10 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=-999, snrmax=999):
 
         # get scan number and read candidates
         d = pickle.load(open(pklfile, 'r'))
+        if 'snr2' in d['features']:
+            snrcol = d['features'].index('snr2')
+        elif 'snr1' in d['features']:
+            snrcol = d['features'].index('snr1')
         scan = int(pklfile.rstrip('.pkl').split('_sc')[1])   # parsing filename to get scan number
         segmenttimesdict[scan] = d['segmenttimes']
 
@@ -227,6 +226,13 @@ def plot_summary(fileroot, scans, remove=[], snrmin=-999, snrmax=999):
         logger.info('fileroot seems to be mergefile...')
         outroot = fileroot.split('_')[1]
 
+    d = pickle.load(open(mergepkl, 'r'))
+    locs, props = read_candidates(mergepkl, snrmin=snrmin, snrmax=snrmax)
+
+    if not len(locs):
+        logger.info('No candidates in mergepkl.')
+        return
+
     # feature columns
     if 'snr2' in d['features']:
         snrcol = d['features'].index('snr2')
@@ -239,13 +245,6 @@ def plot_summary(fileroot, scans, remove=[], snrmin=-999, snrmax=999):
         
     dtindcol = d['featureind'].index('dtind')
     dmindcol = d['featureind'].index('dmind')
-
-    d = pickle.load(open(mergepkl, 'r'))
-    locs, props = read_candidates(mergepkl, snrmin=snrmin, snrmax=snrmax)
-
-    if not len(locs):
-        logger.info('No candidates in mergepkl.')
-        return
 
     # compile candidates over all pkls
     # extract values for plotting
