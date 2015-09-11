@@ -703,17 +703,16 @@ def calc_segment_times(d):
     d['readints'] = n.round(totaltimeread / (d['inttime']*d['nsegments']*d['read_tdownsample'])).astype(int)
     d['t_segment'] = totaltimeread/d['nsegments']
 
-def calc_memory_footprint(d, headroom=2., visonly=False):
+def calc_memory_footprint(d, headroom=3., visonly=False):
     """ Given pipeline state dict, this function calculates the memory required
     to store visibilities and make images.
-    headroom scales memory size from ideal to realistic. only used for vismem.
+    headroom scales visibility memory size from single data object to all copies (and potential file read needs)
     Returns tuple of (vismem, immem) in units of GB.
     """
 
     toGB = 8/1024.**3   # number of complex64s to GB
-    dtfactor = n.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
 
-    vismem = headroom * dtfactor * datasize(d) * toGB
+    vismem = headroom * datasize(d) * toGB
     if visonly:
         return vismem
     else:
