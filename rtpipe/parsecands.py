@@ -11,9 +11,10 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-def read_candidates(candsfile):
+def read_candidates(candsfile, snrmin=-999, snrmax=999):
     """ Reads candidate pkl file into numpy array.
     Returns tuple of two numpy arrays (location, features).
+    snrmin and snrmax allow trimming the selection.
     """
 
     # read in pickle file of candidates
@@ -24,11 +25,17 @@ def read_candidates(candsfile):
         logger.info('No cands found from %s.' % candsfile)
         return (n.array([]), n.array([]))
 
+    if 'snr2' in d['features']:
+        snrcol = d['features'].index('snr2')
+    elif 'snr1' in d['features']:
+        snrcol = d['features'].index('snr1')
+
     # select set of values 
     loc = []; prop = []
     for kk in sorted(cands.keys()):
-        loc.append( list(kk) )
-        prop.append( list(cands[kk]) )    #[snrcol], cands[kk][l1col], cands[kk][m1col]) )
+        if ((cands[kk][snrcol] > snrmin) and (cands[kk][snrcol] < snrmax)):
+            loc.append( list(kk) )
+            prop.append( list(cands[kk]) )    #[snrcol], cands[kk][l1col], cands[kk][m1col]) )
 
     logger.info('Read %d candidates from %s.' % (len(loc), candsfile))
     return n.array(loc).astype(int), prop
@@ -110,16 +117,22 @@ def merge_segments(fileroot, scan, cleanup=True):
             for noisefile in noiselist:
                 os.remove(noisefile)
 
-def merge_cands(pkllist, outroot='', remove=[]):
+def merge_cands(pkllist, outroot='', remove=[], snrmin=-999, snrmax=999):
     """ Takes cands pkls from list and filteres to write new single "merge" pkl.
     Ignores segment cand files.
     remove is a list [t0,t1,t2,t3], where t0-t1, t2-t3 define the time ranges in seconds.
+    snrmin, snrmax define how to filter cands read and written by snr
     """
 
     assert isinstance(pkllist, list), "pkllist must be list of file names"
     if not outroot:
         outroot = '_'.join(pkllist[0].split('_')[1:3])
     mergepkl = 'cands_' + outroot + '_merge.pkl'
+
+    if 'snr2' in d['features']:
+        snrcol = d['features'].index('snr2')
+    elif 'snr1' in d['features']:
+        snrcol = d['features'].index('snr1')
 
     pkllist = [pkllist[i] for i in range(len(pkllist)) if ('merge' not in pkllist[i]) and ('seg' not in pkllist[i])]
     pkllist.sort(key=lambda i: int(i.rstrip('.pkl').split('_sc')[1]))  # assumes filename structure
@@ -135,7 +148,7 @@ def merge_cands(pkllist, outroot='', remove=[]):
         scan = int(pklfile.rstrip('.pkl').split('_sc')[1])   # parsing filename to get scan number
         segmenttimesdict[scan] = d['segmenttimes']
 
-        locs, props = read_candidates(pklfile)
+        locs, props = read_candidates(pklfile, snrmin=snrmin, snrmax=snrmax)
         times = int2mjd(d, n.array(locs))
 
         # build merged loc,prop lists
@@ -195,9 +208,10 @@ def merge_cands(pkllist, outroot='', remove=[]):
     pickle.dump(cands, pkl)
     pkl.close()
 
-def plot_summary(fileroot, scans, remove=[]):
+def plot_summary(fileroot, scans, remove=[], snrmin=-999, snrmax=999):
     """ Take pkl list or merge file to produce comprehensive candidate screening plots.
     Starts as dm-t plots, includes dt and peak pixel location.
+    snrmin, snrmax define how to filter cands read and written by snr
     """
 
     mergepkl = 'cands_' + fileroot + '_merge.pkl'
@@ -213,16 +227,10 @@ def plot_summary(fileroot, scans, remove=[]):
         logger.info('fileroot seems to be mergefile...')
         outroot = fileroot.split('_')[1]
 
-    d = pickle.load(open(mergepkl, 'r'))
-    locs, props = read_candidates(mergepkl)
-
-    if not len(locs):
-        logger.info('No candidates in mergepkl.')
-        return
-
-    # compile candidates over all pkls
     # feature columns
-    if 'snr1' in d['features']:
+    if 'snr2' in d['features']:
+        snrcol = d['features'].index('snr2')
+    elif 'snr1' in d['features']:
         snrcol = d['features'].index('snr1')
     if 'l1' in d['features']:
         l1col = d['features'].index('l1')
@@ -232,6 +240,14 @@ def plot_summary(fileroot, scans, remove=[]):
     dtindcol = d['featureind'].index('dtind')
     dmindcol = d['featureind'].index('dmind')
 
+    d = pickle.load(open(mergepkl, 'r'))
+    locs, props = read_candidates(mergepkl, snrmin=snrmin, snrmax=snrmax)
+
+    if not len(locs):
+        logger.info('No candidates in mergepkl.')
+        return
+
+    # compile candidates over all pkls
     # extract values for plotting
     times = int2mjd(d, locs)
     times -= times.min()
