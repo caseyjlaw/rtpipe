@@ -214,14 +214,14 @@ def plot_summary(fileroot, scans, remove=[], snrmin=-999, snrmax=999):
     """
 
     mergepkl = 'cands_' + fileroot + '_merge.pkl'
-    # if fileroot is not merge file...
-    if fileroot != mergepkl:
+
+    if fileroot != mergepkl:      # if fileroot is not merge file, create merge file
         pkllist = []
         for scan in scans:
             pklfile = 'cands_' + fileroot + '_sc' + str(scan) + '.pkl'
             if os.path.exists(pklfile):
                 pkllist.append(pklfile)
-        merge_cands(pkllist, outroot=fileroot, remove=remove)
+        merge_cands(pkllist, outroot=fileroot, remove=remove, snrmin=snrmin, snrmax=snrmax)
     else:
         logger.info('fileroot seems to be mergefile...')
         outroot = fileroot.split('_')[1]
