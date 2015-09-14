@@ -825,6 +825,45 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
 
             summary='Blstd flagging for (chans %d-%d, pol %d), %.1f sigma: %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, 100.*flagged/datacal.size)
 
+        elif mode == 'badchtslide':
+            win = 10  # window to calculate median
+
+            meanamp = n.abs(datacal[:,:,chans,pol]).mean(axis=1)
+            spec = meanamp.mean(axis=0)
+            lc = meanamp.mean(axis=1)
+
+            # calc badch as deviation from median of window
+            specmed = []
+            for ch in range(len(spec)):
+                rr = range(max(0, ch-win/2), min(len(spec), ch+win/2))
+                rr.remove(ch)
+                specmed.append(spec[ch] - n.median(spec[rr]))
+
+            specmed = n.array(specmed)
+            badch = n.where(specmed > sigma*specmed.std())[0]
+            for chan in badch:
+                flagged += iterint*nbl
+                for i in xrange(iterint):
+                    for j in xrange(nbl):
+                        datacal[i,j,chan,pol] = n.complex64(0j)
+
+            # calc badt as deviation from median of window
+            lcmed = []
+            for t in range(len(lc)):
+                rr = range(max(0, t-win/2), min(len(lc), t+win/2))
+                rr.remove(t)
+                lcmed.append(lc[t] - n.median(lc[rr]))
+
+            lcmed = n.array(lcmed)
+            badt = n.where(lcmed > sigma*lcmed.std())[0]
+            for i in badt:
+                flagged += nchan*nbl
+                for chan in xrange(len(chans)):
+                    for j in xrange(nbl):
+                        datacal[i,j,chans[chan],pol] = n.complex64(0j)
+
+            summary='Bad chans/ints flagging for (chans %d-%d, pol %d), %1.f sigma: %d chans, %d ints, %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, len(badch), len(badt), 100.*flagged/datacal.size)
+
         elif mode == 'badcht':
             meanamp = n.abs(datacal[:,:,chans,pol]).mean(axis=1)
 
