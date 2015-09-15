@@ -703,7 +703,7 @@ def calc_segment_times(d):
     d['readints'] = n.round(totaltimeread / (d['inttime']*d['nsegments']*d['read_tdownsample'])).astype(int)
     d['t_segment'] = totaltimeread/d['nsegments']
 
-def calc_memory_footprint(d, headroom=3., visonly=False):
+def calc_memory_footprint(d, headroom=4., visonly=False):
     """ Given pipeline state dict, this function calculates the memory required
     to store visibilities and make images.
     headroom scales visibility memory size from single data object to all copies (and potential file read needs)

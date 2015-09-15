@@ -11,10 +11,10 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-def read_candidates(candsfile, snrmin=-999, snrmax=999):
+def read_candidates(candsfile, snrmin=0, snrmax=999):
     """ Reads candidate pkl file into numpy array.
     Returns tuple of two numpy arrays (location, features).
-    snrmin and snrmax allow trimming the selection.
+    snrmin and snrmax can trim based on absolute value of snr (pos and neg kept).
     """
 
     # read in pickle file of candidates
@@ -33,7 +33,7 @@ def read_candidates(candsfile, snrmin=-999, snrmax=999):
     # select set of values 
     loc = []; prop = []
     for kk in sorted(cands.keys()):
-        if ((cands[kk][snrcol] > snrmin) and (cands[kk][snrcol] < snrmax)):
+        if ((n.abs(cands[kk][snrcol]) > snrmin) and (n.abs(cands[kk][snrcol]) < snrmax)):
             loc.append( list(kk) )
             prop.append( list(cands[kk]) )    #[snrcol], cands[kk][l1col], cands[kk][m1col]) )
 
@@ -117,11 +117,11 @@ def merge_segments(fileroot, scan, cleanup=True):
             for noisefile in noiselist:
                 os.remove(noisefile)
 
-def merge_cands(pkllist, outroot='', remove=[], snrmin=-999, snrmax=999):
+def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
     """ Takes cands pkls from list and filteres to write new single "merge" pkl.
     Ignores segment cand files.
     remove is a list [t0,t1,t2,t3], where t0-t1, t2-t3 define the time ranges in seconds.
-    snrmin, snrmax define how to filter cands read and written by snr
+    snrmin, snrmax define how to filter cands read and written by abs(snr)
     """
 
     assert isinstance(pkllist, list), "pkllist must be list of file names"
@@ -207,10 +207,10 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=-999, snrmax=999):
     pickle.dump(cands, pkl)
     pkl.close()
 
-def plot_summary(fileroot, scans, remove=[], snrmin=-999, snrmax=999):
+def plot_summary(fileroot, scans, remove=[], snrmin=0, snrmax=999):
     """ Take pkl list or merge file to produce comprehensive candidate screening plots.
     Starts as dm-t plots, includes dt and peak pixel location.
-    snrmin, snrmax define how to filter cands read and written by snr
+    snrmin, snrmax define how to filter cands read and written by abs(snr)
     """
 
     mergepkl = 'cands_' + fileroot + '_merge.pkl'
@@ -486,26 +486,37 @@ def plot_normprob(d, snrs, outroot):
     ndms = len(d['dmarr'])
     dtfactor = n.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
     ntrials = npix*nints*ndms*dtfactor
+    logger.info('Calculating normal probability distribution for npix*nints*ndms*dtfactor = %d' % (ntrials))
 
     # calc normal quantile
     if len(n.where(snrs > 0)[0]):
         snrsortpos = n.array(sorted(snrs[n.where(snrs > 0)], reverse=True))     # high-res snr
         Zsortpos = n.array([Z(quan(ntrials, j+1)) for j in range(len(snrsortpos))])
+        logger.info('SNR positive range = (%.1f, %.1f)' % (snrsortpos[-1], snrsortpos[0]))
+        logger.info('Norm quantile positive range = (%.1f, %.1f)' % (Zsortpos[-1], Zsortpos[0]))
+
     if len(n.where(snrs < 0)[0]):
         snrsortneg = n.array(sorted(n.abs(snrs[n.where(snrs < 0)]), reverse=True))     # high-res snr
         Zsortneg = n.array([Z(quan(ntrials, j+1)) for j in range(len(snrsortneg))])
+        logger.info('SNR negative range = (%.1f, %.1f)' % (snrsortneg[-1], snrsortneg[0]))
+        logger.info('Norm quantile negative range = (%.1f, %.1f)' % (Zsortneg[-1], Zsortneg[0]))
 
     # plot
     fig3 = plt.Figure(figsize=(10,10))
     ax3 = fig3.add_subplot(111)
     if len(n.where(snrs < 0)[0]) and len(n.where(snrs > 0)[0]):
+        logger.info('Plotting positive and negative cands')
         ax3.plot(snrsortpos, Zsortpos, 'k.')
         ax3.plot(snrsortneg, Zsortneg, 'kx')
         refl = n.linspace(min(snrsortpos.min(), Zsortpos.min(), snrsortneg.min(), Zsortneg.min()), max(snrsortpos.max(), Zsortpos.max(), snrsortneg.max(), Zsortneg.max()), 2)
     elif len(n.where(snrs > 0)[0]):
+        logger.info('Plotting positive cands')
         refl = n.linspace(min(snrsortpos.min(), Zsortpos.min()), max(snrsortpos.max(), Zsortpos.max()), 2)
+        ax3.plot(snrsortpos, Zsortpos, 'k.')
     elif len(n.where(snrs < 0)[0]):
+        logger.info('Plotting negative cands')
         refl = n.linspace(min(snrsortneg.min(), Zsortneg.min()), max(snrsortneg.max(), Zsortneg.max()), 2)
+        ax3.plot(snrsortneg, Zsortneg, 'kx')
     ax3.plot(refl, refl, 'k--')
     ax3.set_xlabel('SNR')
     ax3.set_ylabel('Normal quantile SNR')
@@ -669,7 +680,7 @@ def plot_psrrates(pkllist, outname=''):
 
     plt.savefig(outname)
 
-def plot_cand(mergepkl, snrmin=None, candnum=-1, outname='', **kwargs):
+def plot_cand(mergepkl, candnum=-1, outname='', **kwargs):
     """ Create detailed plot of a single candidate.
     Thresholds (as minimum), then provides list of candidates to select with candnum.
     kwargs passed to rt.set_pipeline
@@ -831,7 +842,7 @@ def plot_cand(mergepkl, snrmin=None, candnum=-1, outname='', **kwargs):
 
         return ([],[])
 
-def inspect_cand(mergepkl, snrmin=None, candnum=-1, scan=0, **kwargs):
+def inspect_cand(mergepkl, candnum=-1, scan=0, **kwargs):
     """ Create detailed plot of a single candidate.
     Thresholds (as minimum), then provides list of candidates to select with candnum.
     scan can be used to define scan number with pre-merge pkl file.
