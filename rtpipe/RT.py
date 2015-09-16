@@ -7,6 +7,7 @@ import multiprocessing.sharedctypes as mps
 from contextlib import closing
 import numpy as n
 from scipy.special import erf
+import scipy.stats.mstats as mstats
 import casautil, os, pickle, glob, time
 import logging
 from functools import partial
@@ -534,8 +535,10 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     # supported features: snr1, immax1, l1, m1
     if d['searchtype'] == 'image1':
         d['features'] = ['snr1', 'immax1', 'l1', 'm1']   # features returned by image1
-    elif d['searchtype'] == 'image1full':
+    elif d['searchtype'] == 'image1snip':
         d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'im40', 'spec20']
+    elif d['searchtype'] == 'image1stats':
+        d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'specstd', 'specskew', 'speckurtosis', 'imskew', 'imkurtosis']  # note: spec statistics are all or nothing.
     elif 'image2' in d['searchtype']:
         d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'snr2', 'immax2', 'l2', 'm2']   # features returned by image1
     d['featureind'] = ['segment', 'int', 'dmind', 'dtind', 'beamnum']  # feature index. should be stable.
@@ -848,6 +851,28 @@ def image1(d, u, v, w, dmind, dtind, beamnum, irange):
                 data_cut = data_resamp[imin:imax].copy()
                 rtlib.phaseshift_threaded(data_cut, d, l1, m1, u, v)
                 ff.append(data_cut.mean(axis=1))
+            elif feature in ['specstd', 'specskew', 'speckurtosis']:  # this is standard set and must all appear together
+                if feature == 'specstd':  # first this one, then others will use same data
+                    seli = (i0+candints[i])*d['dtarr'][dtind]
+                    rtlib.phaseshift_threaded(data_resamp[seli:seli+1], d, l1, m1, u, v)
+                    data = n.ma.masked_equal(data_resamp[seli:seli+1], 0j)
+                    spec = data.mean(axis=3).mean(axis=1).mean(axis=0).real
+                    std = spec.std(axis=0)
+                    ff.append(std)
+                elif feature == 'specskew':
+                    skew = float(mstats.skew(spec))
+                    ff.append(skew)
+                elif feature == 'speckurtosis':
+                    kurtosis = float(mstats.kurtosis(spec))
+                    ff.append(kurtosis)
+            elif feature == 'imskew':
+                hist = n.histogram(ims[i], range=(-20*ims[i].std(), 20*ims[i].std()), bins=40)[0]
+                skew = float(mstats.skew(hist))
+                ff.append(skew)
+            elif feature == 'imkurtosis':
+                hist = n.histogram(ims[i], range=(-20*ims[i].std(), 20*ims[i].std()), bins=40)[0]
+                kurtosis = float(mstats.kurtosis(hist))
+                ff.append(kurtosis)
 
         feat[candid] = list(ff)
     return feat
