@@ -57,6 +57,7 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
     sdm = sdmpy.SDM(d['filename'])
     d['spw_orig'] = [int(row.spectralWindowId.split('_')[1]) for row in sdm['SpectralWindow']]
     d['spw_nchan'] = [int(row.numChan) for row in sdm['SpectralWindow']]
+
     try:
         d['spw_reffreq'] = [float(row.chanFreqStart) for row in sdm['SpectralWindow']]   # nominal
     except:
@@ -87,6 +88,21 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
     d['nspw'] = len(d['spw'])
     d['freq'] = d['freq_orig'][d['chans']]
     d['nchan'] = len(d['chans'])
+
+    # define chan ranges per spw (before selecting subset)
+    spw_chanr = []; i0=0
+    for nch in d['spw_nchan']:
+        spw_chanr.append((i0, i0+nch))
+        i0 = nch
+    d['spw_chanr'] = spw_chanr
+
+    # define nchan per spw after selecting subset
+    d['spw_nchan_select'] = [len([ch for ch in range(d['spw_chanr'][i][0], d['spw_chanr'][i][1]) if ch in d['chans']]) for i in range(len(d['spw_chanr']))]
+    spw_chanr_select = []; i0=0
+    for nch in d['spw_nchan_select']:
+        spw_chanr_select.append((i0, i0+nch))
+        i0 = nch
+    d['spw_chanr_select'] = spw_chanr_select
 
     # define image params
     d['urange'] = {}; d['vrange'] = {}

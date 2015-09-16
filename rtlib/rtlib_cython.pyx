@@ -1,6 +1,10 @@
 import numpy as n
 cimport numpy as n
 cimport cython
+#import logging
+#logger = logging.getLogger(__name__)
+#logger.setLevel(logging.INFO)
+
 # can choose between numpy and pyfftw
 try:
     import pyfftw
@@ -822,6 +826,7 @@ cpdef dataflag(n.ndarray[DTYPE_t, ndim=4, mode='c'] datacal, n.ndarray[n.int_t, 
                 flagged += nbl
                 for j in xrange(nbl):
                     datacal[badint[badi],j,chans[badchan[badi]],pol] = n.complex64(0j)
+#                logger.info('%d, %d, %d, %d' % (badi, badint[badi], badchan[badi], chans[badchan[badi]]))
 
             summary='Blstd flagging for (chans %d-%d, pol %d), %.1f sigma: %3.2f %% of total flagged' % (chans[0], chans[-1], pol, sigma, 100.*flagged/datacal.size)
 

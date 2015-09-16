@@ -270,7 +270,7 @@ def dataflag(d, data_read):
         resultlist = []
 #        with closing(mp.Pool(4, initializer=initreadonly, initargs=(data_read_mem,))) as flagpool:
         for ss in d['spw']:
-            chans = n.array([chan for chan in range(d['nchan']*ss/d['nspw'], d['nchan']*(ss+1)/d['nspw']) if chan in d['chans']])
+            chans = n.arange(d['spw_chanr_select'][ss][0], d['spw_chanr_select'][ss][1])
             for pol in range(d['npol']):
                 status = rtlib.dataflag(data_read, chans, pol, d, sig, mode, conv)
                 logger.info(status)
