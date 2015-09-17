@@ -394,11 +394,11 @@ def plot_dmt(d, times, dms, dts, snrs, l1s, m1s, outroot):
         # plot positive cands
         good = n.where( (dts == dtind) & (snrs > 0))[0]
         sizes = (snrs[good]-snrmin)**5   # set scaling to give nice visual sense of SNR
-        ax[dtind].scatter(times[good], dms[good], s=sizes, marker='o', c=color(l1s[good], m1s[good]), clip_on=False)
+        ax[dtind].scatter(times[good], dms[good], s=sizes, marker='o', c=color(l1s[good], m1s[good]), alpha=0.2, clip_on=False)
         # plot negative cands
         good = n.where( (dts == dtind) & (snrs < 0))[0]
         sizes = (n.abs(snrs[good])-snrmin)**5   # set scaling to give nice visual sense of SNR
-        ax[dtind].scatter(times[good], dms[good], s=sizes, marker='x', edgecolors='k', alpha=0.3, clip_on=False)
+        ax[dtind].scatter(times[good], dms[good], s=sizes, marker='x', edgecolors='k', alpha=0.2, clip_on=False)
 
         ax[dtind].axis( (mint, maxt, mindm, maxdm) )
         ax[dtind].set_ylabel('DM (pc/cm3)')
