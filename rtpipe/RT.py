@@ -396,6 +396,22 @@ def runreproduce(d, data_mem, data_resamp_mem, u, v, w, candint=-1, twindow=30):
         else:
             return data_resamp
 
+def add_transient(d, data, u, v, w, l1, m1, i, s, dm=0, dt=1):
+    """ Add a transient to data.
+    l1, m1 are relative direction cosines (location) of transient
+    added at integration i (at highest freq) with brightness s (per int/chan/bl/pol in data units)
+    dm/dt are dispersion (in pc/cm3) and pulse width (in s).
+    """
+
+    ang = lambda ch: l1 * u * d['freq'][ch]/d['freq_orig'][0] + m1 * v * d['freq'][ch]/d['freq_orig'][0]
+    delay = lambda ch: n.round(4.2e-3 * dm * (d['freq'][ch]**(-2) - d['freq'][-1]**(-2))/d['inttime'], 0).astype(int)
+
+    snr_ideal = s/(data[i].real.std()/n.sqrt(d['npol']*d['nbl']*d['nchan']))
+    logger.info('SNR of source with system brightness %.1f = %d (idealized; ok at low SNR)' % (s, int(snr_ideal)))
+
+    for ch in range(d['nchan']):
+        data[i+delay(ch):i+delay(ch)+dt, :, ch] += s * n.exp(2j*n.pi*ang(ch)[None,:,None])
+
 def pipeline_lightcurve(d, l1=0, m1=0, segments=[], scan=-1):
     """ Makes lightcurve at given (l1, m1)
     l1, m1 define phase center. if not set, then image max is used.
