@@ -866,12 +866,10 @@ def image1(d, u, v, w, dmind, dtind, beamnum, irange):
                     kurtosis = float(mstats.kurtosis(spec))
                     ff.append(kurtosis)
             elif feature == 'imskew':
-                hist = n.histogram(ims[i], range=(-20*ims[i].std(), 20*ims[i].std()), bins=40)[0]
-                skew = float(mstats.skew(hist))
+                skew = float(mstats.skew(ims[i].flatten()))
                 ff.append(skew)
             elif feature == 'imkurtosis':
-                hist = n.histogram(ims[i], range=(-20*ims[i].std(), 20*ims[i].std()), bins=40)[0]
-                kurtosis = float(mstats.kurtosis(hist))
+                kurtosis = float(mstats.kurtosis(ims[i].flatten()))
                 ff.append(kurtosis)
 
         feat[candid] = list(ff)
