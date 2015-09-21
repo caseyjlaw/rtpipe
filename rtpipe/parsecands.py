@@ -160,7 +160,7 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
             mergetimes.append(times[i])
 
     mergeloc = n.array(mergeloc)
-    mergeprop = mergeprop
+    mergeprop = n.array(mergeprop)
     mergetimes = n.array(mergetimes)
 
     # filter by remove, if needed
@@ -176,7 +176,7 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
             ww = ww & n.where( (mergetimes < badrange0) | (mergetimes > badrange1), True, False )
 
         mergeloc = mergeloc[ww]
-        mergeprop = mergeprop[ww[0]]
+        mergeprop = mergeprop[ww]
 
 # **todo**
     # if the scan has any candidates, add nints to count
