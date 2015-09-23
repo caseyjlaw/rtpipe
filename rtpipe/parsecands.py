@@ -133,9 +133,10 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
     pkllist.sort(key=lambda i: int(i.rstrip('.pkl').split('_sc')[1]))  # assumes filename structure
     logger.info('Aggregating cands from %s' % pkllist)
 
-    # get sample state dict. not representative of all scans
+    # get sample state dict. use 'dict' suffix to define multi-scan metadata dictionaries
     mergeloc = []; mergeprop = []; mergetimes = []
     segmenttimesdict = {}
+    starttime_mjddict = {}
     for pklfile in pkllist:
 
         # get scan number and read candidates
@@ -146,6 +147,7 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
             snrcol = d['features'].index('snr1')
         scan = int(pklfile.rstrip('.pkl').split('_sc')[1])   # parsing filename to get scan number
         segmenttimesdict[scan] = d['segmenttimes']
+        starttime_mjddict[scan] = d['starttime_mjd']
 
         locs, props = read_candidates(pklfile, snrmin=snrmin, snrmax=snrmax)
         times = int2mjd(d, n.array(locs))
@@ -350,29 +352,6 @@ def find_island(candsfile, candnum):
 #        if ..
         islands.append((intind,dmind))
 
-def plot_full(candsfile, cands, mode='im'):
-    """ Plot 'full' features, such as cutout image and spectrum.
-    """
-
-    d = pickle.load(open(candsfile, 'r'))
-    loc, prop = read_candidates(candsfile)
-    npixx, npixy = prop[0][4].shape
-    nints, nchan, npol = prop[0][5].shape
-
-    bin = 10
-    plt.figure(1)
-    for i in cands:
-        if mode == 'spec':
-            rr = n.array([n.abs(prop[i][5][:,i0:i0+bin,0].mean(axis=1)) for i0 in range(0,nchan,bin)])
-            ll = n.array([n.abs(prop[i][5][:,i0:i0+bin,1].mean(axis=1)) for i0 in range(0,nchan,bin)])
-            sh = ll.shape
-            data = n.concatenate( (rr, n.zeros(shape=(sh[0], sh[1]/2)), ll), axis=1)
-        elif mode == 'im':
-            data = prop[i][4]
-        plt.subplot(n.sqrt(len(cands)), n.sqrt(len(cands)), cands.index(i))
-        plt.imshow(data, interpolation='nearest')
-    plt.show()
-
 def plot_dmt(d, times, dms, dts, snrs, l1s, m1s, outroot):
     """ Plots DM versus time for each dt value.
     """
@@ -552,6 +531,29 @@ def plot_lm(d, snrs, l1s, m1s, outroot):
     canvas4 = FigureCanvasAgg(fig4)
     canvas4.print_figure(outname)
 
+def plot_full(candsfile, cands, mode='im'):
+    """ Plot 'full' features, such as cutout image and spectrum.
+    """
+
+    d = pickle.load(open(candsfile, 'r'))
+    loc, prop = read_candidates(candsfile)
+    npixx, npixy = prop[0][4].shape
+    nints, nchan, npol = prop[0][5].shape
+
+    bin = 10
+    plt.figure(1)
+    for i in cands:
+        if mode == 'spec':
+            rr = n.array([n.abs(prop[i][5][:,i0:i0+bin,0].mean(axis=1)) for i0 in range(0,nchan,bin)])
+            ll = n.array([n.abs(prop[i][5][:,i0:i0+bin,1].mean(axis=1)) for i0 in range(0,nchan,bin)])
+            sh = ll.shape
+            data = n.concatenate( (rr, n.zeros(shape=(sh[0], sh[1]/2)), ll), axis=1)
+        elif mode == 'im':
+            data = prop[i][4]
+        plt.subplot(n.sqrt(len(cands)), n.sqrt(len(cands)), cands.index(i))
+        plt.imshow(data, interpolation='nearest')
+    plt.show()
+
 def make_psrrates(pkllist, nbins=60, period=0.156):
     """ Visualize cands in set of pkl files from pulsar observations.
     Input pkl list assumed to start with on-axis pulsar scan, followed by off-axis scans.
@@ -680,19 +682,11 @@ def plot_psrrates(pkllist, outname=''):
 
     plt.savefig(outname)
 
-def plot_cand(mergepkl, candnum=-1, outname='', **kwargs):
+def plot_cand(mergepkl, candnum=-1, outname='', threshold=0, **kwargs):
     """ Create detailed plot of a single candidate.
-    Thresholds (as minimum), then provides list of candidates to select with candnum.
+    threshold is min of sbs(SNR) used to filter candidates to select with candnum.
     kwargs passed to rt.set_pipeline
     """
-
-    # if isinstance(pkllist, list):
-    #     outroot = '_'.join(pkllist[0].split('_')[1:3])
-    #     merge_cands(pkllist, outroot=outroot)
-    #     mergepkl = 'cands_' + outroot + '_merge.pkl'
-    # elif isinstance(pkllist, str):
-    #     logger.info('Assuming input is mergepkl')
-    #     mergepkl = pkllist
 
     d = pickle.load(open(mergepkl, 'r'))
     loc, prop = read_candidates(mergepkl)
@@ -722,13 +716,9 @@ def plot_cand(mergepkl, candnum=-1, outname='', **kwargs):
 
     # sort and prep candidate list
     snrs = n.array([prop[i][snrcol] for i in range(len(prop))])
-#    if isinstance(snrmin, type(None)):
-#        snrmin = min(snrs)
-#    sortord = snrs.argsort()
-#    snrinds = n.where(snrs[sortord] > snrmin)[0]
-#    loc = loc[sortord][snrinds]
-#    prop = n.array([prop[i][snrcol] for i in range(len(prop))][sortord][snrinds])  # total hack to get prop as list to sort
-#    prop = prop[sortord][snrinds]  # original
+    select = n.where(n.abs(snrs) > threshold)[0]
+    loc = loc[select]
+    prop = [prop[i] for i in select]
 
     if candnum < 0:
         logger.info('Getting candidates...')
@@ -737,6 +727,8 @@ def plot_cand(mergepkl, candnum=-1, outname='', **kwargs):
         return (loc, n.array([prop[i][snrcol] for i in range(len(prop))]))
     else:
         logger.info('Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum]))
+
+        # get cand info
         scan = loc[candnum, scancol]
         segment = loc[candnum, segmentcol]
         dmind = loc[candnum, dmindcol]
@@ -744,19 +736,31 @@ def plot_cand(mergepkl, candnum=-1, outname='', **kwargs):
         candint = loc[candnum, intcol]
         dmarrorig = d['dmarr']
         dtarrorig = d['dtarr']
-        nsegments = len(d['segmenttimesdict'][scan])
 
-        d2 = rt.set_pipeline(d['filename'], scan, fileroot=d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False, nsegments=nsegments, **kwargs)
-        im, data = rt.pipeline_reproduce(d2, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
+        # set up state dict
+        d['starttime_mjd'] = d['starttime_mjddict'][scan]
+        d['scan'] = scan
+        d['nsegments'] = len(d['segmenttimesdict'][scan])
+#        d2 = rt.set_pipeline(d['filename'], scan, fileroot=d['fileroot'], savecands=False, savenoise=False, nsegments=nsegments, **kwargs)
+        d['segmenttimes'] = d['segmenttimesdict'][scan]
+        d['savecands'] = False; d['savenoise'] = False
+        for key in kwargs.keys():
+            logger.info('Setting %s to %s' % (key, kwargs[key]))
+            d[key] = kwargs[key]
+
+        # reproduce
+        im, data = rt.pipeline_reproduce(d, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
 
         # calc source location
-        peakl, peakm = n.where(im == im.max())
-        xpix,ypix = im.shape
-        l1 = (xpix/2. - peakl[0])/(xpix*d['uvres'])
-        m1 = (ypix/2. - peakm[0])/(ypix*d['uvres'])
+        snrmin = im.min()/im.std()
+        snrmax = im.max()/im.std()
+        if snrmax > -1*snrmin:
+            l1, m1 = rt.calc_lm(d, im, minmax='max')
+        else:
+            l1, m1 = rt.calc_lm(d, im, minmax='min')
         pt_ra, pt_dec = d['radec']
         src_ra, src_dec = source_location(pt_ra, pt_dec, l1, m1)
-        logger.info('Peak (RA, Dec): %.3f, %.3f' % (src_ra, src_dec))
+        logger.info('Peak (RA, Dec): %s, %s' % (src_ra, src_dec))
 
         # plot it
         logger.info('Plotting...')
@@ -769,11 +773,11 @@ def plot_cand(mergepkl, candnum=-1, outname='', **kwargs):
         times = times0[candnum]
         dms0 = n.array(dmarrorig)[list(loc[:,dmindcol])]
         dms = dmarrorig[loc[candnum,dmindcol]]
-        snr0 = prop[:][snrcol]
-        snr = prop[candnum][snrcol]
+        snr0 = [prop[i][snrcol] for i in range(len(prop))]
+        snr = snr0[candnum]
         snrmin = 0.8 * min(d['sigma_image1'], d['sigma_image2'])
         # plot positive
-        good = n.where(snr0 > 0)
+        good = n.where(snr0 > 0)[0]
         ax.scatter(times0[good], dms0[good], s=(snr0[good]-snrmin)**5, facecolor='none', linewidth=0.2, clip_on=False)
         ax.scatter(times, dms, s=(snr-snrmin)**5, facecolor='none', linewidth=2, clip_on=False)
         # plot negative
@@ -788,7 +792,7 @@ def plot_cand(mergepkl, candnum=-1, outname='', **kwargs):
         ax.text(0.1, 0.9, d['fileroot']+'_sc'+str(scan), fontname='sans-serif', transform = ax.transAxes)
         ax.text(0.1, 0.8, 'seg %d, int %d, DM %.1f, dt %d' % (segment, loc[candnum, intcol], dmarrorig[loc[candnum, dmindcol]], dtarrorig[loc[candnum,dtindcol]]), fontname='sans-serif', transform = ax.transAxes)
 
-        ax.text(0.1, 0.7, 'Peak: (' + str(n.round(peakx, 1)) + '\' ,' + str(n.round(peaky, 1)) + '\'), SNR: ' + str(n.round(snr, 1)), fontname='sans-serif', transform = ax.transAxes)
+        ax.text(0.1, 0.7, 'Peak: (' + str(n.round(l1, 3)) + '\' ,' + str(n.round(m1, 3)) + '\'), SNR: ' + str(n.round(snr, 1)), fontname='sans-serif', transform = ax.transAxes)
 
         # plot dynamic spectra
         left, width = 0.6, 0.2
@@ -829,8 +833,8 @@ def plot_cand(mergepkl, candnum=-1, outname='', **kwargs):
         # image
         ax = fig.add_subplot(223)
         fov = n.degrees(1./d['uvres'])*60.
-        ax.scatter(((xpix/2-srcra[0])-0.05*xpix)*fov/xpix, (ypix/2-srcdec[0])*fov/ypix, s=80, marker='<', facecolor='none')
-        ax.scatter(((xpix/2-srcra[0])+0.05*xpix)*fov/xpix, (ypix/2-srcdec[0])*fov/ypix, s=80, marker='>', facecolor='none')
+#        ax.scatter(((xpix/2-srcra[0])-0.05*xpix)*fov/xpix, (ypix/2-srcdec[0])*fov/ypix, s=80, marker='<', facecolor='none')
+#        ax.scatter(((xpix/2-srcra[0])+0.05*xpix)*fov/xpix, (ypix/2-srcdec[0])*fov/ypix, s=80, marker='>', facecolor='none')
         impl = ax.imshow(im.transpose(), aspect='equal', origin='upper', interpolation='nearest', extent=[fov/2, -fov/2, -fov/2, fov/2], cmap=plt.get_cmap('Greys'), vmin=0, vmax=0.5*im.max())
         ax.set_xlabel('RA Offset (arcmin)')
         ax.set_ylabel('Dec Offset (arcmin)')
@@ -908,19 +912,20 @@ def inspect_cand(mergepkl, candnum=-1, scan=0, **kwargs):
         im, data = rt.pipeline_reproduce(d2, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
 
         # calc source location
-        peakl, peakm = n.where(im == im.max())
-        xpix,ypix = im.shape
-        l1 = (xpix/2. - peakl[0])/(xpix*d['uvres'])
-        m1 = (ypix/2. - peakm[0])/(ypix*d['uvres'])
+        if snrmax > -1*snrmin:
+            l1, m1 = calc_lm(d, im, minmax='max')
+        else:
+            l1, m1 = calc_lm(d, im, minmax='min')
         pt_ra, pt_dec = d['radec']
         src_ra, src_dec = source_location(pt_ra, pt_dec, l1, m1)
-        logger.info('Peak (RA, Dec): %.3f, %.3f' % (src_ra, src_dec))
+        logger.info('Peak (RA, Dec): %s, %s' % (src_ra, src_dec))
 
         logger.info('Returning candidate d, im, data')
         return d2, im, data
 
 def source_location(pt_ra, pt_dec, l1, m1):
     """ Takes phase center and src l,m in radians to get ra,dec of source.
+    Returns string ('hh mm ss', 'dd mm ss')
     """
     import math
 
