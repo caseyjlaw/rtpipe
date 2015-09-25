@@ -139,6 +139,8 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
    # remove unwanted ants
     for ant in d['excludeants']:
         d['ants'].remove(ant)
+    d['ants'].sort()  # required to assure that added antennas don't confuse cal antenna parsing
+
     d['nants'] = len(d['ants'])
 #    d['blarr'] = n.array([[d['ants'][i],d['ants'][j]] for j in range(d['nants']) for i in range(0,j)])
     d['nbl'] = d['nants']*(d['nants']-1)/2
