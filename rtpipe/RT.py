@@ -11,6 +11,8 @@ import scipy.stats.mstats as mstats
 import casautil, os, pickle, glob, time
 import logging
 from functools import partial
+import random
+import math
 
 # setup CASA and logging
 qa = casautil.tools.quanta()
@@ -41,11 +43,13 @@ def pipeline(d, segments):
     4) Save candidate and noise info, if requested
     """
 
-    
     if type(segments) == int:
         segments = [segments]
 
     logger.info('Starting search of %s, scan %d, segments %s' % (d['filename'], d['scan'], str(segments)))
+
+    # seed the pseudo-random number generator # TJWL
+    random.seed()    
 
     # set up shared arrays to fill
     data_read_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2);  data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
@@ -81,14 +85,29 @@ def pipeline(d, segments):
                     else:
                         continue
                     
-                    logger.debug('pipeline got result. now waiting on data lock for %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
+                    logger.debug('pipeline got result. now waiting on data lock for %d. data_read = %s. data = %s.'
+                                 % (segment, str(data_read.mean()), str(data.mean())))
                     with data_mem.get_lock():
-                        logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
+                        logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s'
+                                     % (segment, str(data_read.mean()), str(data.mean())))
+
+                        if d['domock']:
+                            nints = d['readints']
+                            rms = data[nints/2].real.std()
+                                  / n.sqrt(d['npol']*d['nbl']*d['nchan'])
+                            DMmax = max(d['dmarr'])
+                            logger.debug(' Adding mock transient ...')
+                            (loff, moff, i, A, DM) = make_transient(nints, rms, DMmax)
+                            logger.debug(' Mock transient = %f %f %d %f %f '
+                                         % (loff, moff, i, A, DM))
+                            add_transient(d, data, u, v, w, loff, moff, i, A, DM)
+
                         cands = search(d, data_mem, u_mem, v_mem, w_mem)
 
                     # save candidate info
                     if d['savecands']:
-                        logger.info('Saving %d candidates for segment %d...' % (len(cands), segment))
+                        logger.info('Saving %d candidates for segment %d...'
+                                    % (len(cands), segment))
                         savecands(d, cands)
 
         except KeyboardInterrupt:
@@ -406,12 +425,71 @@ def add_transient(d, data, u, v, w, l1, m1, i, s, dm=0, dt=1):
     ang = lambda ch: l1 * u * d['freq'][ch]/d['freq_orig'][0] + m1 * v * d['freq'][ch]/d['freq_orig'][0]
     delay = lambda ch: n.round(4.2e-3 * dm * (d['freq'][ch]**(-2) - d['freq'][-1]**(-2))/d['inttime'], 0).astype(int)
 
-    snr_ideal = s/(data[i].real.std()/n.sqrt(d['npol']*d['nbl']*d['nchan']))
-    logger.info('SNR of source with system brightness %.1f = %d (idealized; ok at low SNR)' % (s, int(snr_ideal)))
+    #snr_ideal = s/(data[i].real.std()/n.sqrt(d['npol']*d['nbl']*d['nchan']))
+    #logger.info('SNR of source with system brightness %.1f = %d (idealized; ok at low SNR)' % (s, int(snr_ideal)))
 
     for ch in range(d['nchan']):
         data[i+delay(ch):i+delay(ch)+dt, :, ch] += s * n.exp(2j*n.pi*ang(ch)[None,:,None])
+#
+def make_transient(nints, rms, DMmax):
+    """ Produce a mock transient pulse source for the purposes of characterizing the
+    detection success of the current pipeline.
+    
+    Assumes
+    - Code to inject the transients does so by inserting at an array index 
+    - Noise level at the center of the data array is characteristic of the
+      noise level throughout
 
+    Input
+    nints - number of integrations
+    rms   - rms noise level in visibilities(?) at mid-point of segment
+    
+    Returns
+    loff - direction cosine offset of mock transient from phase center [radians]
+    moff - direction cosine offset of mock transient from phase center [radians]
+    A  - amplitude of transient [rms units]
+    DM - dispersion measure of mock transient [pc/cm^3]
+    dt - 'width,' but really more like offset index [integrations]
+    """
+    #
+    #
+    #
+    rad_arcmin = math.pi/(180*60)
+
+    Amin   =  6.0  # amplitude in units of the rms (calculated below)
+    Amax   = 15.0  # amplitude in units of the rms (calculated below)
+
+    rmax   = 20.0  # [arcmin]
+    rmin   =  0.0  # [arcmin]
+    phimin =  0.0
+    phimax = 2*math.pi
+    
+    DMmin  = 0.0 # [pc/cm^3]
+    #    
+    # Amplitude of transient, done in units of the rms
+    # rms is calculated assuming that noise level in the middle of the data, 
+    # at index d['readints']/2, is characteristic of that throughout the data
+    #
+    A = random.uniform(Amin, Amax) * rms
+    #
+    # Position of transient, in direction cosines
+    #
+    r = random.uniform(rmin, rmax)
+    phi = random.uniform(phimin, phimax)
+    #
+    loff = r*math.cos(phi) * rad_arcmin
+    moff = r*math.sin(phi) * rad_arcmin
+    #
+    # Dispersion measure
+    #
+    DM = random.uniform(DMmin, DMmax)
+    #
+    # "Width," though measured in integration time units
+    #
+    i = random.uniform(0, nints)
+    #
+    return loff, moff, i, A, DM
+#
 def pipeline_lightcurve(d, l1=0, m1=0, segments=[], scan=-1):
     """ Makes lightcurve at given (l1, m1)
     l1, m1 define phase center. if not set, then image max is used.
