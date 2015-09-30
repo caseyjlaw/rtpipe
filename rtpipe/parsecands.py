@@ -196,7 +196,7 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
     d['featureind'].insert(0, 'scan')
     d['remove'] = remove
     d['segmenttimesdict'] = segmenttimesdict
-
+    d['starttime_mjddict'] = starttime_mjddict
     logger.info('Writing filtered set of %d candidates to %s' % (len(mergeloc), mergepkl))
 
     # build and write up new dict

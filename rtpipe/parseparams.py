@@ -26,7 +26,7 @@ class Params(object):
         self.flaglist = [('badchtslide', 4., 0.) , ('badap', 3., 0.2), ('blstd', 3.0, 0.05)]
         self.flagantsol = True; self.gainfile = ''; self.bpfile = ''; self.fileroot = ''
         self.savenoise = False; self.savecands = False
-        self.writebdfpkl = False
+        self.writebdfpkl = False; self.domock = False
                            
         # overload with the parameter file values, if provided
         if len(paramfile):

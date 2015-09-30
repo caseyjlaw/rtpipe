@@ -60,6 +60,9 @@ def pipeline(d, segments):
     # need these if debugging
     data = numpyview(data_mem, 'complex64', datashape(d)) # optional
     data_read = numpyview(data_read_mem, 'complex64', datashape(d)) # optional
+    u = numpyview(u_mem, 'float32', d['nbl'], raw=False)
+    v = numpyview(v_mem, 'float32', d['nbl'], raw=False)
+    w = numpyview(w_mem, 'float32', d['nbl'], raw=False)
                 
     results = {}
     # only one needed for parallel read/process. more would overwrite memory space
@@ -92,17 +95,19 @@ def pipeline(d, segments):
                                      % (segment, str(data_read.mean()), str(data.mean())))
 
                         if d['domock']:
-                            nints = d['readints']
-                            rms = data[nints/2].real.std()
-                                  / n.sqrt(d['npol']*d['nbl']*d['nchan'])
-                            DMmax = max(d['dmarr'])
-                            logger.debug(' Adding mock transient ...')
-                            (loff, moff, i, A, DM) = make_transient(nints, rms, DMmax)
-                            logger.debug(' Mock transient = %f %f %d %f %f '
-                                         % (loff, moff, i, A, DM))
+                            rms = data[d['readints']/2].real.std()/n.sqrt(d['npol']*d['nbl']*d['nchan'])
+                            (loff, moff, i, A, DM) = make_transient(d['readints'], rms, max(d['dmarr']))
+                            logger.info('Adding mock transient at (l, m) = (%f, %f) at int %d, SNR %.1f, DM %.1f ' % (loff, moff, i, A/rms, DM))
                             add_transient(d, data, u, v, w, loff, moff, i, A, DM)
+                            candid =  (segment, i, d['dmarr'].index(DM), 0, 0)
+                            logger.debug("%s" % str(candid))
 
                         cands = search(d, data_mem, u_mem, v_mem, w_mem)
+                        for kk in cands.keys():
+                            logger.debug("%s" % str(kk))
+                            if kk == candid:
+                                cands[kk] = cands[kk] + [loff, moff, A/rms, DM]   # not yet documented
+                                logger.debug("%s" % str(cands[kk]))
 
                     # save candidate info
                     if d['savecands']:
@@ -386,10 +391,10 @@ def runreproduce(d, data_mem, data_resamp_mem, u, v, w, candint=-1, twindow=30):
         repropool.apply(correct_dmdt, [d, dmind, dtind, (0,d['nbl'])])
 
         # set up image
-        if d['searchtype'] == 'image1':
+        if 'image1' in d['searchtype']:
             npixx = d['npixx']
             npixy = d['npixy']
-        elif d['searchtype'] == 'image2':
+        elif 'image2' in d['searchtype']:
             npixx = d['npixx_full']
             npixy = d['npixy_full']
 
@@ -456,7 +461,7 @@ def make_transient(nints, rms, DMmax):
     #
     rad_arcmin = math.pi/(180*60)
 
-    Amin   =  6.0  # amplitude in units of the rms (calculated below)
+    Amin   =  8.0  # amplitude in units of the rms (calculated below)
     Amax   = 15.0  # amplitude in units of the rms (calculated below)
 
     rmax   = 20.0  # [arcmin]
@@ -486,7 +491,7 @@ def make_transient(nints, rms, DMmax):
     #
     # "Width," though measured in integration time units
     #
-    i = random.uniform(0, nints)
+    i = random.randrange(0, nints)
     #
     return loff, moff, i, A, DM
 #

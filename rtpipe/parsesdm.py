@@ -132,7 +132,7 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
     # define ants/bls
     # hacking here to fit observatory-specific use of antenna names
     if 'VLA' in sdm['ExecBlock'][0]['telescopeName']:
-        d['ants'] = [int(ant.name.lstrip('ea')) for ant in sdm['Antenna']]
+        d['ants'] = [int(ant.name.lstrip('ea')) for ant in sdm['Antenna']]    # Not complete. Execblock defines ants per scan, which can change.
     elif 'GMRT' in sdm['ExecBlock'][0]['telescopeName']:        
         d['ants'] = [int(ant.antennaId.split('_')[1]) for ant in sdm['Antenna']]
 
