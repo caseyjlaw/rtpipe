@@ -99,7 +99,9 @@ def pipeline(d, segments):
                             (loff, moff, i, A, DM) = make_transient(d['readints'], rms, max(d['dmarr']))
                             logger.info('Adding mock transient at (l, m) = (%f, %f) at int %d, SNR %.1f, DM %.1f ' % (loff, moff, i, A/rms, DM))
                             add_transient(d, data, u, v, w, loff, moff, i, A, DM)
-                            candid =  (segment, i, d['dmarr'].index(DM), 0, 0)
+                            dmdist = n.abs(n.array(d['dmarr']) - DM)
+                            mindist = n.where(dmdist == dmdist.min())[0]
+                            candid =  (segment, i, mindist, 0, 0)
                             logger.debug("%s" % str(candid))
 
                         cands = search(d, data_mem, u_mem, v_mem, w_mem)
