@@ -95,14 +95,17 @@ def pipeline(d, segments):
                                      % (segment, str(data_read.mean()), str(data.mean())))
 
                         if d['domock']:
+                            # assume that rms in the middle of the segment is
+                            # characteristic of noise throughout the segment
                             rms = data[d['readints']/2].real.std()/n.sqrt(d['npol']*d['nbl']*d['nchan'])
-                            (loff, moff, i, A, DM) = make_transient(d['readints'], rms, max(d['dmarr']))
-                            logger.info('Adding mock transient at (l, m) = (%f, %f) at int %d, SNR %.1f, DM %.1f ' % (loff, moff, i, A/rms, DM))
-                            add_transient(d, data, u, v, w, loff, moff, i, A, DM)
-                            dmdist = n.abs(n.array(d['dmarr']) - DM)
-                            mindist = n.where(dmdist == dmdist.min())[0]
-                            candid =  (segment, i, mindist, 0, 0)
-                            logger.debug("%s" % str(candid))
+                            for i in range(0, d['readints'], 2):
+                                (loff, moff, i, A, DM) = make_transient(d['readints'], rms, max(d['dmarr']))
+                                logger.info('Adding mock transient at (l, m) = (%f, %f) at int %d, SNR %.1f, DM %.1f ' % (loff, moff, i, A/rms, DM))
+                                add_transient(d, data, u, v, w, loff, moff, i, A, DM)
+                                dmdist = n.abs(n.array(d['dmarr']) - DM)
+                                mindist = n.where(dmdist == dmdist.min())[0]
+                                candid =  (segment, i, mindist, 0, 0)
+                                logger.debug("%s" % str(candid))
 
                         cands = search(d, data_mem, u_mem, v_mem, w_mem)
                         for kk in cands.keys():
@@ -450,13 +453,13 @@ def make_transient(nints, rms, DMmax):
     Input
     nints - number of integrations
     rms   - rms noise level in visibilities(?) at mid-point of segment
+    DMmax - maximum DM at which mock transient can be inserted [pc/cm^3]
     
     Returns
     loff - direction cosine offset of mock transient from phase center [radians]
     moff - direction cosine offset of mock transient from phase center [radians]
     A  - amplitude of transient [rms units]
     DM - dispersion measure of mock transient [pc/cm^3]
-    dt - 'width,' but really more like offset index [integrations]
     """
     #
     #
@@ -491,11 +494,7 @@ def make_transient(nints, rms, DMmax):
     #
     DM = random.uniform(DMmin, DMmax)
     #
-    # "Width," though measured in integration time units
-    #
-    i = random.randrange(0, nints)
-    #
-    return loff, moff, i, A, DM
+    return loff, moff, A, DM
 #
 def pipeline_lightcurve(d, l1=0, m1=0, segments=[], scan=-1):
     """ Makes lightcurve at given (l1, m1)
