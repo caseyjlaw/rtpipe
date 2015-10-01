@@ -8,7 +8,11 @@ from contextlib import closing
 import numpy as n
 from scipy.special import erf
 import scipy.stats.mstats as mstats
-import casautil, os, pickle, glob, time
+try:
+    import casautil 
+except ImportError:
+    import pwkit.environments.casa.util as casautil
+import os, pickle, glob, time
 import logging
 from functools import partial
 

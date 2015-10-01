@@ -1,4 +1,7 @@
-import casautil
+try:
+    import casautil
+except ImportError:
+    import pwkit.environments.casa.util as casautil
 import os, pickle, time, string
 import numpy as n
 import rtpipe.parseparams as pp

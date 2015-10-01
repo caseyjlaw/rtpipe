@@ -1,4 +1,7 @@
-import tasklib as tl
+try:
+    import tasklib as tl
+except ImportError:
+    import pwkit.environments.casa.tasks as tl
 import rtpipe.parsesdm as ps
 import os, string, glob
 import sdmreader, sdmpy
