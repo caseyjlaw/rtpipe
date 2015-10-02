@@ -67,7 +67,7 @@ class pipe(object):
             scanstr = self.allstr
 
         print 'Splitting out all cal scans (%s) with 1s int time' % scanstr
-        newname = ps.sdm2ms(self.sdmfile, self.fileroot, scanstr, inttime='1')   # integrate down to 1s during split
+        newname = ps.sdm2ms(self.sdmfile, self.sdmfile.rstrip('/')+'.ms', scanstr, inttime='1')   # integrate down to 1s during split
 
         return newname
 

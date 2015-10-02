@@ -264,28 +264,31 @@ def sdm2ms(sdmfile, msfile, scan, inttime='0'):
     inttime is string to feed to split command. gives option of integrated data down in time.
     """
 
+    sdmdir = os.path.dirname(sdmfile)
+    msdir = os.path.dirname(msfile)
+
     # fill ms file
-    msfile2 = msfile.rstrip('.ms') + '_s' + scan + '.ms'
-    if os.path.exists(msfile2):
-        logger.debug('%s already set.' % msfile2)
+#    msfile2 = msfile.rstrip('.ms') + '_s' + scan + '.ms'
+    if os.path.exists(msfile):
+        logger.debug('%s already set.' % msfile)
     else:
-        logger.info('No %s found. Creating anew.' % msfile2)
+        logger.info('No %s found. Creating anew.' % msfile)
         if inttime != '0':
             logger.info('Filtering by int time.')
-            subprocess.call(['asdm2MS', '--ocm', 'co', '--icm', 'co', '--lazy', '--scans', scan, sdmfile, 'tmp_'+msfile2])
+            subprocess.call(['asdm2MS', '--ocm', 'co', '--icm', 'co', '--lazy', '--scans', scan, sdmfile, msfile + '.tmp'])
             cfg = tasklib.SplitConfig()  # configure split
-            cfg.vis = 'tmp_'+msfile2
-            cfg.out = msfile2
+            cfg.vis = msfile + '.tmp'
+            cfg.out = msfile
             cfg.timebin=inttime
             cfg.col = 'data'
             cfg.antenna='*&*'  # discard autos
             tasklib.split(cfg)  # run task
             # clean up
-            shutil.rmtree('tmp_'+msfile2)
+            shutil.rmtree(msfile+'.tmp')
         else:
-            subprocess.call(['asdm2MS', '--ocm', 'co', '--icm', 'co', '--lazy', '--scans', scan, sdmfile, msfile2])
+            subprocess.call(['asdm2MS', '--ocm', 'co', '--icm', 'co', '--lazy', '--scans', scan, sdmfile, msfile])
 
-    return msfile2
+    return msfile
 
 def filter_scans(sdmfile, namefilter='', intentfilter=''):
     """ Parses xml in sdmfile to get scan info for those containing 'namefilter' and 'intentfilter'
