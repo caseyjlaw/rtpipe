@@ -1,6 +1,9 @@
 import numpy as n
 import os, glob, sys
-import casautil
+try:
+    import casautil
+except ImportError:
+    import pwkit.environments.casa.util as casautil
 import logging, logging.config
 
 # set up

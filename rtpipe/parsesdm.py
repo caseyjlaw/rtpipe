@@ -7,7 +7,11 @@ import logging
 logger = logging.getLogger(__name__)
 import numpy as n
 import os, shutil, subprocess, glob, string
-import casautil, tasklib
+try:
+    import casautil, tasklib
+except ImportError:
+    import pwkit.environments.casa.tasks as tasklib
+    import pwkit.environments.casa.util as casautil
 import sdmreader, sdmpy
 import rtpipe.parseparams as pp
 qa = casautil.tools.quanta()
