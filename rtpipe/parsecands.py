@@ -38,7 +38,7 @@ def read_candidates(candsfile, snrmin=0, snrmax=999):
             prop.append( list(cands[kk]) )    #[snrcol], cands[kk][l1col], cands[kk][m1col]) )
 
     logger.info('Read %d candidates from %s.' % (len(loc), candsfile))
-    return n.array(loc).astype(int), prop
+    return n.array(loc), prop
 
 def read_noise(noisefile):
     """ Function to read a noise file and parse columns.
@@ -922,6 +922,28 @@ def inspect_cand(mergepkl, candnum=-1, scan=0, **kwargs):
 
         logger.info('Returning candidate d, im, data')
         return d2, im, data
+
+def mock_fluxratio(candsfile, mockcandsfile, dmbin=0):
+    """ Associates mock cands with detections in candsfile by integration.
+    Returns ratio of detected to expected flux for all associations.
+    """
+
+    loc, prop = read_candidates(candsfile)
+    loc2, prop2 = read_candidates(mockcandsfile)
+
+    dmselect = n.where(loc[:,2] == dmbin)[0]
+    mocki = [i for i in loc2[:,1].astype(int)]  # known transients
+    rat = []; newloc = []; newprop = []
+    for i in mocki:
+        try:
+            detind = list(loc[dmselect,1]).index(i)   # try to find detection
+            rat.append(n.array(prop)[dmselect][detind][1]/prop2[mocki.index(i)][1])
+            newloc.append(list(loc2[mocki.index(i)]))
+            newprop.append(list(prop2[mocki.index(i)]))
+        except ValueError:
+            pass
+
+    return rat, n.array(newloc), newprop
 
 def source_location(pt_ra, pt_dec, l1, m1):
     """ Takes phase center and src l,m in radians to get ra,dec of source.

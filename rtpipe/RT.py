@@ -101,22 +101,18 @@ def pipeline(d, segments):
                         if d['domock']:
                             # assume that rms in the middle of the segment is
                             # characteristic of noise throughout the segment
+                            falsecands = {}
                             rms = data[d['readints']/2].real.std()/n.sqrt(d['npol']*d['nbl']*d['nchan'])
-                            for i in range(0, d['readints'], 2):
-                                (loff, moff, i, A, DM) = make_transient(d['readints'], rms, max(d['dmarr']))
-                                logger.info('Adding mock transient at (l, m) = (%f, %f) at int %d, SNR %.1f, DM %.1f ' % (loff, moff, i, A/rms, DM))
+                            for i in range(0, d['readints'], 5):
+                                (loff, moff, A, DM) = make_transient(rms, max(d['dmarr']))
+                                logger.info('Adding mock transient at (l, m) = (%f, %f) at int %d, est SNR %.1f, DM %.1f ' % (loff, moff, i, A/rms, DM))
                                 add_transient(d, data, u, v, w, loff, moff, i, A, DM)
-                                dmdist = n.abs(n.array(d['dmarr']) - DM)
-                                mindist = n.where(dmdist == dmdist.min())[0]
-                                candid =  (segment, i, mindist, 0, 0)
-                                logger.debug("%s" % str(candid))
+                                candid =  (int(segment), int(i), DM, int(0), int(0))
+                                falsecands[candid] = [A/rms, A, loff, moff]
+                            if d['savecands']:
+                                savecands(d, falsecands, domock=True)
 
                         cands = search(d, data_mem, u_mem, v_mem, w_mem)
-                        for kk in cands.keys():
-                            logger.debug("%s" % str(kk))
-                            if kk == candid:
-                                cands[kk] = cands[kk] + [loff, moff, A/rms, DM]   # not yet documented
-                                logger.debug("%s" % str(cands[kk]))
 
                     # save candidate info
                     if d['savecands']:
@@ -444,8 +440,8 @@ def add_transient(d, data, u, v, w, l1, m1, i, s, dm=0, dt=1):
 
     for ch in range(d['nchan']):
         data[i+delay(ch):i+delay(ch)+dt, :, ch] += s * n.exp(2j*n.pi*ang(ch)[None,:,None])
-#
-def make_transient(nints, rms, DMmax):
+
+def make_transient(rms, DMmax, Amin=6., Amax=20., rmax=20., rmin=0., DMmin=0.):
     """ Produce a mock transient pulse source for the purposes of characterizing the
     detection success of the current pipeline.
     
@@ -455,51 +451,38 @@ def make_transient(nints, rms, DMmax):
       noise level throughout
 
     Input
-    nints - number of integrations
     rms   - rms noise level in visibilities(?) at mid-point of segment
     DMmax - maximum DM at which mock transient can be inserted [pc/cm^3]
-    
+    Amin/Amax is amplitude in units of the rms (calculated below)
+    rmax/rmin is radius range in arcmin
+    DMmin is min DM
+
     Returns
     loff - direction cosine offset of mock transient from phase center [radians]
     moff - direction cosine offset of mock transient from phase center [radians]
     A  - amplitude of transient [rms units]
     DM - dispersion measure of mock transient [pc/cm^3]
     """
-    #
-    #
-    #
+
     rad_arcmin = math.pi/(180*60)
-
-    Amin   =  8.0  # amplitude in units of the rms (calculated below)
-    Amax   = 15.0  # amplitude in units of the rms (calculated below)
-
-    rmax   = 20.0  # [arcmin]
-    rmin   =  0.0  # [arcmin]
     phimin =  0.0
     phimax = 2*math.pi
     
-    DMmin  = 0.0 # [pc/cm^3]
-    #    
     # Amplitude of transient, done in units of the rms
     # rms is calculated assuming that noise level in the middle of the data, 
     # at index d['readints']/2, is characteristic of that throughout the data
-    #
     A = random.uniform(Amin, Amax) * rms
-    #
+
     # Position of transient, in direction cosines
-    #
     r = random.uniform(rmin, rmax)
     phi = random.uniform(phimin, phimax)
-    #
     loff = r*math.cos(phi) * rad_arcmin
     moff = r*math.sin(phi) * rad_arcmin
-    #
+
     # Dispersion measure
-    #
     DM = random.uniform(DMmin, DMmax)
-    #
     return loff, moff, A, DM
-#
+
 def pipeline_lightcurve(d, l1=0, m1=0, segments=[], scan=-1):
     """ Makes lightcurve at given (l1, m1)
     l1, m1 define phase center. if not set, then image max is used.
@@ -762,13 +745,19 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     return d
 
-def getcandsfile(d, segment=-1):
+def getcandsfile(d, segment=-1, domock=False):
     """ Return name of candsfile for a given dictionary. Must have d['segment'] defined.
+    domock is option to save simulated cands.
     """
+    if domock:
+        prefix = 'candsmock_'
+    else:
+        prefix= 'cands_'
+
     if d.has_key('segment'):
-        return os.path.join(d['workdir'], 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl')
+        return os.path.join(d['workdir'], prefix + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(d['segment']) + '.pkl')
     elif segment >= 0:
-        return os.path.join(d['workdir'], 'cands_' + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(segment) + '.pkl')
+        return os.path.join(d['workdir'], prefix + d['fileroot'] + '_sc' + str(d['scan']) + 'seg' + str(segment) + '.pkl')
     else:
         return ''
 
@@ -1193,11 +1182,12 @@ def noisepickle(d, data, u, v, w, chunk=200):
                 pickle.dump(results, pkl)
             logger.info('Wrote %d noise measurement%s to %s.' % (len(results), 's'[:len(results)-1], noisefile))
 
-def savecands(d, cands):
+def savecands(d, cands, domock=False):
     """ Save all candidates in pkl file for later aggregation and filtering.
+    domock is option to save simulated cands file
     """
 
-    with open(getcandsfile(d), 'w') as pkl:
+    with open(getcandsfile(d, domock=domock), 'w') as pkl:
         pickle.dump(d, pkl)
         pickle.dump(cands, pkl)
 
