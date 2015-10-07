@@ -19,6 +19,14 @@ Install
 ---
     python setup.py install
 
+pwkit can be built similarly, but requires environment variables set like so to see libraries:
+    setenv CASA_HOME /home/casa/packages/RHEL6/stable/current
+    setenv PYTHONPATH ${PYTHONPATH}:${CASA_HOME}/lib/python2.7
+    setenv LD_LIBRARY_PATH ${LD_LIBRARY_PATH}:${CASA_HOME}/lib
+    setenv CASAPATH "${CASA_HOME} linux local ${HOST}"
+
+The trick here is being sure that the python interpreter is binary-compatible with that used to build CASA. pwkit recommends using conda as a more stable and portable solution than that given here.
+
 Contributors
 ---
 [Casey Law](http://www.twitter.com/caseyjlaw)
