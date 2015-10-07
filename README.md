@@ -20,6 +20,7 @@ Install
     python setup.py install
 
 pwkit can be built similarly, but requires environment variables set like so to see libraries:
+
     setenv CASA_HOME /home/casa/packages/RHEL6/stable/current
     setenv PYTHONPATH ${PYTHONPATH}:${CASA_HOME}/lib/python2.7
     setenv LD_LIBRARY_PATH ${LD_LIBRARY_PATH}:${CASA_HOME}/lib
