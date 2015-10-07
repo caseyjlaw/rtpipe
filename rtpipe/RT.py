@@ -103,10 +103,11 @@ def pipeline(d, segments):
                             # characteristic of noise throughout the segment
                             falsecands = {}
                             rms = data[d['readints']/2].real.std()/n.sqrt(d['npol']*d['nbl']*d['nchan'])
+                            dt = 1 # pulse width in integrations
                             for i in range(0, d['readints'], 5):
                                 (loff, moff, A, DM) = make_transient(rms, max(d['dmarr']))
                                 logger.info('Adding mock transient at (l, m) = (%f, %f) at int %d, est SNR %.1f, DM %.1f ' % (loff, moff, i, A/rms, DM))
-                                add_transient(d, data, u, v, w, loff, moff, i, A, DM)
+                                add_transient(d, data, u, v, w, loff, moff, i, A, DM, dt)
                                 candid =  (int(segment), int(i), DM, int(0), int(0))
                                 falsecands[candid] = [A/rms, A, loff, moff]
                             if d['savecands']:
@@ -879,7 +880,8 @@ def calc_dmgrid(d, maxloss=0.05, dt=3000., mindm=0., maxdm=0.):
     # width functions and loss factor
     dt0 = lambda dm: n.sqrt(dt**2 + tsamp**2 + ((k*dm*ch)/(freq**3))**2)
     dt1 = lambda dm, ddm: n.sqrt(dt**2 + tsamp**2 + ((k*dm*ch)/(freq**3))**2 + ((k*ddm*bw)/(freq**3.))**2)
-    loss = lambda dm, ddm: 1-n.sqrt(dt0(dm)/dt1(dm,ddm))
+    loss = lambda dm, ddm: 1 - n.sqrt(dt0(dm)/dt1(dm,ddm))
+    loss_cordes = lambda ddm, dfreq, dt, freq: 1 - (n.sqrt(n.pi) / (2 * 6.91e-3 * ddm * dfreq / (dt*freq**3))) * erf(6.91e-3 * ddm * dfreq / (dt*freq**3))  # not quite right for underresolved pulses
 
     if maxdm == 0:
         return [0]
