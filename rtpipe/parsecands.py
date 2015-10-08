@@ -1,5 +1,5 @@
-import numpy as n
 from scipy.special import erfinv
+import numpy as n
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -727,29 +727,20 @@ def plot_cand(mergepkl, candnum=-1, outname='', threshold=0, **kwargs):
         return (loc, n.array([prop[i][snrcol] for i in range(len(prop))]))
     else:
         logger.info('Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum]))
-
-        # get cand info
+        dmarrorig = d['dmarr']
+        dtarrorig = d['dtarr']
         scan = loc[candnum, scancol]
         segment = loc[candnum, segmentcol]
         dmind = loc[candnum, dmindcol]
         dtind = loc[candnum, dtindcol]
         candint = loc[candnum, intcol]
-        dmarrorig = d['dmarr']
-        dtarrorig = d['dtarr']
 
-        # set up state dict
-        d['starttime_mjd'] = d['starttime_mjddict'][scan]
-        d['scan'] = scan
-        d['nsegments'] = len(d['segmenttimesdict'][scan])
-#        d2 = rt.set_pipeline(d['filename'], scan, fileroot=d['fileroot'], savecands=False, savenoise=False, nsegments=nsegments, **kwargs)
-        d['segmenttimes'] = d['segmenttimesdict'][scan]
-        d['savecands'] = False; d['savenoise'] = False
         for key in kwargs.keys():
             logger.info('Setting %s to %s' % (key, kwargs[key]))
             d[key] = kwargs[key]
 
-        # reproduce
-        im, data = rt.pipeline_reproduce(d, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
+        # get cand data
+        im, data = reproduce_data(d, scan, segment, candint, dmind, dtind)
 
         # calc source location
         snrmin = im.min()/im.std()
@@ -845,6 +836,21 @@ def plot_cand(mergepkl, candnum=-1, outname='', threshold=0, **kwargs):
             canvas.print_figure(outname)
 
         return ([],[])
+
+def reproduce_data(d, scan, segment, candint, dmind, dtind):
+    """ For given d and cand location, reproduce candidate (image, data).
+    """
+
+    # set up state dict
+    d['starttime_mjd'] = d['starttime_mjddict'][scan]
+    d['scan'] = scan
+    d['nsegments'] = len(d['segmenttimesdict'][scan])
+    d['segmenttimes'] = d['segmenttimesdict'][scan]
+    d['savecands'] = False; d['savenoise'] = False
+
+    # reproduce
+    im, data = rt.pipeline_reproduce(d, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
+    return im, data
 
 def inspect_cand(mergepkl, candnum=-1, scan=0, **kwargs):
     """ Create detailed plot of a single candidate.
