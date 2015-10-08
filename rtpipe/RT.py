@@ -229,10 +229,11 @@ def pipeline_dataprep(d, segment):
     # d now has segment keyword defined
     return d
 
-def pipeline_reproduce(d, segment, candloc = ()):
+def pipeline_reproduce(d, segment, scan=0, candloc = ()):
     """ Reproduces candidates for a given candidate.
     candloc is tuple of (dmind, dtind) or (candint, dmind, dtind). 
     Former returns corrected data, latter images and phases data.
+    scan must be set iff d comes from merge cands pkl.
     """
 
     # set up shared arrays to fill
@@ -252,6 +253,16 @@ def pipeline_reproduce(d, segment, candloc = ()):
     u = numpyview(u_mem, 'float32', d['nbl'], raw=False)
     v = numpyview(v_mem, 'float32', d['nbl'], raw=False)
     w = numpyview(w_mem, 'float32', d['nbl'], raw=False)
+
+    # set up state dict for merge pkl
+    if scan:
+        assert d.has_key('starttime_mjddict'), 'Does not have starttime_mjddict. Is this a merged cands pkl?'
+        d['scan'] = scan
+        d['starttime_mjd'] = d['starttime_mjddict'][scan]
+        d['nsegments'] = len(d['segmenttimesdict'][scan])
+        d['segmenttimes'] = d['segmenttimesdict'][scan]
+        d['savecands'] = False
+        d['savenoise'] = False
 
     with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
         readpool.apply(pipeline_dataprep, (d, segment))

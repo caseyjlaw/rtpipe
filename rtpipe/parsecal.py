@@ -497,8 +497,9 @@ class telcal_sol():
         self.logger.info('Source: %s' % str(n.unique(self.source[self.select])))
         self.logger.debug('Ants: %s' % str(n.unique(self.antname[self.select])))
 
-    def parseGN(self, telcalfile):
+    def parseGN(self, telcalfile, onlycomplete=True):
         """Takes .GN telcal file and places values in numpy arrays.
+        onlycomplete defines whether to toss times with less than full set of solutions (one per spw, pol, ant).
         """
 
         skip = 3   # skip first three header lines
@@ -544,15 +545,16 @@ class telcal_sol():
         #self.flagreason = n.array(flagreason)
 
         # purify list to keep only complete solution sets
-#        uu = n.unique(self.mjd)
-#        uu2 = n.concatenate( (uu, [uu[-1] + (uu[-1]-uu[-2])]) )  # add rightmost bin
-#        count,bin = n.histogram(self.mjd, bins=uu2)
-#        goodmjd = bin[n.where(count == count.max())]
-#        complete = n.array([], dtype='int')
-#        for mjd in goodmjd:
-#            complete = n.concatenate( (complete, n.where(mjd == self.mjd)[0]) )
-#        self.complete = n.array(complete)
-        self.complete = n.arange(len(self.mjd))
+        if onlycomplete:
+            completecount = len(n.unique(self.ifid)) * len(n.unique(self.antname))
+            complete = []
+            for mjd in n.unique(self.mjd):
+                mjdselect = list(n.where(mjd == self.mjd)[0])
+                if len(mjdselect) == completecount:
+                    complete = complete + mjdselect
+            self.complete = n.array(complete)
+        else:
+            self.complete = n.arange(len(self.mjd))
 
         # make another version of ants array
         antnum = []

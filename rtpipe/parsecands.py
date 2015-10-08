@@ -740,7 +740,7 @@ def plot_cand(mergepkl, candnum=-1, outname='', threshold=0, **kwargs):
             d[key] = kwargs[key]
 
         # get cand data
-        im, data = reproduce_data(d, scan, segment, candint, dmind, dtind)
+        im, data = rt.pipeline_reproduce(d, segment, scan=scan, candloc=(candint, dmind, dtind))  # has mode for merge cands files that requires scan be defined
 
         # calc source location
         snrmin = im.min()/im.std()
@@ -836,21 +836,6 @@ def plot_cand(mergepkl, candnum=-1, outname='', threshold=0, **kwargs):
             canvas.print_figure(outname)
 
         return ([],[])
-
-def reproduce_data(d, scan, segment, candint, dmind, dtind):
-    """ For given d and cand location, reproduce candidate (image, data).
-    """
-
-    # set up state dict
-    d['starttime_mjd'] = d['starttime_mjddict'][scan]
-    d['scan'] = scan
-    d['nsegments'] = len(d['segmenttimesdict'][scan])
-    d['segmenttimes'] = d['segmenttimesdict'][scan]
-    d['savecands'] = False; d['savenoise'] = False
-
-    # reproduce
-    im, data = rt.pipeline_reproduce(d, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
-    return im, data
 
 def inspect_cand(mergepkl, candnum=-1, scan=0, **kwargs):
     """ Create detailed plot of a single candidate.
