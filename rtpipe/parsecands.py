@@ -685,6 +685,7 @@ def plot_psrrates(pkllist, outname=''):
 def plot_cand(mergepkl, candnum=-1, outname='', threshold=0, **kwargs):
     """ Create detailed plot of a single candidate.
     threshold is min of sbs(SNR) used to filter candidates to select with candnum.
+    if candnum defined, returns (im, data).
     kwargs passed to rt.set_pipeline
     """
 
@@ -719,12 +720,14 @@ def plot_cand(mergepkl, candnum=-1, outname='', threshold=0, **kwargs):
     select = n.where(n.abs(snrs) > threshold)[0]
     loc = loc[select]
     prop = [prop[i] for i in select]
+    times = int2mjd(d, loc)
+    times = times - times[0]
 
     if candnum < 0:
         logger.info('Getting candidates...')
+        logger.info('candnum, loc, SNR, DM (pc/cm3), time (s; rel)')
         for i in range(len(loc)):
-            logger.info("%d %s %s" % (i, str(loc[i]), str(prop[i][snrcol])))
-        return (loc, n.array([prop[i][snrcol] for i in range(len(prop))]))
+            logger.info("%d: %s, %.1f, %.1f, %.1f" % (i, str(loc[i]), prop[i][snrcol], d['dmarr'][loc[i,dmindcol]], times[i]))
     else:
         logger.info('Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum]))
         dmarrorig = d['dmarr']
@@ -835,7 +838,7 @@ def plot_cand(mergepkl, candnum=-1, outname='', threshold=0, **kwargs):
             canvas = FigureCanvasAgg(fig)
             canvas.print_figure(outname)
 
-        return ([],[])
+        return (im, data)
 
 def inspect_cand(mergepkl, candnum=-1, scan=0, **kwargs):
     """ Create detailed plot of a single candidate.
