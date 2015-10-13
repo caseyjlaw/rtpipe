@@ -4,9 +4,9 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
-import pickle, types, glob, os
+import types, glob, os, logging
+import cPickle as pickle
 import rtpipe.RT as rt
-import logging
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -77,7 +77,7 @@ def merge_segments(fileroot, scan, cleanup=True):
         logger.warn('candslist and noiselist are empty.')
         return
     else:
-        logger.info('Aggregating cands over segments %s' % str(candssegs))
+        logger.info('Aggregating cands over segments %s for fileroot %s, scan %d' % (str(candssegs), fileroot, scan))
 
     # aggregate cands over segments
     logger.debug('%s' % candslist)
@@ -92,8 +92,8 @@ def merge_segments(fileroot, scan, cleanup=True):
 
     # write cands to single file
     with open('cands_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
-        pickle.dump(state, pkl)
-        pickle.dump(cands, pkl)
+        pickle.dump(state, pkl, protocol=-1)
+        pickle.dump(cands, pkl, protocol=-1)
 
     # aggregate noise over segments
     logger.info('Aggregating noise over segments %s' % str(noisesegs))
@@ -107,7 +107,7 @@ def merge_segments(fileroot, scan, cleanup=True):
 
     # write noise to single file
     with open('noise_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
-        pickle.dump(noise, pkl)
+        pickle.dump(noise, pkl, protocol=-1)
 
     if cleanup:
         if os.path.exists('cands_' + fileroot + '_sc' + str(scan) + '.pkl'):
@@ -205,8 +205,8 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
         cands[tuple(mergeloc[i])] = tuple(mergeprop[i])
 
     pkl = open(os.path.join(d['workdir'], mergepkl), 'w')
-    pickle.dump(d, pkl)
-    pickle.dump(cands, pkl)
+    pickle.dump(d, pkl, protocol=-1)
+    pickle.dump(cands, pkl, protocol=-1)
     pkl.close()
 
 def plot_summary(fileroot, scans, remove=[], snrmin=0, snrmax=999):

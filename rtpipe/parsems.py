@@ -2,10 +2,10 @@ try:
     import casautil
 except ImportError:
     import pwkit.environments.casa.util as casautil
-import os, pickle, time, string
+import os, time, string, logging
 import numpy as n
 import rtpipe.parseparams as pp
-import logging
+import cPickle as pickle
 
 # setup
 logger = logging.getLogger(__name__)
@@ -128,7 +128,7 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
         ms.close()
         # save initialization to pickle
         pkl = open(pklname, 'wb')
-        pickle.dump((d), pkl)
+        pickle.dump((d), pkl, protocol=-1)
         pkl.close()
 
     ### Now extract refine info for given scan, chans, etc. ###
