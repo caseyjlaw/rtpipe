@@ -127,7 +127,9 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
     assert isinstance(pkllist, list), "pkllist must be list of file names"
     if not outroot:
         outroot = '_'.join(pkllist[0].split('_')[1:3])
-    mergepkl = 'cands_' + outroot + '_merge.pkl'
+
+    workdir = os.path.dirname(pkllist[0])
+    mergepkl = os.path.join(workdir, 'cands_' + outroot + '_merge.pkl')
 
     pkllist = [pkllist[i] for i in range(len(pkllist)) if ('merge' not in pkllist[i]) and ('seg' not in pkllist[i])]
     pkllist.sort(key=lambda i: int(i.rstrip('.pkl').split('_sc')[1]))  # assumes filename structure
@@ -204,7 +206,7 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
     for i in range(len(mergeloc)):
         cands[tuple(mergeloc[i])] = tuple(mergeprop[i])
 
-    pkl = open(os.path.join(d['workdir'], mergepkl), 'w')
+    pkl = open(mergepkl, 'w')
     pickle.dump(d, pkl, protocol=-1)
     pickle.dump(cands, pkl, protocol=-1)
     pkl.close()
