@@ -201,7 +201,7 @@ def read_bdf_segment(d, segment=-1):
         readints = 0
 
     # read (all) data
-    data = sdmreader.read_bdf(d['filename'], d['scan'], nskip=nskip, readints=readints, writebdfpkl=d['writebdfpkl']).astype('complex64', bdfdir=d['bdfdir'])
+    data = sdmreader.read_bdf(d['filename'], d['scan'], nskip=nskip, readints=readints, writebdfpkl=d['writebdfpkl'], bdfdir=d['bdfdir']).astype('complex64')
 
     # test that spw are in freq sorted order
     # only one use case supported: rolled spw
