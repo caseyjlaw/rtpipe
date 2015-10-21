@@ -5,7 +5,8 @@ except ImportError:
 import os, time, string, logging
 import numpy as n
 import rtpipe.parseparams as pp
-import cPickle as pickle
+#import cPickle as pickle
+import pickle
 
 # setup
 logger = logging.getLogger(__name__)
@@ -128,7 +129,7 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
         ms.close()
         # save initialization to pickle
         pkl = open(pklname, 'wb')
-        pickle.dump((d), pkl, protocol=-1)
+        pickle.dump((d), pkl)
         pkl.close()
 
     ### Now extract refine info for given scan, chans, etc. ###

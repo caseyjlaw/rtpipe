@@ -13,7 +13,8 @@ try:
 except ImportError:
     import pwkit.environments.casa.util as casautil
 import os, glob, time, logging
-import cPickle as pickle
+#import cPickle as pickle
+import pickle
 from functools import partial
 import random
 import math
@@ -1192,7 +1193,7 @@ def noisepickle(d, data, u, v, w, chunk=200):
                 results.append( (d['segment'], noiseperbl, zerofrac, imstd) )
 
             with open(noisefile, 'a') as pkl:
-                pickle.dump(results, pkl, protocol=-1)
+                pickle.dump(results, pkl)
             logger.info('Wrote %d noise measurement%s to %s.' % (len(results), 's'[:len(results)-1], noisefile))
 
 def savecands(d, cands, domock=False):
@@ -1201,8 +1202,8 @@ def savecands(d, cands, domock=False):
     """
 
     with open(getcandsfile(d, domock=domock), 'w') as pkl:
-        pickle.dump(d, pkl, protocol=-1)
-        pickle.dump(cands, pkl, protocol=-1)
+        pickle.dump(d, pkl)
+        pickle.dump(cands, pkl)
 
 def datashape(d):
     return (d['readints'], d['nbl'], d['nchan'], d['npol'])
