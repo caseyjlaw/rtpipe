@@ -155,7 +155,7 @@ cpdef imgallfullfilterxy(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n
     cdef n.ndarray[CTYPE_t, ndim=2] uu = n.round(u/res).astype(n.int)
     cdef n.ndarray[CTYPE_t, ndim=2] vv = n.round(v/res).astype(n.int)
 
-    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)
+    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True, planner_effort='FFTW_PATIENT')
     
     ok = n.logical_and(n.abs(uu) < npixx/2, n.abs(vv) < npixy/2)
     uu = n.mod(uu, npixx)
@@ -223,7 +223,7 @@ cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarr
     cdef n.ndarray[CTYPE_t, ndim=2] uu = n.round(u/res).astype(n.int)
     cdef n.ndarray[CTYPE_t, ndim=2] vv = n.round(v/res).astype(n.int)
 
-    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)
+    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True, planner_effort='FFTW_PATIENT')
     
     ok = n.logical_and(n.abs(uu) < npixx/2, n.abs(vv) < npixy/2)
     uu = n.mod(uu, npixx)

@@ -47,11 +47,8 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
     logger.setLevel(loglevel)
 
     # define scan list
-    if d.has_key('bdfdir'):   # only needed on cbe
-        bdfdir = d['bdfdir']
-    else:
-        bdfdir = None
-    scans, sources = sdmreader.read_metadata(d['filename'], scan, bdfdir=bdfdir)
+    if not d.has_key('bdfdir'): d['bdfdir'] = None
+    scans, sources = sdmreader.read_metadata(d['filename'], scan, bdfdir=d['bdfdir'])
 
     # define source props
     d['source'] = scans[scan]['source']
