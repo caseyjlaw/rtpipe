@@ -368,7 +368,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
             for dmind in xrange(len(d['dmarr'])):
                 dm = d['dmarr'][dmind]
                 logger.info('Dedispersing for %d' % dm,)
-                dedisppart = partial(correct_dm, d, dm)
+                dedisppart = partial(correct_dm, d, dm)   # moves in fresh data
                 dedispresults = resamppool.map(dedisppart, blranges)
 
                 dtlast = 1
@@ -381,7 +381,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
 
                         logger.info('Resampling for %d' % dt,)
                         resample = dt/dtlast
-                        resamppart = partial(correct_dt, d, resample)
+                        resamppart = partial(correct_dt, d, resample)   # corrects in place
                         resampresults = resamppool.map(resamppart, blranges)
                         dtlast = dt
 
@@ -880,7 +880,6 @@ def correct_dt(d, dt, blrange):
     data = numpyview(data_mem, 'complex64', datashape(d))
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
     bl0,bl1 = blrange
-    data_resamp[:, bl0:bl1] = data[:, bl0:bl1]
     rtlib.resample_par(data_resamp, d['freq'], d['inttime'], dt, blrange, verbose=0)        # dedisperses data.
 
 def calc_lm(d, im, pix=(), minmax='max'):

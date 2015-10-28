@@ -731,12 +731,12 @@ cpdef dedisperse_par(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, n.ndarray[float,
     cdef n.ndarray[short, ndim=1] relativedelay = calc_delay(freq, inttime, dm)
 
     for j in xrange(*blr):     # parallelized over blrange
-        for l in xrange(len3):
-            for k in xrange(len2):
-                shift = relativedelay[k]
-                if shift > 0:
-                    for i in xrange(len0-shift):
-                        iprime = i+shift
+        for k in xrange(len2):
+            shift = relativedelay[k]
+            if shift > 0:
+                for i in xrange(len0-shift):
+                    iprime = i+shift
+                    for l in xrange(len3):
                         data[i,j,k,l] = data[iprime,j,k,l]
 
     if verbose != 0:
@@ -763,10 +763,10 @@ cpdef resample_par(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, n.ndarray[float, n
     cdef unsigned int newlen0 = len0/resample
 
     for j in xrange(*blr):     # parallelized over blrange
-        for l in xrange(len3):
-            for k in xrange(len2):
-                for i in xrange(newlen0):
-                    iprime = i*resample
+        for i in xrange(newlen0):
+            iprime = i*resample
+            for l in xrange(len3):
+                for k in xrange(len2):
                     data[i,j,k,l] = data[iprime,j,k,l]
                     for r in xrange(1,resample):
                         data[i,j,k,l] = data[i,j,k,l] + data[iprime+r,j,k,l]
