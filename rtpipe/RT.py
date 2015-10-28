@@ -364,23 +364,34 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
 
         # open pool
         with closing(mp.Pool(d['nthread'], initializer=initresamp, initargs=(data_mem, data_resamp_mem))) as resamppool:
+            blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]           
             for dmind in xrange(len(d['dmarr'])):
-                for dtind in xrange(len(d['dtarr'])):
-                    # set partial functions for pool.map
-                    correctpart = partial(correct_dmdt, d, dmind, dtind)
-                    image1part = partial(image1, d, u, v, w, dmind, dtind, beamnum)
+                dm = d['dmarr'][dmind]
+                logger.info('Dedispersing for %d' % dm,)
+                dedisppart = partial(correct_dm, d, dm)
+                dedispresults = resamppool.map(dedisppart, blranges)
 
-                    # dedispersion in shared memory, mapped over baselines
-                    logger.debug('Dedispersing for (%d,%d)' % (d['dmarr'][dmind], d['dtarr'][dtind]),)
-                    blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
-                    dedispresults = resamppool.map(correctpart, blranges)
+                dtlast = 1
+                for dtind in xrange(len(d['dtarr'])):
+                    dt = d['dtarr'][dtind]
+                    
+                    if dt > 1:
+                        # dedispersion in shared memory, mapped over baselines
+                        # set partial functions for pool.map
+
+                        logger.info('Resampling for %d' % dt,)
+                        resample = dt/dtlast
+                        resamppart = partial(correct_dt, d, resample)
+                        resampresults = resamppool.map(resamppart, blranges)
+                        dtlast = dt
 
                     # set dm- and dt-dependent int ranges for segment
-                    nskip_dm = ((d['datadelay'][-1] - d['datadelay'][dmind]) / d['dtarr'][dtind]) * (d['segment'] != 0)  # nskip=0 for first segment
-                    searchints = (d['readints'] - d['datadelay'][dmind]) / d['dtarr'][dtind] - nskip_dm
-                    logger.info('Imaging %d ints from %d for (%d,%d)' % (searchints, nskip_dm, d['dmarr'][dmind], d['dtarr'][dtind]),)
+                    nskip_dm = ((d['datadelay'][-1] - d['datadelay'][dmind]) / dt) * (d['segment'] != 0)  # nskip=0 for first segment
+                    searchints = (d['readints'] - d['datadelay'][dmind]) / dt - nskip_dm
+                    logger.info('Imaging %d ints from %d for (%d,%d)' % (searchints, nskip_dm, dm, dt),)
 
                     # imaging in shared memory, mapped over ints
+                    image1part = partial(image1, d, u, v, w, dmind, dtind, beamnum)
                     irange = [(nskip_dm + searchints*chunk/d['nchunk'], nskip_dm + searchints*(chunk+1)/d['nchunk']) for chunk in range(d['nchunk'])]
                     imageresults = resamppool.map(image1part, irange)
 
@@ -849,6 +860,28 @@ def correct_dmdt(d, dmind, dtind, blrange):
     bl0,bl1 = blrange
     data_resamp[:, bl0:bl1] = data[:, bl0:bl1]
     rtlib.dedisperse_resample(data_resamp, d['freq'], d['inttime'], d['dmarr'][dmind], d['dtarr'][dtind], blrange, verbose=0)        # dedisperses data.
+
+def correct_dm(d, dm, blrange):
+    """ Dedisperses data *in place*.
+    Drops edges, since it assumes that data is read with overlapping chunks in time.
+    """
+
+    data = numpyview(data_mem, 'complex64', datashape(d))
+    data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
+    bl0,bl1 = blrange
+    data_resamp[:, bl0:bl1] = data[:, bl0:bl1]
+    rtlib.dedisperse_par(data_resamp, d['freq'], d['inttime'], dm, blrange, verbose=0)        # dedisperses data.
+
+def correct_dt(d, dt, blrange):
+    """ Resamples data *in place*.
+    Drops edges, since it assumes that data is read with overlapping chunks in time.
+    """
+
+    data = numpyview(data_mem, 'complex64', datashape(d))
+    data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
+    bl0,bl1 = blrange
+    data_resamp[:, bl0:bl1] = data[:, bl0:bl1]
+    rtlib.resample_par(data_resamp, d['freq'], d['inttime'], dt, blrange, verbose=0)        # dedisperses data.
 
 def calc_lm(d, im, pix=(), minmax='max'):
     """ Helper function to calculate location of image pixel in (l,m) coords.

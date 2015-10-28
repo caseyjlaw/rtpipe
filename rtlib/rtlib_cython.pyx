@@ -707,6 +707,76 @@ cpdef dedisperse_resample(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, n.ndarray[f
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
+cpdef dedisperse_par(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, n.ndarray[float, ndim=1] freq, float inttime, float dm, blr, int verbose=0):
+    """ dedisperse the data in place. only fraction of array is useful data.
+    dm algorithm only accurate if moving "up" in dm space.
+    assumes unshifted data.
+    """
+
+    cdef unsigned int i
+    cdef unsigned int iprime
+    cdef unsigned int j
+    cdef unsigned int k
+    cdef unsigned int l
+    cdef unsigned int r
+    cdef unsigned int indmin
+    cdef unsigned int indmax
+    cdef int shift
+    shape = n.shape(data)
+    cdef unsigned int len0 = shape[0]
+    cdef unsigned int len1 = shape[1]
+    cdef unsigned int len2 = shape[2]
+    cdef unsigned int len3 = shape[3]
+    # calc relative delay per channel. only shift minimally
+    cdef n.ndarray[short, ndim=1] relativedelay = calc_delay(freq, inttime, dm)
+
+    for j in xrange(*blr):     # parallelized over blrange
+        for l in xrange(len3):
+            for k in xrange(len2):
+                shift = relativedelay[k]
+                if shift > 0:
+                    for i in xrange(len0-shift):
+                        iprime = i+shift
+                        data[i,j,k,l] = data[iprime,j,k,l]
+
+    if verbose != 0:
+        print 'Dedispersed for DM of %d' % dm
+
+@cython.wraparound(False)
+@cython.boundscheck(False)
+cpdef resample_par(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, n.ndarray[float, ndim=1] freq, float inttime, unsigned int resample, blr, int verbose=0):
+    """ resample the data in place. only fraction of array is useful data.
+    resample algorithm only accurate if moving "up" in dt space.
+    """
+
+    cdef unsigned int i
+    cdef unsigned int iprime
+    cdef unsigned int j
+    cdef unsigned int k
+    cdef unsigned int l
+    cdef unsigned int r
+    shape = n.shape(data)
+    cdef unsigned int len0 = shape[0]
+    cdef unsigned int len1 = shape[1]
+    cdef unsigned int len2 = shape[2]
+    cdef unsigned int len3 = shape[3]
+    cdef unsigned int newlen0 = len0/resample
+
+    for j in xrange(*blr):     # parallelized over blrange
+        for l in xrange(len3):
+            for k in xrange(len2):
+                for i in xrange(newlen0):
+                    iprime = i*resample
+                    data[i,j,k,l] = data[iprime,j,k,l]
+                    for r in xrange(1,resample):
+                        data[i,j,k,l] = data[i,j,k,l] + data[iprime+r,j,k,l]
+                    data[i,j,k,l] = data[i,j,k,l]/resample
+
+    if verbose != 0:
+        print 'Resampled by factor of %d' % resample
+
+@cython.wraparound(False)
+@cython.boundscheck(False)
 cpdef dedisperse_resample2(n.ndarray[DTYPE_t, ndim=4, mode='c'] data, n.ndarray[float, ndim=1] freq, float inttime, float dm, unsigned int resample, int verbose=0):
     """ dedisperse the data and resample with fixed value in place. only fraction of array is useful data.
     dm algorithm on only accurate if moving "up" in dm space.
