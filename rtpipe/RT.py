@@ -367,7 +367,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
             blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]           
             for dmind in xrange(len(d['dmarr'])):
                 dm = d['dmarr'][dmind]
-                logger.info('Dedispersing for %d' % dm,)
+                logger.debug('Dedispersing for %d' % dm,)
                 dedisppart = partial(correct_dm, d, dm)   # moves in fresh data
                 dedispresults = resamppool.map(dedisppart, blranges)
 
@@ -379,7 +379,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
                         # dedispersion in shared memory, mapped over baselines
                         # set partial functions for pool.map
 
-                        logger.info('Resampling for %d' % dt,)
+                        logger.debug('Resampling for %d' % dt,)
                         resample = dt/dtlast
                         resamppart = partial(correct_dt, d, resample)   # corrects in place
                         resampresults = resamppool.map(resamppart, blranges)
