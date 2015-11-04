@@ -190,6 +190,7 @@ def read_bdf_segment(d, segment=-1):
     # define integration range
     if segment != -1:
         assert d.has_key('segmenttimes'), 'd must have segmenttimes defined'
+        assert segment < d['nsegments'], 'segment %d is too big for nsegments %d' % (segment, d['nsegments'])
         readints = d['readints']
         nskip = (24*3600*(d['segmenttimes'][segment,0] - d['starttime_mjd'])/d['inttime']).astype(int)
         logger.info('Reading segment %d/%d, times %s to %s' % (segment, len(d['segmenttimes'])-1, qa.time(qa.quantity(d['segmenttimes'][segment,0],'d'),form=['hms'], prec=9)[0], qa.time(qa.quantity(d['segmenttimes'][segment,1], 'd'), form=['hms'], prec=9)[0]))
