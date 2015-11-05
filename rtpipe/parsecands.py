@@ -298,13 +298,16 @@ def plot_interactive(mergepkl):
     snrbase = 5.5
 
     def colorsat(l,m):
-        lm = n.zeros(len(l), dtype='complex')
-        lm.real = l; lm.imag = m
-        red = 0.5*(1+n.cos(n.angle(lm)))
-        green = 0.5*(1+n.cos(n.angle(lm) + 2*3.14/3))
-        blue = 0.5*(1+n.cos(n.angle(lm) - 2*3.14/3))
-        amp = 256*n.abs(lm)/n.abs(lm).max()
-        return ["#%02x%02x%02x" % (n.floor(amp[i]*red[i]), n.floor(amp[i]*green[i]), n.floor(amp[i]*blue[i])) for i in range(len(l))]
+        if l:
+            lm = n.zeros(len(l), dtype='complex')
+            lm.real = l; lm.imag = m
+            red = 0.5*(1+n.cos(n.angle(lm)))
+            green = 0.5*(1+n.cos(n.angle(lm) + 2*3.14/3))
+            blue = 0.5*(1+n.cos(n.angle(lm) - 2*3.14/3))
+            amp = 256*n.abs(lm)/n.abs(lm).max()
+            return ["#%02x%02x%02x" % (n.floor(amp[i]*red[i]), n.floor(amp[i]*green[i]), n.floor(amp[i]*blue[i])) for i in range(len(l))]
+        else:
+            return []
 
     def candfilter(thresh=thresh_default):
         """ filters candidate data. if thresh is negative, returns values less than thresh.
