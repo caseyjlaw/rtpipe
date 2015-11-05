@@ -309,8 +309,9 @@ def plot_interactive(mergepkl):
         else:
             return []
 
-    def candfilter(thresh=thresh_default):
+    def candfilter(thresh=0):
         """ filters candidate data. if thresh is negative, returns values less than thresh.
+        default thresh=0 returns all
         """
     
         if thresh > 0:
@@ -323,7 +324,7 @@ def plot_interactive(mergepkl):
             imkur = [cands[k][8] for k in cands.iterkeys() if cands[k][0] > thresh]
             key = [k for k in cands.iterkeys() if cands[k][0] > thresh]
             sizes = [(s - snrbase)**4 for s in snr]
-        else:
+        elif thresh < 0:
             snr = [cands[k][0] for k in cands.iterkeys() if cands[k][0] < thresh]
             dm = [d['dmarr'][k[3]] for k in cands.iterkeys() if cands[k][0] < thresh]
             l1 = [cands[k][2] for k in cands.iterkeys() if cands[k][0] < thresh]
@@ -333,7 +334,17 @@ def plot_interactive(mergepkl):
             imkur = [cands[k][8] for k in cands.iterkeys() if cands[k][0] < thresh]
             key = [k for k in cands.iterkeys() if cands[k][0] < thresh]
             sizes = [(s - snrbase)**4 for s in snr]
-            
+        else:
+            snr = [cands[k][0] for k in cands.iterkeys()]
+            dm = [d['dmarr'][k[3]] for k in cands.iterkeys()]
+            l1 = [cands[k][2] for k in cands.iterkeys()]
+            m1 = [cands[k][3] for k in cands.iterkeys()]
+            time = [d['inttime'] * (k[0] * d['nints'] + k[1] * d['readints'] + k[2]) for k in cands.iterkeys()]
+            specstd = [cands[k][4] for k in cands.iterkeys()]
+            imkur = [cands[k][8] for k in cands.iterkeys()]
+            key = [k for k in cands.iterkeys()]
+            sizes = [(s - snrbase)**4 for s in snr]
+
         colors = colorsat(l1,m1)
         return snr,dm,l1,m1,time,specstd,imkur,key,sizes,colors
     
