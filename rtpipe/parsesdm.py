@@ -14,6 +14,7 @@ except ImportError:
     import pwkit.environments.casa.util as casautil
 import sdmreader, sdmpy
 import rtpipe.parseparams as pp
+from rtlib_cython import calc_blarr
 qa = casautil.tools.quanta()
 me = casautil.tools.measures()
 
@@ -200,6 +201,29 @@ def read_bdf_segment(d, segment=-1):
 
     # read (all) data
     data = sdmreader.read_bdf(d['filename'], d['scan'], nskip=nskip, readints=readints, writebdfpkl=d['writebdfpkl'], bdfdir=d['bdfdir']).astype('complex64')
+
+    # read Flag.xml and apply flags for given ant/time range
+    if d['applyonlineflags'] and segment > -1:   # currently only implemented for segmented data
+        sdm = sdmpy.SDM(d['filename'])
+        antdict = dict(zip([ant.antennaId for ant in sdm['Antenna']], [int(ant.name.lstrip('ea')) for ant in sdm['Antenna']]))
+        antflags = [(antdict[flag.antennaId.split(' ')[2]], int(flag.startTime)/(1e9*24*3600), int(flag.endTime)/(1e9*24*3600)) for flag in sdm['Flag']]  # assumes one flag per entry
+        logger.info('Found online flags for %d antenna/time ranges.' % (len(antflags)))
+        blarr = calc_blarr(d)
+        timearr = n.linspace(d['segmenttimes'][segment][0], d['segmenttimes'][segment][1], d['readints'])
+        badints_cum = []
+        for antflag in antflags:
+            antnum, time0, time1 = antflag
+            badbls = n.where((blarr == antnum).any(axis=1))[0]
+            badints = n.where( (timearr >= time0) & (timearr <= time1) )[0]
+            logger.debug('Flagging %d ints for antnum %d' % (len(badints), antnum))
+            for badint in badints:
+                data[badint, badbls] = 0j
+            badints_cum = badints_cum + list(badints)
+        logger.info('Applied online flags to %d ints.' % (len(set(badints_cum))))
+    elif segment == -1:
+        logger.info('Online flags not yet supported without segments.')
+    else:
+        logger.info('Not applying online flags.')
 
     # test that spw are in freq sorted order
     # only one use case supported: rolled spw
