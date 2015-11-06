@@ -5,8 +5,7 @@ except ImportError:
 import os, time, string, logging
 import numpy as n
 import rtpipe.parseparams as pp
-#import cPickle as pickle
-import pickle
+import cPickle as pickle
 
 # setup
 logger = logging.getLogger(__name__)

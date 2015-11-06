@@ -13,8 +13,7 @@ try:
 except ImportError:
     import pwkit.environments.casa.util as casautil
 import os, glob, time, logging
-#import cPickle as pickle
-import pickle
+import cPickle as pickle
 from functools import partial
 import random
 import math

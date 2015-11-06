@@ -5,8 +5,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import types, glob, os, logging
-#import cPickle as pickle
-import pickle
+import cPickle as pickle
 import rtpipe.RT as rt
 
 logger = logging.getLogger(__name__)
