@@ -1,11 +1,11 @@
-import logging
+from scipy.special import erfinv
 import numpy as n
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 from bokeh.plotting import ColumnDataSource, figure, save, output_file, vplot
 from bokeh.models import HoverTool
 from collections import OrderedDict 
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 def plot_interactive(mergepkl, thresh=6.8, snrbase=5.5):
     """ Make interactive summary plot with bokeh
@@ -29,10 +29,11 @@ def plot_interactive(mergepkl, thresh=6.8, snrbase=5.5):
     l1_min = min(l1); l1_max = max(l1)
     m1_min = min(m1); m1_max = max(m1)
 
+    zspos, zsneg = normprob(d, snrs)
     snr,dm,l1,m1,time,specstd,imkur,key,sizes,colors = candfilter(d, cands, thresh)
-    source = ColumnDataSource(data=dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, key=key, sizes=sizes, colors=colors))
+    source = ColumnDataSource(data=dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, key=key, sizes=sizes, colors=colors, zs=zspos))
     snr,dm,l1,m1,time,specstd,imkur,key,sizes,colors = candfilter(d, cands, -1*thresh)
-    sourceneg = ColumnDataSource(data=dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, key=key, sizes=sizes, colors=colors))
+    sourceneg = ColumnDataSource(data=dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, key=key, sizes=sizes, colors=colors, zs=zsneg))
 
     # DM-time plot
     dmt = figure(plot_width=900, plot_height=400, toolbar_location="left", x_axis_label='Time (s; rough)', y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), webgl=True, tools=TOOLS)
@@ -47,6 +48,10 @@ def plot_interactive(mergepkl, thresh=6.8, snrbase=5.5):
     stat.circle('specstd', 'imkur', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.3)
     stat.cross('specstd', 'imkur', size=10, source=sourceneg, line_color='colors', line_alpha=0.3)
     
+    norm = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed', y_axis_label='SNR expected', tools=TOOLS, webgl=True)
+    stat.circle('snr', 'zs', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.3)
+    stat.cross('snr', 'zs', size=10, source=sourceneg, line_color='colors', line_alpha=0.3)
+    
     hover = dmt.select(dict(type=HoverTool))
     hover.tooltips = OrderedDict([('key', '@key'), ('time', '@time')])
     hover = loc.select(dict(type=HoverTool))
@@ -54,7 +59,37 @@ def plot_interactive(mergepkl, thresh=6.8, snrbase=5.5):
     hover = stat.select(dict(type=HoverTool))
     hover.tooltips = OrderedDict([('key', '@key'), ('time', '@time')])
 
-    save(vplot(dmt, loc,stat))
+    save(vplot(dmt, loc, stat))
+
+def normprob(d, snrs):
+    """ Function takes state dict and snr list 
+    Returns list of expected snr given each input value's frequency of occurrence via the normal probability assumption
+    """
+
+    # define norm quantile functions
+    Z = lambda quan: n.sqrt(2)*erfinv( 2*quan - 1) 
+    quan = lambda ntrials, i: (ntrials + 1/2. - i)/ntrials
+
+    # calc number of trials
+    npix = d['npixx']*d['npixy']
+    if d.has_key('goodintcount'):
+        nints = d['goodintcount']
+    else:
+        nints = d['nints']
+    ndms = len(d['dmarr'])
+    dtfactor = n.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
+    ntrials = npix*nints*ndms*dtfactor
+    logger.info('Calculating normal probability distribution for npix*nints*ndms*dtfactor = %d' % (ntrials))
+
+    # calc normal quantile
+    snrsortpos = sorted([s for s in snrs if s > 0], reverse=True)
+    if snrsortpos:
+        zvalpos = [Z(quan(ntrials, snrsortpos.index(snr)+1)) for snr in snrs if snr > 0]   # assumes unique snr values
+    snrsortneg = sorted([abs(s) for s in snrs if s < 0], reverse=True)
+    if snrsortneg:
+        zvalneg = [Z(quan(ntrials, snrsortneg.index(abs(snr))+1)) for snr in snrs if snr < 0]
+
+    return zvalpos, zvalneg
 
 def candfilter(d, cands, thresh=0):
     """ filters candidate data. if thresh is negative, returns values less than thresh.
