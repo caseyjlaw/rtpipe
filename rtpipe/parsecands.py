@@ -693,10 +693,14 @@ def plot_cand(mergepkl, candnum=-1, outname='', threshold=0, **kwargs):
 
     d = pickle.load(open(mergepkl, 'r'))
     loc, prop = read_candidates(mergepkl)
-    
-    if not os.path.dirname(d['filename']):
-        d['filename'] = os.path.join(d['workdir'], d['filename'])
 
+    # if working locally, set d['workdir'] appropriately. Can also be used in queue system with full path given.
+    if not os.path.dirname(mergepkl):
+        workdir = os.getcwd()
+    else:
+        workdir = os.path.dirname(mergepkl)
+    d['workdir'] = workdir
+    
     # feature columns
     if 'snr2' in d['features']:
         snrcol = d['features'].index('snr2')
