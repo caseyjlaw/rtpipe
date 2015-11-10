@@ -7,6 +7,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 import types, glob, os, logging
 import cPickle as pickle
 import rtpipe.RT as rt
+import rtpipe.parseparams as pp
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -684,23 +685,29 @@ def plot_psrrates(pkllist, outname=''):
 
     plt.savefig(outname)
 
-def plot_cand(mergepkl, candnum=-1, outname='', threshold=0, **kwargs):
-    """ Create detailed plot of a single candidate.
+def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, outname='', returndata=False, **kwargs):
+    """ Reproduce detection of a single candidate for plotting or inspection.
+    candsfile can be merge or single-scan cands pkl file. Difference defined by presence of scan in d['featureind'].
+    candidate to reproduce is selected by candnum (from ordered list) or by giving cand location.
     threshold is min of sbs(SNR) used to filter candidates to select with candnum.
-    if candnum defined, returns (im, data).
+    savefile/outname define if/how to save png of candidate
+    if returndata, (im, data) returned.
     kwargs passed to rt.set_pipeline
     """
 
-    d = pickle.load(open(mergepkl, 'r'))
-    loc, prop = read_candidates(mergepkl)
+    d = pickle.load(open(candsfile, 'r'))
+    loc, prop = read_candidates(candsfile)
+
+    # assure that default params are set for old pkls
+    params = pp.Params()
+    for k in [defined for defined in params.defined if not d.has_key(defined)]:
+        d[k] = params[k]
 
     # if working locally, set d['workdir'] appropriately. Can also be used in queue system with full path given.
-    if not os.path.dirname(mergepkl):
-        workdir = os.getcwd()
-    else:
-        workdir = os.path.dirname(mergepkl)
-    d['workdir'] = workdir
-    
+    if not os.path.dirname(candsfile):
+        d['workdir'] = os.getcwd()
+        d['filename'] = os.path.join(d['workdir'], os.path.basename(d['filename']))
+
     # feature columns
     if 'snr2' in d['features']:
         snrcol = d['features'].index('snr2')
@@ -714,8 +721,11 @@ def plot_cand(mergepkl, candnum=-1, outname='', threshold=0, **kwargs):
         mcol = d['features'].index('m2')
     elif 'm1' in d['features']:
         mcol = d['features'].index('m1')
-        
-    scancol = d['featureind'].index('scan')
+
+    try:
+        scancol = d['featureind'].index('scan')  # if merged pkl
+    except ValueError:
+        scancol = -1   # if single-scan pkl
     segmentcol = d['featureind'].index('segment')
     intcol = d['featureind'].index('int')
     dtindcol = d['featureind'].index('dtind')
@@ -729,35 +739,59 @@ def plot_cand(mergepkl, candnum=-1, outname='', threshold=0, **kwargs):
     times = int2mjd(d, loc)
     times = times - times[0]
 
-    if candnum < 0:
+    # default case will print cand info
+    if (candnum < 0) and (not len(candloc)):
         logger.info('Getting candidates...')
-        logger.info('candnum, loc, SNR, DM (pc/cm3), time (s; rel)')
+        logger.info('candnum: loc, SNR, DM (pc/cm3), time (s; rel)')
         for i in range(len(loc)):
             logger.info("%d: %s, %.1f, %.1f, %.1f" % (i, str(loc[i]), prop[i][snrcol], d['dmarr'][loc[i,dmindcol]], times[i]))
-    else:
-        logger.info('Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum]))
-        dmarrorig = d['dmarr']
-        dtarrorig = d['dtarr']
-        scan = loc[candnum, scancol]
-        segment = loc[candnum, segmentcol]
-        dmind = loc[candnum, dmindcol]
-        dtind = loc[candnum, dtindcol]
-        candint = loc[candnum, intcol]
+    else:  # if candnum or candloc provided, try to reproduce
+        if (candnum >= 0) and not len(candloc):
+            logger.info('Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum]))
+            dmarrorig = d['dmarr']
+            dtarrorig = d['dtarr']
+            if scancol >= 0:  # here we have a merge pkl
+                scan = loc[candnum, scancol]
+            else:   # a scan-based cands pkl
+                scan = d['scan']
+            segment = loc[candnum, segmentcol]
+            candint = loc[candnum, intcol]
+            dmind = loc[candnum, dmindcol]
+            dtind = loc[candnum, dtindcol]
+            beamnum = 0
+        elif len(candloc) and (candnum < 0):
+            assert (len(candloc) == 5) or (len(candloc) == 6), 'candloc should be length 5 or 6 ( [scan], segment, candint, dmind, dtind, beamnum ).'
+            assert threshold == 0, 'Cannot yet filter with threshold if also providing candloc.'
+            candnum = [list(ll) for ll in loc].index(candloc)
+            assert isinstance(candnum, int), 'candnum not properly found based on candloc. should be an integer'
+            logger.info('Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum]))
+            dmarrorig = d['dmarr']
+            dtarrorig = d['dtarr']
+            if scancol >= 0:  # we have a merge pkl
+                scan, segment, candint, dmind, dtind, beamnum = loc[candnum]
+            else:   # we have a scan-based cands pkl
+                segment, candint, dmind, dtind, beamnum = loc[candnum]
+                scan = d['scan']
+        else:
+            raise Exception, 'Provide candnum or candloc, not both'
 
+        # overload with pipeline options here
         for key in kwargs.keys():
             logger.info('Setting %s to %s' % (key, kwargs[key]))
             d[key] = kwargs[key]
 
         # get cand data
-        im, data = rt.pipeline_reproduce(d, segment, scan=scan, candloc=(candint, dmind, dtind))  # has mode for merge cands files that requires scan be defined
+        im, data = rt.pipeline_reproduce(d, loc[candnum], product='imdata')
 
         # calc source location
         snrmin = im.min()/im.std()
         snrmax = im.max()/im.std()
         if snrmax > -1*snrmin:
             l1, m1 = rt.calc_lm(d, im, minmax='max')
+            snrobs = snrmax
         else:
             l1, m1 = rt.calc_lm(d, im, minmax='min')
+            snrobs = snrmin
         pt_ra, pt_dec = d['radec']
         src_ra, src_dec = source_location(pt_ra, pt_dec, l1, m1)
         logger.info('Peak (RA, Dec): %s, %s' % (src_ra, src_dec))
@@ -792,7 +826,7 @@ def plot_cand(mergepkl, candnum=-1, outname='', threshold=0, **kwargs):
         ax.text(0.1, 0.9, d['fileroot']+'_sc'+str(scan), fontname='sans-serif', transform = ax.transAxes)
         ax.text(0.1, 0.8, 'seg %d, int %d, DM %.1f, dt %d' % (segment, loc[candnum, intcol], dmarrorig[loc[candnum, dmindcol]], dtarrorig[loc[candnum,dtindcol]]), fontname='sans-serif', transform = ax.transAxes)
 
-        ax.text(0.1, 0.7, 'Peak: (' + str(n.round(l1, 3)) + '\' ,' + str(n.round(m1, 3)) + '\'), SNR: ' + str(n.round(snr, 1)), fontname='sans-serif', transform = ax.transAxes)
+        ax.text(0.1, 0.7, 'Peak: (' + str(n.round(l1, 3)) + '\' ,' + str(n.round(m1, 3)) + '\'), SNR: ' + str(n.round(snrobs, 1)), fontname='sans-serif', transform = ax.transAxes)
 
         # plot dynamic spectra
         left, width = 0.6, 0.2
@@ -839,89 +873,14 @@ def plot_cand(mergepkl, candnum=-1, outname='', threshold=0, **kwargs):
         ax.set_xlabel('RA Offset (arcmin)')
         ax.set_ylabel('Dec Offset (arcmin)')
 
-        if not outname:
-            outname = os.path.join(d['workdir'], 'cands_%s_sc%dseg%di%ddm%ddt%d.png' % (d['fileroot'], scan, segment, loc[candnum, intcol], dmind, dtind))
+        if savefile:
+            if not outname:
+                outname = os.path.join(d['workdir'], 'cands_%s_sc%dseg%di%ddm%ddt%d.png' % (d['fileroot'], scan, segment, loc[candnum, intcol], dmind, dtind))
             canvas = FigureCanvasAgg(fig)
             canvas.print_figure(outname)
 
-        return (im, data)
-
-def inspect_cand(mergepkl, candnum=-1, scan=0, **kwargs):
-    """ Create detailed plot of a single candidate.
-    Thresholds (as minimum), then provides list of candidates to select with candnum.
-    scan can be used to define scan number with pre-merge pkl file.
-    kwargs passed to rt.set_pipeline
-    """
-
-    d = pickle.load(open(mergepkl, 'r'))
-    loc, prop = read_candidates(mergepkl)
-    
-    if not os.path.dirname(d['filename']):
-        d['filename'] = os.path.join(d['workdir'], d['filename'])
-
-    # feature columns
-    if 'snr2' in d['features']:
-        snrcol = d['features'].index('snr2')
-    elif 'snr1' in d['features']:
-        snrcol = d['features'].index('snr1')
-    if 'l2' in d['features']:
-        lcol = d['features'].index('l2')
-    elif 'l1' in d['features']:
-        lcol = d['features'].index('l1')
-    if 'm2' in d['features']:
-        mcol = d['features'].index('m2')
-    elif 'm1' in d['features']:
-        mcol = d['features'].index('m1')
-        
-    if not scan:
-        scancol = d['featureind'].index('scan')
-    segmentcol = d['featureind'].index('segment')
-    intcol = d['featureind'].index('int')
-    dtindcol = d['featureind'].index('dtind')
-    dmindcol = d['featureind'].index('dmind')
-
-    # sort and prep candidate list
-    snrs = n.array([prop[i][snrcol] for i in range(len(prop))])
-#    if isinstance(snrmin, type(None)):
-#        snrmin = min(snrs)
-#    sortord = snrs.argsort()
-#    snrinds = n.where(snrs[sortord] > snrmin)[0]
-#    loc = loc[sortord][snrinds]
-#    prop = n.array([prop[i][snrcol] for i in range(len(prop))][sortord][snrinds])  # total hack to get prop as list to sort
-
-    if candnum < 0:
-        for i in range(len(loc)):
-            logger.info("%d %s %s" % (i, str(loc[i]), str(prop[i][snrcol])))
-        logger.info('Returning candidate (loc, snr) ...')
-        return (loc, n.array([prop[i][snrcol] for i in range(len(prop))]))
-    else:
-        logger.info('Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum]))
-        if not scan:
-            scan = loc[candnum, scancol]
-            nsegments = len(d['segmenttimesdict'][scan])
-        else:
-            nsegments = len(d['segmenttimes'])
-        segment = loc[candnum, segmentcol]
-        dmind = loc[candnum, dmindcol]
-        dtind = loc[candnum, dtindcol]
-        candint = loc[candnum, intcol]
-        dmarrorig = d['dmarr']
-        dtarrorig = d['dtarr']
-
-        d2 = rt.set_pipeline(d['filename'], scan, fileroot=d['fileroot'], paramfile='rtparams.py', savecands=False, savenoise=False, nsegments=nsegments, **kwargs)
-        im, data = rt.pipeline_reproduce(d2, segment, (candint, dmind, dtind))  # with candnum, pipeline will return cand image and data
-
-        # calc source location
-        if snrmax > -1*snrmin:
-            l1, m1 = calc_lm(d, im, minmax='max')
-        else:
-            l1, m1 = calc_lm(d, im, minmax='min')
-        pt_ra, pt_dec = d['radec']
-        src_ra, src_dec = source_location(pt_ra, pt_dec, l1, m1)
-        logger.info('Peak (RA, Dec): %s, %s' % (src_ra, src_dec))
-
-        logger.info('Returning candidate d, im, data')
-        return d2, im, data
+        if returndata:
+            return (im, data)
 
 def mock_fluxratio(candsfile, mockcandsfile, dmbin=0):
     """ Associates mock cands with detections in candsfile by integration.

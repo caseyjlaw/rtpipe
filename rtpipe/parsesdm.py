@@ -200,6 +200,7 @@ def read_bdf_segment(d, segment=-1):
         readints = 0
 
     # read (all) data
+    if not d.has_key('bdfdir'): d['bdfdir'] = None
     data = sdmreader.read_bdf(d['filename'], d['scan'], nskip=nskip, readints=readints, writebdfpkl=d['writebdfpkl'], bdfdir=d['bdfdir']).astype('complex64')
 
     # read Flag.xml and apply flags for given ant/time range

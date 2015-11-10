@@ -229,11 +229,11 @@ def pipeline_dataprep(d, segment):
     # d now has segment keyword defined
     return d
 
-def pipeline_reproduce(d, segment, scan=0, candloc = ()):
-    """ Reproduces candidates for a given candidate.
-    candloc is tuple of (dmind, dtind) or (candint, dmind, dtind). 
-    Former returns corrected data, latter images and phases data.
-    scan must be set iff d comes from merge cands pkl.
+def pipeline_reproduce(d, candloc, product='data'):
+    """ Reproduce candidates with location candloc 
+    candloc is length 5 or 6 with ([scan], segment, candint, dmind, dtind, beamnum).
+    if merge pkl file given, candloc must have scan number first.
+    product can be 'data', 'dataph', 'imdata'
     """
 
     # set up shared arrays to fill
@@ -255,40 +255,42 @@ def pipeline_reproduce(d, segment, scan=0, candloc = ()):
     w = numpyview(w_mem, 'float32', d['nbl'], raw=False)
 
     # set up state dict for merge pkl
-    if scan:
-        assert d.has_key('starttime_mjddict'), 'Does not have starttime_mjddict. Is this a merged cands pkl?'
+    if 'scan' in d['featureind']:
+        scan, segment, candint, dmind, dtind, beamnum = candloc
         d['scan'] = scan
         d['starttime_mjd'] = d['starttime_mjddict'][scan]
         d['nsegments'] = len(d['segmenttimesdict'][scan])
         d['segmenttimes'] = d['segmenttimesdict'][scan]
-        d['savecands'] = False
-        d['savenoise'] = False
+    else:  # if not a merge pkl, then d['scan'] is correct
+        segment, candint, dmind, dtind, beamnum = candloc        
+
+    # set better defaults for reproducing
+    d['savecands'] = False
+    d['savenoise'] = False
 
     with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
         readpool.apply(pipeline_dataprep, (d, segment))
 
-    if len(candloc) == 0:
+    if product == 'data':
         logger.info('Returning prepared data...')
         return data
 
-    elif len(candloc) == 2:
+    elif product == 'dataph':
         logger.info('Reproducing data...')
-        dmind, dtind = candloc
         d['dmarr'] = [d['dmarr'][dmind]]
         d['dtarr'] = [d['dtarr'][dtind]]
         data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w)
         return data
 
-    elif len(candloc) == 3:  # reproduce candidate image and data
+    elif product == 'imdata':
         logger.info('Reproducing candidate...')
-        reproduceint, dmind, dtind = candloc
         d['dmarr'] = [d['dmarr'][dmind]]
         d['dtarr'] = [d['dtarr'][dtind]]
-        im, data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w, reproduceint)
+        im, data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w, candint)
         return im, data
 
     else:
-        logger.error('reproducecand not in expected format: %s' % reproducecand)
+        logger.error('product must be data, dataph, or imdata.')
 
 def meantsubpool(d, data_read):
     """ Wrapper for mean visibility subtraction in time.
