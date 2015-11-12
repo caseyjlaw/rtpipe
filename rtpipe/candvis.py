@@ -5,7 +5,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 from bokeh.plotting import ColumnDataSource, figure, save, output_file, vplot
 from bokeh.models.widgets import VBox, HBox
-from bokeh.models import HoverTool
+from bokeh.models import HoverTool, TapTool, OpenURL
 from collections import OrderedDict 
 
 def plot_interactive(mergepkl, thresh=6.0, snrbase=5.5, savehtml=True):
@@ -17,7 +17,7 @@ def plot_interactive(mergepkl, thresh=6.0, snrbase=5.5, savehtml=True):
         d = pickle.load(pkl)
         cands = pickle.load(pkl)
 
-    TOOLS = "hover,pan,box_select,wheel_zoom"
+    TOOLS = "tap,hover,pan,box_select,wheel_zoom,reset"
     output_file(mergepkl.rstrip('.pkl') + '.html')
 
     # get columns
@@ -32,9 +32,11 @@ def plot_interactive(mergepkl, thresh=6.0, snrbase=5.5, savehtml=True):
     m1_min = min(m1); m1_max = max(m1)
 
     snr,dm,l1,m1,time,specstd,imkur,key,sizes,colors,zs = candfilter(d, cands, thresh)
-    source = ColumnDataSource(data=dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, key=key, sizes=sizes, colors=colors, zs=zs))
+    scan, seg, candint, dmind, dtind, beamnum = zip(*key)  # unpack key into individual columns
+    source = ColumnDataSource(data=dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind, dtind=dtind, sizes=sizes, colors=colors, zs=zs, key=key))
     snr,dm,l1,m1,time,specstd,imkur,key,sizes,colors,zs = candfilter(d, cands, -1*thresh)
-    sourceneg = ColumnDataSource(data=dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, key=key, sizes=sizes, colors=colors, zs=zs, abssnr=n.abs(snr)))
+    scan, seg, candint, dmind, dtind, beamnum = zip(*key)  # unpack key into individual columns
+    sourceneg = ColumnDataSource(data=dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind, dtind=dtind, sizes=sizes, colors=colors, zs=zs, abssnr=n.abs(snr), key=key))
 
     # DM-time plot
     dmt = figure(plot_width=900, plot_height=400, toolbar_location="left", x_axis_label='Time (s; rough)', y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), webgl=True, tools=TOOLS)
@@ -55,7 +57,7 @@ def plot_interactive(mergepkl, thresh=6.0, snrbase=5.5, savehtml=True):
     norm = figure(plot_width=400, plot_height=400, toolbar_location="left", x_axis_label='SNR observed', y_axis_label='SNR expected', tools=TOOLS, webgl=True)
     norm.circle('snr', 'zs', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.3)
     norm.cross('abssnr', 'zs', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.3)
-    
+
     hover = dmt.select(dict(type=HoverTool))
     hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
     hover = loc.select(dict(type=HoverTool))
@@ -64,6 +66,10 @@ def plot_interactive(mergepkl, thresh=6.0, snrbase=5.5, savehtml=True):
     hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
     hover = norm.select(dict(type=HoverTool))
     hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+
+    url = 'http://www.aoc.nrao.edu/~claw/%s_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png' % (mergepkl.rstrip('_merge.pkl') )
+    taptool = norm.select(type=TapTool)
+    taptool.callback = OpenURL(url=url)
 
     # arrange plots
     top = HBox(children=[dmt])

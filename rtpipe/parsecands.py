@@ -877,7 +877,7 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, out
 
         if savefile:
             if not outname:
-                outname = os.path.join(d['workdir'], 'cands_%s_sc%dseg%di%ddm%ddt%d.png' % (d['fileroot'], scan, segment, loc[candnum, intcol], dmind, dtind))
+                outname = os.path.join(d['workdir'], 'cands_%s_sc%d-seg%d-i%d-dm%d-dt%d.png' % (d['fileroot'], scan, segment, loc[candnum, intcol], dmind, dtind))
             canvas = FigureCanvasAgg(fig)
             canvas.print_figure(outname)
 
