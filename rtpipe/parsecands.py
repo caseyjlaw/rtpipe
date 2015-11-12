@@ -706,7 +706,9 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, out
     # if working locally, set d['workdir'] appropriately. Can also be used in queue system with full path given.
     if not os.path.dirname(candsfile):
         d['workdir'] = os.getcwd()
-        d['filename'] = os.path.join(d['workdir'], os.path.basename(d['filename']))
+    else:
+        d['workdir'] = os.path.dirname(candsfile)
+    d['filename'] = os.path.join(d['workdir'], os.path.basename(d['filename']))
 
     # feature columns
     if 'snr2' in d['features']:
