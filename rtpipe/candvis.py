@@ -8,9 +8,10 @@ from bokeh.models.widgets import VBox, HBox
 from bokeh.models import HoverTool, TapTool, OpenURL
 from collections import OrderedDict 
 
-def plot_interactive(mergepkl, thresh=6.0, snrbase=5.5, savehtml=True):
+def plot_interactive(mergepkl, thresh=6.0, snrbase=5.5, savehtml=True, urlbase='http://www.aoc.nrao.edu/~claw/realfast/plots'):
     """ Make interactive summary plot with bokeh
     if savehtml will write to html, otherwise returns tuple of bokeh plot objects
+    saves to html locally and point to plots in urlbase.
     """
 
     with open(mergepkl,'r') as pkl:
@@ -58,18 +59,16 @@ def plot_interactive(mergepkl, thresh=6.0, snrbase=5.5, savehtml=True):
     norm.circle('snr', 'zs', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.3)
     norm.cross('abssnr', 'zs', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.3)
 
-    hover = dmt.select(dict(type=HoverTool))
-    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    hover = loc.select(dict(type=HoverTool))
-    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    hover = stat.select(dict(type=HoverTool))
-    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    hover = norm.select(dict(type=HoverTool))
-    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-
-    url = 'http://www.aoc.nrao.edu/~claw/%s_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png' % (mergepkl.rstrip('_merge.pkl') )
-    taptool = norm.select(type=TapTool)
-    taptool.callback = OpenURL(url=url)
+    # define hover and url behavior
+    hover = dmt.select(dict(type=HoverTool)); hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    hover = loc.select(dict(type=HoverTool)); hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    hover = stat.select(dict(type=HoverTool));  hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    hover = norm.select(dict(type=HoverTool));  hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    url = '%s/%s_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png' % (urlbase, mergepkl.rstrip('_merge.pkl') )
+    taptool = dmt.select(type=TapTool);  taptool.callback = OpenURL(url=url)
+    taptool = loc.select(type=TapTool);  taptool.callback = OpenURL(url=url)    
+    taptool = stat.select(type=TapTool);  taptool.callback = OpenURL(url=url)    
+    taptool = norm.select(type=TapTool);  taptool.callback = OpenURL(url=url)
 
     # arrange plots
     top = HBox(children=[dmt])
