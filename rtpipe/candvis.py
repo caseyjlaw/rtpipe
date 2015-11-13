@@ -1,6 +1,6 @@
 from scipy.special import erfinv
 import numpy as n
-import logging, pickle
+import logging, pickle, os
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 from bokeh.plotting import ColumnDataSource, figure, save, output_file, vplot
@@ -64,7 +64,7 @@ def plot_interactive(mergepkl, thresh=6.0, snrbase=5.5, savehtml=True, urlbase='
     hover = loc.select(dict(type=HoverTool)); hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
     hover = stat.select(dict(type=HoverTool));  hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
     hover = norm.select(dict(type=HoverTool));  hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    url = '%s/%s_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png' % (urlbase, mergepkl.rstrip('_merge.pkl') )
+    url = '%s/%s_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png' % (urlbase, os.path.basename(mergepkl.rstrip('_merge.pkl')) )
     taptool = dmt.select(type=TapTool);  taptool.callback = OpenURL(url=url)
     taptool = loc.select(type=TapTool);  taptool.callback = OpenURL(url=url)    
     taptool = stat.select(type=TapTool);  taptool.callback = OpenURL(url=url)    
