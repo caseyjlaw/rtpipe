@@ -782,6 +782,16 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, out
             logger.info('Setting %s to %s' % (key, kwargs[key]))
             d[key] = kwargs[key]
 
+            # these need manual updating. redesign should make them derived from d['chans']
+            d['freq'] = d['freq_orig'][d['chans']]
+            d['nchan'] = len(d['chans'])
+            d['spw_nchan_select'] = [len([ch for ch in range(d['spw_chanr'][i][0], d['spw_chanr'][i][1]) if ch in d['chans']]) for i in range(len(d['spw_chanr']))]
+            spw_chanr_select = []; i0=0
+            for nch in d['spw_nchan_select']:
+                spw_chanr_select.append((i0, i0+nch))
+                i0 = nch
+            d['spw_chanr_select'] = spw_chanr_select
+
         # get cand data
         im, data = rt.pipeline_reproduce(d, loc[candnum], product='imdata')
 
