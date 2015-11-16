@@ -42,23 +42,23 @@ def plot_interactive(mergepkl, noisepkl='', thresh=6.0, savehtml=True, urlbase='
 
     # DM-time plot
     dmt = figure(plot_width=950, plot_height=400, toolbar_location="left", x_axis_label='Time (s; rough)', y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), webgl=True, tools=TOOLS)
-    dmt.circle('time', 'dm', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.3)
-    dmt.cross('time', 'dm', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.3)
+    dmt.circle('time', 'dm', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
+    dmt.cross('time', 'dm', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
 
     # image location plot
     loc = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)', x_range=(l1_min, l1_max), y_range=(m1_min,m1_max), tools=TOOLS, webgl=True)
-    loc.circle('l1', 'm1', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.3)
-    loc.cross('l1', 'm1', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.3)
+    loc.circle('l1', 'm1', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
+    loc.cross('l1', 'm1', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
 
     # cand spectrum/image statistics plot
     stat = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Spectral std', y_axis_label='Image kurtosis', x_range=(specstd_min, specstd_max), y_range=(imkur_min, imkur_max), tools=TOOLS, webgl=True)
-    stat.circle('specstd', 'imkur', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.3)
-    stat.cross('specstd', 'imkur', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.3)
+    stat.circle('specstd', 'imkur', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
+    stat.cross('specstd', 'imkur', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
     
     # norm prob plot
     norm = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed', y_axis_label='SNR expected', tools=TOOLS, webgl=True)
-    norm.circle('snr', 'zs', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.3)
-    norm.cross('abssnr', 'zs', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.3)
+    norm.circle('snr', 'zs', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
+    norm.cross('abssnr', 'zs', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
 
     # noise histogram
     if os.path.exists(noisepkl):
@@ -173,7 +173,7 @@ def candfilter(d, cands, thresh=0):
     colors = colorsat(l1, m1)
     return snr, dm, l1, m1, time, specstd, imkur, key, sizes, colors, zs
 
-def calcsize(snr, sizerange=(5,50)):
+def calcsize(snr, sizerange=(3,60)):
     smax = max([abs(s) for s in snr])
     smin = min([abs(s) for s in snr])
 
