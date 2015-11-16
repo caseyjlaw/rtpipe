@@ -43,15 +43,25 @@ def read_candidates(candsfile, snrmin=0, snrmax=999):
 
 def read_noise(noisefile):
     """ Function to read a noise file and parse columns.
+    Works with both per-scan and merged noise files.
     """
 
-    f = open(noisefile,'r')
-    noises = pickle.load(f)
-    seg = []; noiseperbl = []; flagfrac = []; imnoise = []
-    for noise in noises:
-        seg.append(noise[0]); noiseperbl.append(noise[1])
-        flagfrac.append(noise[2]); imnoise.append(noise[3])
-    return (n.array(seg), n.array(noiseperbl), n.array(flagfrac), n.array(imnoise))
+    noises = pickle.load(open(noisefile, 'r'))
+
+    scan = []; seg = []; noiseperbl = []; flagfrac = []; imnoise = []
+    if len(noises[0]) == 4:
+        for noise in noises:
+            seg.append(noise[0]); noiseperbl.append(noise[1])
+            flagfrac.append(noise[2]); imnoise.append(noise[3])
+        return (n.array(seg), n.array(noiseperbl), n.array(flagfrac), n.array(imnoise))
+    elif len(noises[0]) == 5:
+        for noise in noises:
+            scan.append(noise[0])
+            seg.append(noise[1]); noiseperbl.append(noise[2])
+            flagfrac.append(noise[3]); imnoise.append(noise[4])
+        return (n.array(scan), n.array(seg), n.array(noiseperbl), n.array(flagfrac), n.array(imnoise))
+    else:
+        logger.warn('structure of noise file not understood. first entry should be length 4 of 5.')
 
 def merge_segments(fileroot, scan, cleanup=True):
     """ Merges cands/noise pkl files from multiple segments to single cands/noise file.
@@ -118,6 +128,33 @@ def merge_segments(fileroot, scan, cleanup=True):
             for noisefile in noiselist:
                 os.remove(noisefile)
 
+def merge_noises(pkllist, outroot=''):
+    """ Merge noise files from multiple segments.
+    Output noise file has scan number at start of each entry.
+    """
+
+    assert isinstance(pkllist, list), "pkllist must be list of file names"
+    if not outroot:
+        outroot = '_'.join(pkllist[0].split('_')[1:-1])
+
+    workdir = os.path.dirname(pkllist[0])
+    mergepkl = os.path.join(workdir, 'noise_' + outroot + '_merge.pkl')
+
+    pkllist = [pkllist[i] for i in range(len(pkllist)) if ('merge' not in pkllist[i]) and ('seg' not in pkllist[i])]  # filter list down to per-scan noise pkls
+    pkllist.sort(key=lambda i: int(i.rstrip('.pkl').split('_sc')[1]))  # sort by scan assuming filename structure
+    logger.info('Aggregating noise from %s' % pkllist)
+
+    allnoise = []
+    for pklfile in pkllist:
+        scan = int(pklfile.rstrip('.pkl').split('_sc')[1])   # parsing filename to get scan number
+        with open(pklfile, 'r') as pkl:
+            noises = pickle.load(pkl)   # gets all noises for segment as list
+        allnoise += [[scan] + list(noise) for noise in noises]  # prepend scan number
+
+    # write noise to single file
+    with open(mergepkl, 'w') as pkl:
+        pickle.dump(allnoise, pkl)
+
 def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
     """ Takes cands pkls from list and filteres to write new single "merge" pkl.
     Ignores segment cand files.
@@ -127,7 +164,7 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
 
     assert isinstance(pkllist, list), "pkllist must be list of file names"
     if not outroot:
-        outroot = '_'.join(pkllist[0].split('_')[1:3])
+        outroot = '_'.join(pkllist[0].split('_')[1:-1])
 
     workdir = os.path.dirname(pkllist[0])
     mergepkl = os.path.join(workdir, 'cands_' + outroot + '_merge.pkl')
@@ -288,19 +325,22 @@ def plot_noise(fileroot, scans, remove=[]):
             pkllist.append(pklfile)
 
     assert len(pkllist) > 0
+
+    # merge noise files
+    mergepkl = 'noise_' + fileroot + '_merge.pkl'
+    if not os.path.exists(mergepkl):
+        merge_noises(pkllist, fileroot)
+    else:
+        logger.info('merged noise file %s already exists' % mergepkl)
+
+    logger.info('Reading noise file %s' % mergepkl)
+#    scan, seg, noiseperbl, flagfrac, imnoise = read_noise(mergepkl)
+    noises = read_noise(mergepkl)
+    minnoise = noises[4].min()
+    maxnoise = noises[4].max()
+
+    # plot noise histogram
     outname = 'plot_' + fileroot + '_noisehist.png'
-
-    noises = []; minnoise = 1e8; maxnoise = 0
-    logger.info('Reading %d noise files' % len(pkllist))
-    for pkl in pkllist:
-        seg, noiseperbl, flagfrac, imnoise = read_noise(pkl)
-
-        if remove: logger.warn('Remove option not supported for noise files yet.')
-
-        noises.append(imnoise)  # TBD: filter this by remove
-        minnoise = min(minnoise, imnoise.min())
-        maxnoise = max(maxnoise, imnoise.max())
-
     bins = n.linspace(minnoise, maxnoise, 50)
     fig = plt.Figure(figsize=(10,10))
     ax = fig.add_subplot(211, axisbg='white')
