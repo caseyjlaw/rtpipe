@@ -314,7 +314,7 @@ def plot_summary(fileroot, scans, remove=[], snrmin=0, snrmax=999):
     logger.info('Plotting (l,m) distribution...')
     plot_lm(d, snrs, l1s, m1s, fileroot)
 
-def plot_noise(fileroot, scans, remove=[]):
+def plot_noise(fileroot, scans):
     """ Takes noise pkls and visualizes it as hist of image noise values.
     """
 
