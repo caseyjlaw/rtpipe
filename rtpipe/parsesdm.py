@@ -152,17 +152,17 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
     # assume inttime same for all scans
 
     for scan in sdm['Main']:
-        interval = int(scan.interval)
+        interval = float(scan.interval)
         nints = int(scan.numIntegration)
         # get inttime in seconds
         if 'VLA' in sdm['ExecBlock'][0]['telescopeName']:
-            inttime = 1e-9*interval/nints          # VLA uses interval as scan duration
+            inttime = interval/nints          # VLA uses interval as scan duration
             scannum = int(scan.scanNumber)
         elif 'GMRT' in sdm['ExecBlock'][0]['telescopeName']:        
-            inttime = 1e-9*interval                # GMRT uses interval as the integration duration
+            inttime = interval                # GMRT uses interval as the integration duration
             scannum = int(scan.subscanNumber)
         if scannum == d['scan']:
-            d['inttime'] = inttime
+            d['inttime'] = n.round(inttime)*1e-9
             d['nints'] = nints
 
     # define pols

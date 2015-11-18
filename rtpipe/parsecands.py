@@ -735,50 +735,43 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, out
     kwargs passed to rt.set_pipeline
     """
 
-    d = pickle.load(open(candsfile, 'r'))
+    # get candidate info
     loc, prop = read_candidates(candsfile)
 
-    # assure that default params are set for old pkls
-    params = pp.Params()
-    for k in [defined for defined in params.defined if not d.has_key(defined)]:
-        d[k] = params[k]
-
-    # if working locally, set d['workdir'] appropriately. Can also be used in queue system with full path given.
-    if not os.path.dirname(candsfile):
-        d['workdir'] = os.getcwd()
-    else:
-        d['workdir'] = os.path.dirname(candsfile)
-    d['filename'] = os.path.join(d['workdir'], os.path.basename(d['filename']))
+    # define state dict and overload with user prefs
+    d0 = pickle.load(open(candsfile, 'r'))
+    for key in kwargs.keys():
+        d0[key] = kwargs[key]
 
     # feature columns
-    if 'snr2' in d['features']:
-        snrcol = d['features'].index('snr2')
-    elif 'snr1' in d['features']:
-        snrcol = d['features'].index('snr1')
-    if 'l2' in d['features']:
-        lcol = d['features'].index('l2')
-    elif 'l1' in d['features']:
-        lcol = d['features'].index('l1')
-    if 'm2' in d['features']:
-        mcol = d['features'].index('m2')
-    elif 'm1' in d['features']:
-        mcol = d['features'].index('m1')
+    if 'snr2' in d0['features']:
+        snrcol = d0['features'].index('snr2')
+    elif 'snr1' in d0['features']:
+        snrcol = d0['features'].index('snr1')
+    if 'l2' in d0['features']:
+        lcol = d0['features'].index('l2')
+    elif 'l1' in d0['features']:
+        lcol = d0['features'].index('l1')
+    if 'm2' in d0['features']:
+        mcol = d0['features'].index('m2')
+    elif 'm1' in d0['features']:
+        mcol = d0['features'].index('m1')
 
     try:
-        scancol = d['featureind'].index('scan')  # if merged pkl
+        scancol = d0['featureind'].index('scan')  # if merged pkl
     except ValueError:
         scancol = -1   # if single-scan pkl
-    segmentcol = d['featureind'].index('segment')
-    intcol = d['featureind'].index('int')
-    dtindcol = d['featureind'].index('dtind')
-    dmindcol = d['featureind'].index('dmind')
+    segmentcol = d0['featureind'].index('segment')
+    intcol = d0['featureind'].index('int')
+    dtindcol = d0['featureind'].index('dtind')
+    dmindcol = d0['featureind'].index('dmind')
 
     # sort and prep candidate list
     snrs = n.array([prop[i][snrcol] for i in range(len(prop))])
     select = n.where(n.abs(snrs) > threshold)[0]
     loc = loc[select]
     prop = [prop[i] for i in select]
-    times = int2mjd(d, loc)
+    times = int2mjd(d0, loc)
     times = times - times[0]
 
     # default case will print cand info
@@ -786,16 +779,16 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, out
         logger.info('Getting candidates...')
         logger.info('candnum: loc, SNR, DM (pc/cm3), time (s; rel)')
         for i in range(len(loc)):
-            logger.info("%d: %s, %.1f, %.1f, %.1f" % (i, str(loc[i]), prop[i][snrcol], d['dmarr'][loc[i,dmindcol]], times[i]))
+            logger.info("%d: %s, %.1f, %.1f, %.1f" % (i, str(loc[i]), prop[i][snrcol], d0['dmarr'][loc[i,dmindcol]], times[i]))
     else:  # if candnum or candloc provided, try to reproduce
         if (candnum >= 0) and not len(candloc):
             logger.info('Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum]))
-            dmarrorig = d['dmarr']
-            dtarrorig = d['dtarr']
+            dmarrorig = d0['dmarr']
+            dtarrorig = d0['dtarr']
             if scancol >= 0:  # here we have a merge pkl
                 scan = loc[candnum, scancol]
             else:   # a scan-based cands pkl
-                scan = d['scan']
+                scan = d0['scan']
             segment = loc[candnum, segmentcol]
             candint = loc[candnum, intcol]
             dmind = loc[candnum, dmindcol]
@@ -807,33 +800,33 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, out
             candnum = [list(ll) for ll in loc].index(candloc)
             assert isinstance(candnum, int), 'candnum not properly found based on candloc. should be an integer'
             logger.info('Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum]))
-            dmarrorig = d['dmarr']
-            dtarrorig = d['dtarr']
+            dmarrorig = d0['dmarr']
+            dtarrorig = d0['dtarr']
             if scancol >= 0:  # we have a merge pkl
                 scan, segment, candint, dmind, dtind, beamnum = loc[candnum]
             else:   # we have a scan-based cands pkl
                 segment, candint, dmind, dtind, beamnum = loc[candnum]
-                scan = d['scan']
+                scan = d0['scan']
         else:
             raise Exception, 'Provide candnum or candloc, not both'
 
-        # overload with pipeline options here
-        for key in kwargs.keys():
-            logger.info('Setting %s to %s' % (key, kwargs[key]))
-            d[key] = kwargs[key]
+        # if working locally, set workdir appropriately. Can also be used in queue system with full path given.
+        if not os.path.dirname(candsfile):
+            d0['workdir'] = os.getcwd()
+        else:
+            d0['workdir'] = os.path.dirname(candsfile)
+        filename = os.path.join(d0['workdir'], os.path.basename(d0['filename']))
 
-            # these need manual updating. redesign should make them derived from d['chans']
-            d['freq'] = d['freq_orig'][d['chans']]
-            d['nchan'] = len(d['chans'])
-            d['spw_nchan_select'] = [len([ch for ch in range(d['spw_chanr'][i][0], d['spw_chanr'][i][1]) if ch in d['chans']]) for i in range(len(d['spw_chanr']))]
-            spw_chanr_select = []; i0=0
-            for nch in d['spw_nchan_select']:
-                spw_chanr_select.append((i0, i0+nch))
-                i0 = nch
-            d['spw_chanr_select'] = spw_chanr_select
+        # clean up d0 of superfluous keys
+        params = pp.Params()  # will be used as input to rt.set_pipeline
+        for key in d0.keys():
+            if not hasattr(params, key):
+                junk = d0.pop(key)
 
         # get cand data
+        d = rt.set_pipeline(filename, scan, **d0)
         im, data = rt.pipeline_reproduce(d, loc[candnum], product='imdata')
+        logger.debug('(image, data) shape: (%s, %s)' % (str(im.shape), str(data.shape)))
 
         # calc source location
         snrmin = im.min()/im.std()
@@ -854,29 +847,29 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, out
         ax = fig.add_subplot(221, axisbg='white')
 
         # # first plot dm-t distribution beneath
-        times0 = int2mjd(d, loc)
-        times0 = times0 - times0[0]
-        times = times0[candnum]
-        dms0 = n.array(dmarrorig)[list(loc[:,dmindcol])]
-        dms = dmarrorig[loc[candnum,dmindcol]]
-        snr0 = [prop[i][snrcol] for i in range(len(prop))]
-        snr = snr0[candnum]
-        snrmin = 0.8 * min(d['sigma_image1'], d['sigma_image2'])
+#        times0 = int2mjd(d, loc)
+#        times0 = times0 - times0[0]
+#        times = times0[candnum]
+#        dms0 = n.array(dmarrorig)[list(loc[:,dmindcol])]
+#        dms = dmarrorig[loc[candnum,dmindcol]]
+#        snr0 = [prop[i][snrcol] for i in range(len(prop))]
+#        snr = snr0[candnum]
+#        snrmin = 0.8 * min(d['sigma_image1'], d['sigma_image2'])
         # plot positive
-        good = n.where(snr0 > 0)[0]
-        ax.scatter(times0[good], dms0[good], s=(snr0[good]-snrmin)**5, facecolor='none', linewidth=0.2, clip_on=False)
-        ax.scatter(times, dms, s=(snr-snrmin)**5, facecolor='none', linewidth=2, clip_on=False)
+#        good = n.where(snr0 > 0)[0]
+#        ax.scatter(times0[good], dms0[good], s=(snr0[good]-snrmin)**5, facecolor='none', linewidth=0.2, clip_on=False)
+#        ax.scatter(times, dms, s=(snr-snrmin)**5, facecolor='none', linewidth=2, clip_on=False)
         # plot negative
-        good = n.where(snr0 < 0)
-        ax.scatter(times0[good], dms0[good], s=(n.abs(snr0)[good]-snrmin)**5, marker='x', edgecolors='k', linewidth=0.2, clip_on=False)
-        ax.set_ylim(dmarrorig[0], dmarrorig[-1])
-        ax.set_xlim(times0.min(), times0.max())
-        ax.set_xlabel('Time (s)')
-        ax.set_ylabel('DM (pc/cm3)')
+#        good = n.where(snr0 < 0)
+#        ax.scatter(times0[good], dms0[good], s=(n.abs(snr0)[good]-snrmin)**5, marker='x', edgecolors='k', linewidth=0.2, clip_on=False)
+#        ax.set_ylim(dmarrorig[0], dmarrorig[-1])
+#        ax.set_xlim(times0.min(), times0.max())
+#        ax.set_xlabel('Time (s)')
+#        ax.set_ylabel('DM (pc/cm3)')
 
         # # then add annotating info
-        ax.text(0.1, 0.9, d['fileroot']+'_sc'+str(scan), fontname='sans-serif', transform = ax.transAxes)
-        ax.text(0.1, 0.8, 'seg %d, int %d, DM %.1f, dt %d' % (segment, loc[candnum, intcol], dmarrorig[loc[candnum, dmindcol]], dtarrorig[loc[candnum,dtindcol]]), fontname='sans-serif', transform = ax.transAxes)
+        ax.text(0.1, 0.9, d['fileroot'], fontname='sans-serif', transform = ax.transAxes)
+        ax.text(0.1, 0.8, 'sc %d, seg %d, int %d, DM %.1f, dt %d' % (scan, segment, loc[candnum, intcol], dmarrorig[loc[candnum, dmindcol]], dtarrorig[loc[candnum,dtindcol]]), fontname='sans-serif', transform = ax.transAxes)
 
         ax.text(0.1, 0.7, 'Peak: (' + str(n.round(l1, 3)) + '\' ,' + str(n.round(m1, 3)) + '\'), SNR: ' + str(n.round(snrobs, 1)), fontname='sans-serif', transform = ax.transAxes)
 
@@ -928,8 +921,11 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, out
         if savefile:
             if not outname:
                 outname = os.path.join(d['workdir'], 'cands_%s_sc%d-seg%d-i%d-dm%d-dt%d.png' % (d['fileroot'], scan, segment, loc[candnum, intcol], dmind, dtind))
-            canvas = FigureCanvasAgg(fig)
-            canvas.print_figure(outname)
+            try:
+                canvas = FigureCanvasAgg(fig)
+                canvas.print_figure(outname)
+            except ValueError:
+                logger.warn('Could not write figure to %s' % outname)
 
         if returndata:
             return (im, data)

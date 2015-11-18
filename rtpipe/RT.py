@@ -255,14 +255,17 @@ def pipeline_reproduce(d, candloc, product='data'):
     w = numpyview(w_mem, 'float32', d['nbl'], raw=False)
 
     # set up state dict for merge pkl
-    if 'scan' in d['featureind']:
+    if len(candloc) == 6:
         scan, segment, candint, dmind, dtind, beamnum = candloc
-        d['scan'] = scan
-        d['starttime_mjd'] = d['starttime_mjddict'][scan]
-        d['nsegments'] = len(d['segmenttimesdict'][scan])
-        d['segmenttimes'] = d['segmenttimesdict'][scan]
-    else:  # if not a merge pkl, then d['scan'] is correct
+# this is now defined by call to rtpipe.set_pipeline in parsecands.plot_cand
+#        d['scan'] = scan
+#        d['starttime_mjd'] = d['starttime_mjddict'][scan]
+#        d['nsegments'] = len(d['segmenttimesdict'][scan])
+#        d['segmenttimes'] = d['segmenttimesdict'][scan]
+    elif len(candloc) == 5:  # if not a merge pkl, then d['scan'] is correct
         segment, candint, dmind, dtind, beamnum = candloc        
+    else:
+        logger.error('candloc must be length 5 or 6.')
 
     # set better defaults for reproducing
     d['savecands'] = False

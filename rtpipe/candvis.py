@@ -19,6 +19,12 @@ def plot_interactive(mergepkl, noisepkl='', thresh=6.0, savehtml=True, urlbase='
         d = pickle.load(pkl)
         cands = pickle.load(pkl)
 
+    # try to find noisepkl
+    if not noisepkl:
+        noisetest = os.path.join(os.path.dirname(mergepkl), 'noise' + os.path.basename(mergepkl).lstrip('cands'))
+        if os.path.exists(noisetest):
+            noisepkl = noisetest
+
     TOOLS = "tap,hover,pan,box_select,wheel_zoom,reset"
     output_file(mergepkl.rstrip('.pkl') + '.html')
 
@@ -61,7 +67,7 @@ def plot_interactive(mergepkl, noisepkl='', thresh=6.0, savehtml=True, urlbase='
     norm.cross('abssnr', 'zs', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
 
     # noise histogram
-    if os.path.exists(noisepkl):
+    if noisepkl:
         logger.info('Found merged noise file at %s' % noisepkl)
         noises = read_noise(noisepkl)
         imnoise = n.sort(noises[4])
@@ -85,7 +91,7 @@ def plot_interactive(mergepkl, noisepkl='', thresh=6.0, savehtml=True, urlbase='
     # arrange plots
     top = HBox(children=[dmt])
     middle = HBox(children=[loc, stat])
-    if os.path.exists(noisepkl):
+    if noisepkl:
         bottom = HBox(children=[norm, noiseplot])
     else:
         bottom = HBox(children=[norm])
@@ -178,7 +184,7 @@ def calcsize(snr, sizerange=(3,60)):
     smin = min([abs(s) for s in snr])
 
     if snr:
-        return [sizerange[0] + sizerange[1] * ((abs(s) - smin)/(smax - smin))**4 for s in snr]
+        return [sizerange[0] + sizerange[1] * ((abs(s) - smin)/(smax - smin))**3 for s in snr]
     else:
         return []
     
