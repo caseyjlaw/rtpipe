@@ -742,6 +742,7 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, out
     d0 = pickle.load(open(candsfile, 'r'))
     for key in kwargs.keys():
         d0[key] = kwargs[key]
+    d0['nologfile'] = True  # no need to save log
 
     # feature columns
     if 'snr2' in d0['features']:
