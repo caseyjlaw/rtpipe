@@ -4,7 +4,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
-import types, glob, os, logging
+import types, glob, os, logging, sys
 import cPickle as pickle
 import rtpipe.RT as rt
 import rtpipe.parseparams as pp
@@ -63,10 +63,11 @@ def read_noise(noisefile):
     else:
         logger.warn('structure of noise file not understood. first entry should be length 4 of 5.')
 
-def merge_segments(fileroot, scan, cleanup=True):
+def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
     """ Merges cands/noise pkl files from multiple segments to single cands/noise file.
     Output single pkl per scan with root name fileroot.
     if cleanup, it will remove segments after merging.
+    if sizelimit, it will reduce the output file to be less than this many MB.
     """
 
     candslist = glob.glob('cands_' + fileroot + '_sc' + str(scan) + 'seg*.pkl')
@@ -100,6 +101,21 @@ def merge_segments(fileroot, scan, cleanup=True):
         for kk in result.keys():
             cands[kk] = result[kk]
         segment = state.pop('segment')  # remove this key, as it has no meaning after merging segments
+
+    # optionally limit size
+    if sizelimit and len(cands):
+        if 'snr2' in d['features']:
+            snrcol = d['features'].index('snr2')
+        elif 'snr1' in d['features']:
+            snrcol = d['features'].index('snr1')
+
+        candsize = sys.getsizeof(cands[cands.keys()[0]])/1e6
+        maxlen = sizelimit/candsize
+        if len(cands) > maxlen:  # need to reduce length to newlen
+            snrs = [cands[k][snrcol] for k in cands.iterkeys()]  # take top snrs
+            snrsort = sorted(snrs, reverse=True)
+            snrmax = snrsort[maxlen]  # get min snr for given length limit
+            cands = {k: v for k,v in cands.items() if v[snrcol] > snrmax} # new cands dict
 
     # write cands to single file
     with open('cands_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
