@@ -104,6 +104,7 @@ def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
 
     # optionally limit size
     if sizelimit and len(cands):
+        logger.debug('Checking size of cands dictionary...')
         if 'snr2' in d['features']:
             snrcol = d['features'].index('snr2')
         elif 'snr1' in d['features']:
@@ -112,6 +113,7 @@ def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
         candsize = sys.getsizeof(cands[cands.keys()[0]])/1e6
         maxlen = sizelimit/candsize
         if len(cands) > maxlen:  # need to reduce length to newlen
+            logger.info('cands dictionary of length %.1f would exceed sizelimit of %d MB. Trimming to strongest %d candidates' % (len(cands), sizelimit, maxlen))
             snrs = [cands[k][snrcol] for k in cands.iterkeys()]  # take top snrs
             snrsort = sorted(snrs, reverse=True)
             snrmax = snrsort[maxlen]  # get min snr for given length limit
