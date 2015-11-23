@@ -105,24 +105,25 @@ def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
     # optionally limit size
     if sizelimit and len(cands):
         logger.debug('Checking size of cands dictionary...')
-        if 'snr2' in d['features']:
-            snrcol = d['features'].index('snr2')
-        elif 'snr1' in d['features']:
-            snrcol = d['features'].index('snr1')
+        if 'snr2' in state['features']:
+            snrcol = state['features'].index('snr2')
+        elif 'snr1' in state['features']:
+            snrcol = state['features'].index('snr1')
 
         candsize = sys.getsizeof(cands[cands.keys()[0]])/1e6
-        maxlen = sizelimit/candsize
+        maxlen = int(sizelimit/candsize)
         if len(cands) > maxlen:  # need to reduce length to newlen
             logger.info('cands dictionary of length %.1f would exceed sizelimit of %d MB. Trimming to strongest %d candidates' % (len(cands), sizelimit, maxlen))
-            snrs = [cands[k][snrcol] for k in cands.iterkeys()]  # take top snrs
+            snrs = [abs(cands[k][snrcol]) for k in cands.iterkeys()]  # take top snrs
             snrsort = sorted(snrs, reverse=True)
             snrmax = snrsort[maxlen]  # get min snr for given length limit
-            cands = {k: v for k,v in cands.items() if v[snrcol] > snrmax} # new cands dict
+            cands = {k: v for k,v in cands.items() if abs(v[snrcol]) > snrmax} # new cands dict
 
     # write cands to single file
-    with open('cands_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
-        pickle.dump(state, pkl)
-        pickle.dump(cands, pkl)
+    if len(cands):
+        with open('cands_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
+            pickle.dump(state, pkl)
+            pickle.dump(cands, pkl)
 
     # aggregate noise over segments
     logger.info('Aggregating noise over segments %s' % str(noisesegs))
@@ -135,8 +136,9 @@ def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
         noise += result
 
     # write noise to single file
-    with open('noise_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
-        pickle.dump(noise, pkl)
+    if len(noise):
+        with open('noise_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
+            pickle.dump(noise, pkl)
 
     if cleanup:
         if os.path.exists('cands_' + fileroot + '_sc' + str(scan) + '.pkl'):
