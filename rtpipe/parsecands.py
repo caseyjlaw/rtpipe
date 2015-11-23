@@ -170,6 +170,12 @@ def merge_noises(pkllist, outroot=''):
         allnoise += [[scan] + list(noise) for noise in noises]  # prepend scan number
 
     # write noise to single file
+    if os.path.exists(mergepkl):
+        logger.info('Overwriting merged noise file %s' % mergepkl)
+        os.remove(mergepkl)
+    else:
+        logger.info('Writing merged noise file %s' % mergepkl)
+
     with open(mergepkl, 'w') as pkl:
         pickle.dump(allnoise, pkl)
 
@@ -346,10 +352,7 @@ def plot_noise(fileroot, scans):
 
     # merge noise files
     mergepkl = 'noise_' + fileroot + '_merge.pkl'
-    if not os.path.exists(mergepkl):
-        merge_noises(pkllist, fileroot)
-    else:
-        logger.info('merged noise file %s already exists' % mergepkl)
+    merge_noises(pkllist, fileroot)
 
     logger.info('Reading noise file %s' % mergepkl)
 #    scan, seg, noiseperbl, flagfrac, imnoise = read_noise(mergepkl)
