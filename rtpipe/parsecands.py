@@ -764,6 +764,7 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, out
     # define state dict and overload with user prefs
     d0 = pickle.load(open(candsfile, 'r'))
     for key in kwargs.keys():
+        logger.info('Setting %s to %s' % (key, kwargs[key]))
         d0[key] = kwargs[key]
     d0['nologfile'] = True  # no need to save log
 
