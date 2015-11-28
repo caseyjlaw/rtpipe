@@ -72,71 +72,69 @@ def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
 
     candslist = glob.glob('cands_' + fileroot + '_sc' + str(scan) + 'seg*.pkl')
     noiselist = glob.glob('noise_' + fileroot + '_sc' + str(scan) + 'seg*.pkl')
-    candssegs = [candsfile.rstrip('.pkl').split('seg')[1] for candsfile in candslist]
-    noisesegs = [noisefile.rstrip('.pkl').split('seg')[1] for noisefile in noiselist]
+    candssegs = sorted([candsfile.rstrip('.pkl').split('seg')[1] for candsfile in candslist])
+    noisesegs = sorted([noisefile.rstrip('.pkl').split('seg')[1] for noisefile in noiselist])
 
     # test for good list with segments
-    assert candssegs.sort() == noisesegs.sort(), 'Different segments in candslist (%s) and noiselist (%s)' % (str(candssegs), str(noisesegs))
-    if os.path.exists('cands_' + fileroot + '_sc' + str(scan) + '.pkl'):
-        logger.info('Merged candsfile already exists for scan %d?' % scan)
-        return
-
-    if os.path.exists('noise_' + fileroot + '_sc' + str(scan) + '.pkl'):
-        logger.info('Merged noisefile already exists for scan %d?' % scan)
-        return
-
     if not candslist and not noiselist:
         logger.warn('candslist and noiselist are empty.')
         return
-    else:
-        logger.info('Aggregating cands over segments %s for fileroot %s, scan %d' % (str(candssegs), fileroot, scan))
 
     # aggregate cands over segments
-    logger.debug('%s' % candslist)
-    cands = {}
-    for candsfile in candslist:
-        with open(candsfile, 'r') as pkl:
-            state = pickle.load(pkl)
-            result = pickle.load(pkl)
-        for kk in result.keys():
-            cands[kk] = result[kk]
-        segment = state.pop('segment')  # remove this key, as it has no meaning after merging segments
+    if not os.path.exists('cands_' + fileroot + '_sc' + str(scan) + '.pkl'):
+        logger.info('Aggregating cands over segments %s for fileroot %s, scan %d' % (str(candssegs), fileroot, scan))
+        logger.debug('%s' % candslist)
 
-    # optionally limit size
-    if sizelimit and len(cands):
-        logger.debug('Checking size of cands dictionary...')
-        if 'snr2' in state['features']:
-            snrcol = state['features'].index('snr2')
-        elif 'snr1' in state['features']:
-            snrcol = state['features'].index('snr1')
+        cands = {}
+        for candsfile in candslist:
+            with open(candsfile, 'r') as pkl:
+                state = pickle.load(pkl)
+                result = pickle.load(pkl)
+            for kk in result.keys():
+                cands[kk] = result[kk]
+            segment = state.pop('segment')  # remove this key, as it has no meaning after merging segments
 
-        candsize = sys.getsizeof(cands[cands.keys()[0]])/1e6
-        maxlen = int(sizelimit/candsize)
-        if len(cands) > maxlen:  # need to reduce length to newlen
-            logger.info('cands dictionary of length %.1f would exceed sizelimit of %d MB. Trimming to strongest %d candidates' % (len(cands), sizelimit, maxlen))
-            snrs = [abs(cands[k][snrcol]) for k in cands.iterkeys()]  # take top snrs
-            snrsort = sorted(snrs, reverse=True)
-            snrmax = snrsort[maxlen]  # get min snr for given length limit
-            cands = {k: v for k,v in cands.items() if abs(v[snrcol]) > snrmax} # new cands dict
+        # optionally limit size
+        if sizelimit and len(cands):
+            logger.debug('Checking size of cands dictionary...')
+            if 'snr2' in state['features']:
+                snrcol = state['features'].index('snr2')
+            elif 'snr1' in state['features']:
+                snrcol = state['features'].index('snr1')
 
-    # write cands to single file
-    with open('cands_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
-        pickle.dump(state, pkl)
-        pickle.dump(cands, pkl)
+            candsize = sys.getsizeof(cands[cands.keys()[0]])/1e6
+            maxlen = int(sizelimit/candsize)
+            if len(cands) > maxlen:  # need to reduce length to newlen
+                logger.info('cands dictionary of length %.1f would exceed sizelimit of %d MB. Trimming to strongest %d candidates' % (len(cands), sizelimit, maxlen))
+                snrs = [abs(cands[k][snrcol]) for k in cands.iterkeys()]  # take top snrs
+                snrsort = sorted(snrs, reverse=True)
+                snrmax = snrsort[maxlen]  # get min snr for given length limit
+                cands = {k: v for k,v in cands.items() if abs(v[snrcol]) > snrmax} # new cands dict
+
+        # write cands to single file
+        with open('cands_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
+            pickle.dump(state, pkl)
+            pickle.dump(cands, pkl)
+
+    else:
+        logger.warn('Merged candsfile already exists for scan %d' % scan)
 
     # aggregate noise over segments
-    logger.info('Aggregating noise over segments %s' % str(noisesegs))
-    logger.debug('%s' % noiselist)
+    if not os.path.exists('noise_' + fileroot + '_sc' + str(scan) + '.pkl'):
+        logger.info('Aggregating noise over segments %s for fileroot %s, scan %d' % (str(noisesegs), fileroot, scan))
+        logger.debug('%s' % noiselist)
 
-    noise = []
-    for noisefile in noiselist:
-        with open(noisefile, 'r') as pkl:
-            result = pickle.load(pkl)   # gets all noises for segment as list
-        noise += result
+        noise = []
+        for noisefile in noiselist:
+            with open(noisefile, 'r') as pkl:
+                result = pickle.load(pkl)   # gets all noises for segment as list
+            noise += result
 
-    # write noise to single file
-    with open('noise_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
-        pickle.dump(noise, pkl)
+        # write noise to single file
+        with open('noise_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
+            pickle.dump(noise, pkl)
+    else:
+        logger.warn('Merged noisefile already exists for scan %d' % scan)
 
     if cleanup:
         if os.path.exists('cands_' + fileroot + '_sc' + str(scan) + '.pkl'):
