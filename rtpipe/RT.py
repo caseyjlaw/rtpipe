@@ -98,14 +98,14 @@ def pipeline(d, segments):
                         logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s'
                                      % (segment, str(data_read.mean()), str(data.mean())))
 
-                        if d['domock']:
+                        if d['nmock']:
                             # assume that rms in the middle of the segment is
                             # characteristic of noise throughout the segment
                             falsecands = {}
                             rms = data[d['readints']/2].real.std()/n.sqrt(d['npol']*d['nbl']*d['nchan'])
                             dt = 1 # pulse width in integrations
-                            for i in range(0, d['readints'], 5):
-                                (loff, moff, A, DM) = make_transient(rms, max(d['dmarr']))
+                            for i in n.random.randint(0, d['readints'], d['nmock']):  # add nmock transients at random ints
+                                (loff, moff, A, DM) = make_transient(rms, max(d['dmarr']), Amin=d['sigma_image1'])
                                 logger.info('Adding mock transient at (l, m) = (%f, %f) at int %d, est SNR %.1f, DM %.1f ' % (loff, moff, i, A/rms, DM))
                                 add_transient(d, data, u, v, w, loff, moff, i, A, DM, dt)
                                 candid =  (int(segment), int(i), DM, int(0), int(0))
