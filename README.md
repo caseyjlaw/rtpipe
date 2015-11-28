@@ -28,6 +28,10 @@ pwkit can be built similarly, but requires environment variables set like so to 
 
 The trick here is being sure that the python interpreter is binary-compatible with that used to build CASA. pwkit recommends using conda as a more stable and portable solution than that given here.
 
+If using conda, can also install pwkit with `conda install -c pkgw casa-python casa-data` and then simply `pip install rtpipe`!
+
+[![Binder](http://mybinder.org/badge.svg)](http://mybinder.org/repo/caseyjlaw/docker-rtpipe)
+
 Contributors
 ---
 [Casey Law](http://www.twitter.com/caseyjlaw)
