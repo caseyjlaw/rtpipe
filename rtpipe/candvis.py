@@ -19,6 +19,8 @@ def plot_interactive(mergepkl, noisepkl='', thresh=6.0, savehtml=True, urlbase='
         d = pickle.load(pkl)
         cands = pickle.load(pkl)
 
+    assert 'scan' in d['featureind'], 'This does not appear to be a merged cands pkl file.'
+
     # try to find noisepkl
     if not noisepkl:
         noisetest = os.path.join(os.path.dirname(mergepkl), 'noise' + os.path.basename(mergepkl).lstrip('cands'))
@@ -42,6 +44,7 @@ def plot_interactive(mergepkl, noisepkl='', thresh=6.0, savehtml=True, urlbase='
     snr,dm,l1,m1,time,specstd,imkur,key,sizes,colors,zs = candfilter(d, cands, thresh)
     scan, seg, candint, dmind, dtind, beamnum = zip(*key)  # unpack key into individual columns
     source = ColumnDataSource(data=dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind, dtind=dtind, sizes=sizes, colors=colors, zs=zs, key=key))
+
     snr,dm,l1,m1,time,specstd,imkur,key,sizes,colors,zs = candfilter(d, cands, -1*thresh)
     scan, seg, candint, dmind, dtind, beamnum = zip(*key)  # unpack key into individual columns
     sourceneg = ColumnDataSource(data=dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind, dtind=dtind, sizes=sizes, colors=colors, zs=zs, abssnr=n.abs(snr), key=key))
@@ -180,10 +183,12 @@ def candfilter(d, cands, thresh=0):
     return snr, dm, l1, m1, time, specstd, imkur, key, sizes, colors, zs
 
 def calcsize(snr, sizerange=(3,60)):
-    smax = max([abs(s) for s in snr])
-    smin = min([abs(s) for s in snr])
+    """ Takes snr list and returns value to scale symbol size.
+    """
 
     if snr:
+        smax = max([abs(s) for s in snr])
+        smin = min([abs(s) for s in snr])
         return [sizerange[0] + sizerange[1] * ((abs(s) - smin)/(smax - smin))**3 for s in snr]
     else:
         return []

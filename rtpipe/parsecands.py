@@ -131,8 +131,9 @@ def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
             noise += result
 
         # write noise to single file
-        with open('noise_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
-            pickle.dump(noise, pkl)
+        if len(noise):
+            with open('noise_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
+                pickle.dump(noise, pkl)
     else:
         logger.warn('Merged noisefile already exists for scan %d' % scan)
 
@@ -744,7 +745,7 @@ def plot_psrrates(pkllist, outname=''):
 
     plt.savefig(outname)
 
-def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, outname='', returndata=False, **kwargs):
+def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, returndata=False, outname='', **kwargs):
     """ Reproduce detection of a single candidate for plotting or inspection.
     candsfile can be merge or single-scan cands pkl file. Difference defined by presence of scan in d['featureind'].
     candidate to reproduce is selected by candnum (from ordered list) or by giving cand location.
@@ -847,109 +848,104 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, out
         # get cand data
         d = rt.set_pipeline(filename, scan, **d0)
         im, data = rt.pipeline_reproduce(d, loc[candnum], product='imdata')
-        logger.debug('(image, data) shape: (%s, %s)' % (str(im.shape), str(data.shape)))
 
-        # calc source location
-        snrmin = im.min()/im.std()
-        snrmax = im.max()/im.std()
-        if snrmax > -1*snrmin:
-            l1, m1 = rt.calc_lm(d, im, minmax='max')
-            snrobs = snrmax
-        else:
-            l1, m1 = rt.calc_lm(d, im, minmax='min')
-            snrobs = snrmin
-        pt_ra, pt_dec = d['radec']
-        src_ra, src_dec = source_location(pt_ra, pt_dec, l1, m1)
-        logger.info('Peak (RA, Dec): %s, %s' % (src_ra, src_dec))
-
-        # plot it
-        logger.info('Plotting...')
-        fig = plt.Figure(figsize=(8.5,8))
-        ax = fig.add_subplot(221, axisbg='white')
-
-        # # first plot dm-t distribution beneath
-#        times0 = int2mjd(d, loc)
-#        times0 = times0 - times0[0]
-#        times = times0[candnum]
-#        dms0 = n.array(dmarrorig)[list(loc[:,dmindcol])]
-#        dms = dmarrorig[loc[candnum,dmindcol]]
-#        snr0 = [prop[i][snrcol] for i in range(len(prop))]
-#        snr = snr0[candnum]
-#        snrmin = 0.8 * min(d['sigma_image1'], d['sigma_image2'])
-        # plot positive
-#        good = n.where(snr0 > 0)[0]
-#        ax.scatter(times0[good], dms0[good], s=(snr0[good]-snrmin)**5, facecolor='none', linewidth=0.2, clip_on=False)
-#        ax.scatter(times, dms, s=(snr-snrmin)**5, facecolor='none', linewidth=2, clip_on=False)
-        # plot negative
-#        good = n.where(snr0 < 0)
-#        ax.scatter(times0[good], dms0[good], s=(n.abs(snr0)[good]-snrmin)**5, marker='x', edgecolors='k', linewidth=0.2, clip_on=False)
-#        ax.set_ylim(dmarrorig[0], dmarrorig[-1])
-#        ax.set_xlim(times0.min(), times0.max())
-#        ax.set_xlabel('Time (s)')
-#        ax.set_ylabel('DM (pc/cm3)')
-
-        # # then add annotating info
-        ax.text(0.1, 0.9, d['fileroot'], fontname='sans-serif', transform = ax.transAxes)
-        ax.text(0.1, 0.8, 'sc %d, seg %d, int %d, DM %.1f, dt %d' % (scan, segment, loc[candnum, intcol], dmarrorig[loc[candnum, dmindcol]], dtarrorig[loc[candnum,dtindcol]]), fontname='sans-serif', transform = ax.transAxes)
-
-        ax.text(0.1, 0.7, 'Peak: (' + str(n.round(l1, 3)) + '\' ,' + str(n.round(m1, 3)) + '\'), SNR: ' + str(n.round(snrobs, 1)), fontname='sans-serif', transform = ax.transAxes)
-
-        # plot dynamic spectra
-        left, width = 0.6, 0.2
-        bottom, height = 0.2, 0.7
-        rect_dynsp = [left, bottom, width, height]
-        rect_lc = [left, bottom-0.1, width, 0.1]    
-        rect_sp = [left+width, bottom, 0.1, height]
-        ax_dynsp = fig.add_axes(rect_dynsp)
-        ax_lc = fig.add_axes(rect_lc)    
-        ax_sp = fig.add_axes(rect_sp)
-        spectra = n.swapaxes(data.real,0,1)      # seems that latest pickle actually contains complex values in spectra...
-        dd = n.concatenate( (spectra[...,0], n.zeros_like(spectra[...,0]), spectra[...,1]), axis=1)    # make array for display with white space between two pols
-        impl = ax_dynsp.imshow(dd, origin='lower', interpolation='nearest', aspect='auto', cmap=plt.get_cmap('Greys'))
-        ax_dynsp.text(0.5, 0.95, 'RR LL', horizontalalignment='center', verticalalignment='center', fontsize=16, color='w', transform = ax_dynsp.transAxes)
-        ax_dynsp.set_yticks(range(0,len(d['freq']),30))
-        ax_dynsp.set_yticklabels(d['freq'][::30])
-        ax_dynsp.set_ylabel('Freq (GHz)')
-        ax_dynsp.set_xlabel('Integration (rel)')
-        spectrum = spectra[:,len(spectra[0])/2].mean(axis=1)      # assume pulse in middle bin. get stokes I spectrum. **this is wrong in a minority of cases.**
-        ax_sp.plot(spectrum, range(len(spectrum)), 'k.')
-        ax_sp.plot(n.zeros(len(spectrum)), range(len(spectrum)), 'k:')
-        ax_sp.set_ylim(0, len(spectrum))
-        ax_sp.set_yticklabels([])
-        xmin,xmax = ax_sp.get_xlim()
-        ax_sp.set_xticks(n.linspace(xmin,xmax,3).round(2))
-        ax_sp.set_xlabel('Flux (Jy)')
-        lc = dd.mean(axis=0)
-        lenlc = n.where(lc == 0)[0][0]
-        ax_lc.plot(range(0,lenlc)+range(2*lenlc,3*lenlc), list(lc)[:lenlc] + list(lc)[-lenlc:], 'k.')
-        ax_lc.plot(range(0,lenlc)+range(2*lenlc,3*lenlc), list(n.zeros(lenlc)) + list(n.zeros(lenlc)), 'k:')
-        ax_lc.set_xlabel('Integration')
-        ax_lc.set_ylabel('Flux (Jy)')
-        ax_lc.set_xticks([0,0.5*lenlc,lenlc,1.5*lenlc,2*lenlc,2.5*lenlc,3*lenlc])
-        ax_lc.set_xticklabels(['0',str(lenlc/2),str(lenlc),'','0',str(lenlc/2),str(lenlc)])
-        ymin,ymax = ax_lc.get_ylim()
-        ax_lc.set_yticks(n.linspace(ymin,ymax,3).round(2))
-
-        # image
-        ax = fig.add_subplot(223)
-        fov = n.degrees(1./d['uvres'])*60.
-#        ax.scatter(((xpix/2-srcra[0])-0.05*xpix)*fov/xpix, (ypix/2-srcdec[0])*fov/ypix, s=80, marker='<', facecolor='none')
-#        ax.scatter(((xpix/2-srcra[0])+0.05*xpix)*fov/xpix, (ypix/2-srcdec[0])*fov/ypix, s=80, marker='>', facecolor='none')
-        impl = ax.imshow(im.transpose(), aspect='equal', origin='upper', interpolation='nearest', extent=[fov/2, -fov/2, -fov/2, fov/2], cmap=plt.get_cmap('Greys'), vmin=0, vmax=0.5*im.max())
-        ax.set_xlabel('RA Offset (arcmin)')
-        ax.set_ylabel('Dec Offset (arcmin)')
-
+        # optionally plot
         if savefile:
-            if not outname:
-                outname = os.path.join(d['workdir'], 'cands_%s_sc%d-seg%d-i%d-dm%d-dt%d.png' % (d['fileroot'], scan, segment, loc[candnum, intcol], dmind, dtind))
-            try:
-                canvas = FigureCanvasAgg(fig)
-                canvas.print_figure(outname)
-            except ValueError:
-                logger.warn('Could not write figure to %s' % outname)
+            loclabel = scan, segment, candint, dmind, dtind, beamnum
+            make_cand_plot(d, im, data, loclabel, outname=outname)
 
+        # optionally return data
         if returndata:
             return (im, data)
+        
+def make_cand_plot(d, im, data, loclabel, outname=''):
+    """ Builds candidate plot.
+    Expects phased, dedispersed data (cut out in time, dual-pol), image, and metadata
+    loclabel is used to label the plot with (scan, segment, candint, dmind, dtind, beamnum).
+    """
+
+    # given d, im, data, make plot
+    logger.info('Plotting...')
+    logger.debug('(image, data) shape: (%s, %s)' % (str(im.shape), str(data.shape)))
+
+    assert len(loclabel) == 6, 'loclabel should have (scan, segment, candint, dmind, dtind, beamnum)'
+    scan, segment, candint, dmind, dtind, beamnum = loclabel
+
+    # calc source location
+    snrmin = im.min()/im.std()
+    snrmax = im.max()/im.std()
+    if snrmax > -1*snrmin:
+        l1, m1 = rt.calc_lm(d, im, minmax='max')
+        snrobs = snrmax
+    else:
+        l1, m1 = rt.calc_lm(d, im, minmax='min')
+        snrobs = snrmin
+    pt_ra, pt_dec = d['radec']
+    src_ra, src_dec = source_location(pt_ra, pt_dec, l1, m1)
+    logger.info('Peak (RA, Dec): %s, %s' % (src_ra, src_dec))
+
+    # build plot
+    fig = plt.Figure(figsize=(8.5,8))
+    ax = fig.add_subplot(221, axisbg='white')
+
+    # add annotating info
+    ax.text(0.1, 0.9, d['fileroot'], fontname='sans-serif', transform = ax.transAxes)
+    ax.text(0.1, 0.8, 'sc %d, seg %d, int %d, DM %.1f, dt %d' % (scan, segment, candint, d['dmarr'][dmind], d['dtarr'][dtind]), fontname='sans-serif', transform = ax.transAxes)
+    ax.text(0.1, 0.7, 'Peak: (' + str(n.round(l1, 3)) + '\' ,' + str(n.round(m1, 3)) + '\'), SNR: ' + str(n.round(snrobs, 1)), fontname='sans-serif', transform = ax.transAxes)
+
+    # plot dynamic spectra
+    left, width = 0.6, 0.2
+    bottom, height = 0.2, 0.7
+    rect_dynsp = [left, bottom, width, height]
+    rect_lc = [left, bottom-0.1, width, 0.1]    
+    rect_sp = [left+width, bottom, 0.1, height]
+    ax_dynsp = fig.add_axes(rect_dynsp)
+    ax_lc = fig.add_axes(rect_lc)    
+    ax_sp = fig.add_axes(rect_sp)
+    spectra = n.swapaxes(data.real,0,1)      # seems that latest pickle actually contains complex values in spectra...
+    dd = n.concatenate( (spectra[...,0], n.zeros_like(spectra[...,0]), spectra[...,1]), axis=1)    # make array for display with white space between two pols
+    impl = ax_dynsp.imshow(dd, origin='lower', interpolation='nearest', aspect='auto', cmap=plt.get_cmap('Greys'))
+    ax_dynsp.text(0.5, 0.95, 'RR LL', horizontalalignment='center', verticalalignment='center', fontsize=16, color='w', transform = ax_dynsp.transAxes)
+    ax_dynsp.set_yticks(range(0,len(d['freq']),30))
+    ax_dynsp.set_yticklabels(d['freq'][::30])
+    ax_dynsp.set_ylabel('Freq (GHz)')
+    ax_dynsp.set_xlabel('Integration (rel)')
+    spectrum = spectra[:,len(spectra[0])/2].mean(axis=1)      # assume pulse in middle bin. get stokes I spectrum. **this is wrong in a minority of cases.**
+    ax_sp.plot(spectrum, range(len(spectrum)), 'k.')
+    ax_sp.plot(n.zeros(len(spectrum)), range(len(spectrum)), 'k:')
+    ax_sp.set_ylim(0, len(spectrum))
+    ax_sp.set_yticklabels([])
+    xmin,xmax = ax_sp.get_xlim()
+    ax_sp.set_xticks(n.linspace(xmin,xmax,3).round(2))
+    ax_sp.set_xlabel('Flux (Jy)')
+    lc = dd.mean(axis=0)
+    lenlc = n.where(lc == 0)[0][0]
+    ax_lc.plot(range(0,lenlc)+range(2*lenlc,3*lenlc), list(lc)[:lenlc] + list(lc)[-lenlc:], 'k.')
+    ax_lc.plot(range(0,lenlc)+range(2*lenlc,3*lenlc), list(n.zeros(lenlc)) + list(n.zeros(lenlc)), 'k:')
+    ax_lc.set_xlabel('Integration')
+    ax_lc.set_ylabel('Flux (Jy)')
+    ax_lc.set_xticks([0,0.5*lenlc,lenlc,1.5*lenlc,2*lenlc,2.5*lenlc,3*lenlc])
+    ax_lc.set_xticklabels(['0',str(lenlc/2),str(lenlc),'','0',str(lenlc/2),str(lenlc)])
+    ymin,ymax = ax_lc.get_ylim()
+    ax_lc.set_yticks(n.linspace(ymin,ymax,3).round(2))
+
+    # image
+    ax = fig.add_subplot(223)
+    fov = n.degrees(1./d['uvres'])*60.
+#    ax.scatter(((xpix/2-srcra[0])-0.05*xpix)*fov/xpix, (ypix/2-srcdec[0])*fov/ypix, s=80, marker='<', facecolor='none')
+#    ax.scatter(((xpix/2-srcra[0])+0.05*xpix)*fov/xpix, (ypix/2-srcdec[0])*fov/ypix, s=80, marker='>', facecolor='none')
+    impl = ax.imshow(im.transpose(), aspect='equal', origin='upper', interpolation='nearest', extent=[fov/2, -fov/2, -fov/2, fov/2], cmap=plt.get_cmap('Greys'), vmin=0, vmax=0.5*im.max())
+    ax.set_xlabel('RA Offset (arcmin)')
+    ax.set_ylabel('Dec Offset (arcmin)')
+
+    if not outname:
+        outname = os.path.join(d['workdir'], 'cands_%s_sc%d-seg%d-i%d-dm%d-dt%d.png' % (d['fileroot'], scan, segment, candint, dmind, dtind))
+
+    try:
+        canvas = FigureCanvasAgg(fig)
+        canvas.print_figure(outname)
+    except ValueError:
+        logger.warn('Could not write figure to %s' % outname)
 
 def mock_fluxratio(candsfile, mockcandsfile, dmbin=0):
     """ Associates mock cands with detections in candsfile by integration.

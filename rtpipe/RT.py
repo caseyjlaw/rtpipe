@@ -280,16 +280,12 @@ def pipeline_reproduce(d, candloc, product='data'):
 
     elif product == 'dataph':
         logger.info('Reproducing data...')
-        d['dmarr'] = [d['dmarr'][dmind]]
-        d['dtarr'] = [d['dtarr'][dtind]]
-        data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w)
+        data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w, dmind, dtind)
         return data
 
     elif product == 'imdata':
         logger.info('Reproducing candidate...')
-        d['dmarr'] = [d['dmarr'][dmind]]
-        d['dtarr'] = [d['dtarr'][dtind]]
-        im, data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w, candint)
+        im, data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w, dmind, dtind, candint)
         return im, data
 
     else:
@@ -410,12 +406,11 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
     logger.info('Found %d cands in scan %d segment %d of %s. ' % (len(cands), d['scan'], d['segment'], d['filename']))
     return cands
 
-def runreproduce(d, data_mem, data_resamp_mem, u, v, w, candint=-1, twindow=30):
+def runreproduce(d, data_mem, data_resamp_mem, u, v, w, dmind, dtind, candint=-1, twindow=30):
     """ Reproduce function, much like search.
     If no candint is given, it returns resampled data. Otherwise, returns image and rephased data.
     """
 
-    dmind = 0; dtind = 0
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
 
     with closing(mp.Pool(1, initializer=initresamp, initargs=(data_mem, data_resamp_mem))) as repropool:
