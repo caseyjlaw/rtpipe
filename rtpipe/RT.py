@@ -87,7 +87,7 @@ def pipeline(d, segments):
                 for segment in results.keys():
                     logger.debug('pipeline waiting on prep to complete for segment %d' % segment)
                     if results[segment].ready():
-                        job = results.pop(segment)   # returning d is a hack here
+                        job = results.pop(segment)
                         d = job.get()
                     else:
                         continue
@@ -399,6 +399,22 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
                     for imageresult in imageresults:
                         for kk in imageresult.keys():
                             cands[kk] = imageresult[kk]
+
+        if 'sigma_plot' in d:
+            from rtpipe.parsecands import make_cand_plot as makecp
+            if 'snr2' in d['features']:
+                snrcol = d['features'].index('snr2')
+            elif 'snr1' in d['features']:
+                snrcol = d['features'].index('snr1')
+            maxsnr = max([value[snrcol] for value in cands.itervalues()])
+            if maxsnr > d['sigma_plot']:
+                segment, candint, dmind, dtind, beamnum = [key for key, value in cands.iteritems() if value[snrcol] == maxsnr][0]
+                logger.info('Making cand plot for scan %d, segment %d, candint %d, dmind %d, dtint %d with SNR %.1f.' % (d['scan'], segment, candint, dmind, dtind, maxsnr))
+                im, data = runreproduce(d, data_mem, data_resamp_mem, u, v, w, dmind, dtind, candint)
+                loclabel = [d['scan'], segment, candint, dmind, dtind, beamnum]
+                makecp(d, im, data, loclabel)
+            else:
+                logger.info('No candidate in segment %d above sigma_plot %.1f' % (d['segment'], d['sigma_plot']))
 
     else:
         logger.warn('Data for processing is zeros. Moving on...')
