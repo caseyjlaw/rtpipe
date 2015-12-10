@@ -310,7 +310,7 @@ def dataflag(d, data_read):
 
     for flag in d['flaglist']:
         mode, sig, conv = flag
-        resultlist = []
+#        resultlist = []
 #        with closing(mp.Pool(4, initializer=initreadonly, initargs=(data_read_mem,))) as flagpool:
         for ss in d['spw']:
             chans = n.arange(d['spw_chanr_select'][ss][0], d['spw_chanr_select'][ss][1])
