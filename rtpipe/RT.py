@@ -406,7 +406,8 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
                 snrcol = d['features'].index('snr2')
             elif 'snr1' in d['features']:
                 snrcol = d['features'].index('snr1')
-            maxsnr = max([value[snrcol] for value in cands.itervalues()])
+
+            maxsnr = max([0] + [value[snrcol] for value in cands.itervalues()])  # be sure max includes at least one value
             if maxsnr > d['sigma_plot']:
                 segment, candint, dmind, dtind, beamnum = [key for key, value in cands.iteritems() if value[snrcol] == maxsnr][0]
                 logger.info('Making cand plot for scan %d, segment %d, candint %d, dmind %d, dtint %d with SNR %.1f.' % (d['scan'], segment, candint, dmind, dtind, maxsnr))
