@@ -25,8 +25,8 @@ class Params(object):
         self.uvres = 0; self.npix = 0; self.uvoversample = 1.
         self.flaglist = [('badchtslide', 4., 0.) , ('badap', 3., 0.2), ('blstd', 3.0, 0.05)]
         self.flagantsol = True; self.gainfile = ''; self.bpfile = ''; self.fileroot = ''; self.applyonlineflags = True
-        self.savenoise = False; self.savecands = False
-        self.writebdfpkl = False; self.domock = False
+        self.savenoise = False; self.savecands = False; self.nologfile=False
+        self.writebdfpkl = False; self.nmock = 0
                            
         # overload with the parameter file values, if provided
         if len(paramfile):

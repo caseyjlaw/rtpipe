@@ -87,7 +87,7 @@ def pipeline(d, segments):
                 for segment in results.keys():
                     logger.debug('pipeline waiting on prep to complete for segment %d' % segment)
                     if results[segment].ready():
-                        job = results.pop(segment)   # returning d is a hack here
+                        job = results.pop(segment)
                         d = job.get()
                     else:
                         continue
@@ -98,14 +98,14 @@ def pipeline(d, segments):
                         logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s'
                                      % (segment, str(data_read.mean()), str(data.mean())))
 
-                        if d['domock']:
+                        if d['nmock']:
                             # assume that rms in the middle of the segment is
                             # characteristic of noise throughout the segment
                             falsecands = {}
                             rms = data[d['readints']/2].real.std()/n.sqrt(d['npol']*d['nbl']*d['nchan'])
                             dt = 1 # pulse width in integrations
-                            for i in range(0, d['readints'], 5):
-                                (loff, moff, A, DM) = make_transient(rms, max(d['dmarr']))
+                            for i in n.random.randint(0, d['readints'], d['nmock']):  # add nmock transients at random ints
+                                (loff, moff, A, DM) = make_transient(rms, max(d['dmarr']), Amin=d['sigma_image1'])
                                 logger.info('Adding mock transient at (l, m) = (%f, %f) at int %d, est SNR %.1f, DM %.1f ' % (loff, moff, i, A/rms, DM))
                                 add_transient(d, data, u, v, w, loff, moff, i, A, DM, dt)
                                 candid =  (int(segment), int(i), DM, int(0), int(0))
@@ -280,16 +280,12 @@ def pipeline_reproduce(d, candloc, product='data'):
 
     elif product == 'dataph':
         logger.info('Reproducing data...')
-        d['dmarr'] = [d['dmarr'][dmind]]
-        d['dtarr'] = [d['dtarr'][dtind]]
-        data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w)
+        data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w, dmind, dtind)
         return data
 
     elif product == 'imdata':
         logger.info('Reproducing candidate...')
-        d['dmarr'] = [d['dmarr'][dmind]]
-        d['dtarr'] = [d['dtarr'][dtind]]
-        im, data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w, candint)
+        im, data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w, dmind, dtind, candint)
         return im, data
 
     else:
@@ -314,7 +310,7 @@ def dataflag(d, data_read):
 
     for flag in d['flaglist']:
         mode, sig, conv = flag
-        resultlist = []
+#        resultlist = []
 #        with closing(mp.Pool(4, initializer=initreadonly, initargs=(data_read_mem,))) as flagpool:
         for ss in d['spw']:
             chans = n.arange(d['spw_chanr_select'][ss][0], d['spw_chanr_select'][ss][1])
@@ -404,18 +400,34 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
                         for kk in imageresult.keys():
                             cands[kk] = imageresult[kk]
 
+        if 'sigma_plot' in d:
+            from rtpipe.parsecands import make_cand_plot as makecp
+            if 'snr2' in d['features']:
+                snrcol = d['features'].index('snr2')
+            elif 'snr1' in d['features']:
+                snrcol = d['features'].index('snr1')
+
+            maxsnr = max([0] + [value[snrcol] for value in cands.itervalues()])  # be sure max includes at least one value
+            if maxsnr > d['sigma_plot']:
+                segment, candint, dmind, dtind, beamnum = [key for key, value in cands.iteritems() if value[snrcol] == maxsnr][0]
+                logger.info('Making cand plot for scan %d, segment %d, candint %d, dmind %d, dtint %d with SNR %.1f.' % (d['scan'], segment, candint, dmind, dtind, maxsnr))
+                im, data = runreproduce(d, data_mem, data_resamp_mem, u, v, w, dmind, dtind, candint)
+                loclabel = [d['scan'], segment, candint, dmind, dtind, beamnum]
+                makecp(d, im, data, loclabel)
+            else:
+                logger.info('No candidate in segment %d above sigma_plot %.1f' % (d['segment'], d['sigma_plot']))
+
     else:
         logger.warn('Data for processing is zeros. Moving on...')
 
     logger.info('Found %d cands in scan %d segment %d of %s. ' % (len(cands), d['scan'], d['segment'], d['filename']))
     return cands
 
-def runreproduce(d, data_mem, data_resamp_mem, u, v, w, candint=-1, twindow=30):
+def runreproduce(d, data_mem, data_resamp_mem, u, v, w, dmind, dtind, candint=-1, twindow=30):
     """ Reproduce function, much like search.
     If no candint is given, it returns resampled data. Otherwise, returns image and rephased data.
     """
 
-    dmind = 0; dtind = 0
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
 
     with closing(mp.Pool(1, initializer=initresamp, initargs=(data_mem, data_resamp_mem))) as repropool:
