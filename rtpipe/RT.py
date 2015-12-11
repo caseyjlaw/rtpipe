@@ -533,7 +533,7 @@ def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[])
 
     import rtpipe.parseparams as pp
 
-    assert len(candloc) == 6, 'candloc should be (segment, candint, dmind, dtind, beamnum).'
+    assert len(candloc) == 6, 'candloc should be (scan, segment, candint, dmind, dtind, beamnum).'
     scan, segment, candint, dmind, dtind, beamnum = candloc
 
     # if file not at stated full path, assume it is local
