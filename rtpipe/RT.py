@@ -304,7 +304,7 @@ def meantsubpool(d, data_read):
     with closing(mp.Pool(1, initializer=initreadonly, initargs=(data_read_mem,))) as tsubpool:
         tsubpool.map(tsubpart, blr)
 
-def dataflag(d, data_read, removebadspwpol=True):
+def dataflag(d, data_read):
     """ Flagging data in single process 
     """
 
