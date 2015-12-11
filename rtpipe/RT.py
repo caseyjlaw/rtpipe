@@ -304,7 +304,7 @@ def meantsubpool(d, data_read):
     with closing(mp.Pool(1, initializer=initreadonly, initargs=(data_read_mem,))) as tsubpool:
         tsubpool.map(tsubpart, blr)
 
-def dataflag(d, data_read):
+def dataflag(d, data_read, removebadspwpol=True):
     """ Flagging data in single process 
     """
 
@@ -317,6 +317,22 @@ def dataflag(d, data_read):
             for pol in range(d['npol']):
                 status = rtlib.dataflag(data_read, chans, pol, d, sig, mode, conv)
                 logger.info(status)
+
+    # hack to get rid of bad spw/pol combos whacked by rfi
+    if 'badspwpol' in d:
+        logger.info('Comparing overall power between spw/pol. Removing those with %d times typical value' % d['badspwpol'])
+        spwpol = {}
+        for spw in d['spw']:
+            chans = n.arange(d['spw_chanr_select'][spw][0], d['spw_chanr_select'][spw][1])
+            for pol in range(d['npol']):
+                spwpol[(spw, pol)] = n.abs(data_read[:,:,chans,pol]).std()
+        
+        meanstd = n.mean(spwpol.values())
+        for (spw,pol) in spwpol:
+            if spwpol[(spw, pol)] > d['badspwpol']*meanstd:
+                logger.info('Flagging all of (spw %d, pol %d) for excess noise.' % (spw, pol))
+                chans = n.arange(d['spw_chanr_select'][spw][0], d['spw_chanr_select'][spw][1])
+                data_read[:,:,chans,pol] = 0j
 
 def dataflagatom(chans, pol, d, sig, mode, conv):
     """ Wrapper function to get shared memory as numpy array into pool
