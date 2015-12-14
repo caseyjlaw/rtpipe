@@ -847,6 +847,8 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
             if not hasattr(params, key):
                 junk = d0.pop(key)
 
+        d0['npix'] = 0; d0['uvres'] = 0
+
         # get cand data
         d = rt.set_pipeline(filename, scan, **d0)
         im, data = rt.pipeline_reproduce(d, loc[candnum], product='imdata')
@@ -859,7 +861,20 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
         # optionally return data
         if returndata:
             return (im, data)
-        
+
+def refinecand(candsfile, candloc=[], threshold=0):
+    """ Helper function to interact with merged cands file and refine analysis
+    If no candloc (len 6: scan, segment, candint, dmind, dtind, beamnum) is provided, it will print all cands above threshold.
+    """
+
+    if not candloc:
+        plot_cand(candsfile, candloc=[], candnum=-1, threshold=threshold, savefile=False, returndata=False)
+    else:
+        d = pickle.load(open(candsfile, 'r'))
+        cands = rt.pipeline_refine(d, candloc)
+
+    return cands
+       
 def make_cand_plot(d, im, data, loclabel, outname=''):
     """ Builds candidate plot.
     Expects phased, dedispersed data (cut out in time, dual-pol), image, and metadata
@@ -893,7 +908,7 @@ def make_cand_plot(d, im, data, loclabel, outname=''):
     # add annotating info
     ax.text(0.1, 0.9, d['fileroot'], fontname='sans-serif', transform = ax.transAxes)
     ax.text(0.1, 0.8, 'sc %d, seg %d, int %d, DM %.1f, dt %d' % (scan, segment, candint, d['dmarr'][dmind], d['dtarr'][dtind]), fontname='sans-serif', transform = ax.transAxes)
-    ax.text(0.1, 0.7, 'Peak: (' + str(n.round(l1, 3)) + '\' ,' + str(n.round(m1, 3)) + '\'), SNR: ' + str(n.round(snrobs, 1)), fontname='sans-serif', transform = ax.transAxes)
+    ax.text(0.1, 0.7, 'Peak: (' + str(n.round(l1, 3)) + ' ,' + str(n.round(m1, 3)) + '), SNR: ' + str(n.round(snrobs, 1)), fontname='sans-serif', transform = ax.transAxes)
 
     # plot dynamic spectra
     left, width = 0.6, 0.2
