@@ -862,7 +862,7 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
         if returndata:
             return (im, data)
 
-def refinecand(candsfile, candloc=[], threshold=0):
+def refine_cand(candsfile, candloc=[], threshold=0):
     """ Helper function to interact with merged cands file and refine analysis
     If no candloc (len 6: scan, segment, candint, dmind, dtind, beamnum) is provided, it will print all cands above threshold.
     """
