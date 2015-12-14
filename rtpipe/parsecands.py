@@ -278,21 +278,23 @@ def plot_summary(fileroot, scans, remove=[], snrmin=0, snrmax=999):
     snrmin, snrmax define how to filter cands read and written by abs(snr)
     """
 
-    mergepkl = 'cands_' + fileroot + '_merge.pkl'
-
-    if fileroot != mergepkl:      # if fileroot is not merge file, create merge file
+    try:
+        # see if this is a mergepkl
+        d = pickle.load(open(fileroot, 'r'))
+        locs, props = read_candidates(fileroot, snrmin=snrmin, snrmax=snrmax)
+        mergepkl = fileroot
+        logger.info('fileroot is a mergefile. Reading...')
+    except:
+        logger.info('Looking for candsfiles for %s' % fileroot)
         pkllist = []
         for scan in scans:
             pklfile = 'cands_' + fileroot + '_sc' + str(scan) + '.pkl'
             if os.path.exists(pklfile):
                 pkllist.append(pklfile)
         merge_cands(pkllist, outroot=fileroot, remove=remove, snrmin=snrmin, snrmax=snrmax)
-    else:
-        logger.info('fileroot seems to be mergefile...')
-        outroot = fileroot.split('_')[1]
-
-    d = pickle.load(open(mergepkl, 'r'))
-    locs, props = read_candidates(mergepkl, snrmin=snrmin, snrmax=snrmax)
+        mergepkl = 'cands_' + fileroot + '_merge.pkl'
+        d = pickle.load(open(mergepkl, 'r'))
+        locs, props = read_candidates(mergepkl, snrmin=snrmin, snrmax=snrmax)
 
     if not len(locs):
         logger.info('No candidates in mergepkl.')
