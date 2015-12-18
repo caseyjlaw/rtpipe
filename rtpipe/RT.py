@@ -1107,8 +1107,9 @@ def image1(d, u, v, w, dmind, dtind, beamnum, irange):
             elif feature in ['specstd', 'specskew', 'speckurtosis']:  # this is standard set and must all appear together
                 if feature == 'specstd':  # first this one, then others will use same data
                     seli = (i0+candints[i])*d['dtarr'][dtind]
-                    rtlib.phaseshift_threaded(data_resamp[seli:seli+1], d, l1, m1, u, v)
-                    data = n.ma.masked_equal(data_resamp[seli:seli+1], 0j)
+                    datasel = data_resamp[seli:seli+1].copy()
+                    rtlib.phaseshift_threaded(datasel, d, l1, m1, u, v)
+                    data = n.ma.masked_equal(datasel, 0j)
                     spec = data.mean(axis=3).mean(axis=1).mean(axis=0).real
                     std = spec.std(axis=0)
                     ff.append(std)

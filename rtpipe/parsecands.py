@@ -992,7 +992,9 @@ def source_location(pt_ra, pt_dec, l1, m1):
     """
     import math
 
-    srcra = n.degrees(pt_ra + l1/math.cos(pt_dec)); srcdec = n.degrees(pt_dec + m1)
+    srcra = n.degrees(pt_ra + l1/math.cos(pt_dec))
+    srcdec = n.degrees(pt_dec + m1)
+
     return deg2HMS(srcra, srcdec)
 
 def deg2HMS(ra='', dec='', round=False):
