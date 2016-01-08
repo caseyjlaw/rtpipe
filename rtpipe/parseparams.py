@@ -22,7 +22,7 @@ class Params(object):
         self.dm_maxloss = 0.05; self.maxdm = 0; self.dm_pulsewidth = 3000   # dmloss is fractional sensitivity loss, maxdm in pc/cm3, width in microsec
         self.searchtype = 'image1'; self.sigma_image1 = 7.; self.sigma_image2 = 7.
         self.l0 = 0.; self.m0 = 0.
-        self.uvres = 0; self.npix = 0; self.uvoversample = 1.
+        self.uvres = 0; self.npix = 0; self.npix_max = 0; self.uvoversample = 1.
         self.flaglist = [('badchtslide', 4., 0.) , ('badap', 3., 0.2), ('blstd', 3.0, 0.05)]
         self.flagantsol = True; self.gainfile = ''; self.bpfile = ''; self.fileroot = ''; self.applyonlineflags = True
         self.savenoise = False; self.savecands = False; self.nologfile=False

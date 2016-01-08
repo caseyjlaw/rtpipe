@@ -784,17 +784,18 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         d['npixx_full'] = (2**p2x * 3**p3x)[0]
         d['npixy_full'] = (2**p2y * 3**p3y)[0]
 
-    if d['npix'] == 0:
-        if d.has_key('npix_max'):   # optional 'do not exceed' image specification
+    # set number of pixels to image
+    d['npixx'] = d['npixx_full']
+    d['npixy'] = d['npixy_full']
+    if 'npix_max' in d:
+        if d['npix_max']:
             d['npixx'] = min(d['npix_max'], d['npixx_full'])
             d['npixy'] = min(d['npix_max'], d['npixy_full'])
-        else:    # otherwise, go with full res
-            d['npixx'] = d['npixx_full']
-            d['npixy'] = d['npixy_full']
-        d['npix'] = max(d['npixx'], d['npixy'])   # this used to define fringe time
-    else:
+    if d['npix']:
         d['npixx'] = d['npix']
         d['npixy'] = d['npix']
+    else:
+        d['npix'] = max(d['npixx'], d['npixy'])   # this used to define fringe time
 
     # define dmarr, if not already
     if len(d['dmarr']) == 0:
@@ -976,7 +977,7 @@ def correct_dmdt(d, dmind, dtind, blrange):
     rtlib.dedisperse_resample(data_resamp, d['freq'], d['inttime'], d['dmarr'][dmind], d['dtarr'][dtind], blrange, verbose=0)        # dedisperses data.
 
 def correct_dm(d, dm, blrange):
-    """ Dedisperses data *in place*.
+    """ Dedisperses data into data_resamp
     Drops edges, since it assumes that data is read with overlapping chunks in time.
     """
 
@@ -987,7 +988,7 @@ def correct_dm(d, dm, blrange):
     rtlib.dedisperse_par(data_resamp, d['freq'], d['inttime'], dm, blrange, verbose=0)        # dedisperses data.
 
 def correct_dt(d, dt, blrange):
-    """ Resamples data *in place*.
+    """ Resamples data_resamp
     Drops edges, since it assumes that data is read with overlapping chunks in time.
     """
 

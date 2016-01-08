@@ -153,7 +153,7 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
     d['uvres_full'] = np.round(d['dishdiameter']
                                / (3e-1 / d['freq'].min()) / 2).astype('int')
 
-    if not all(('npixx_full' in d), ('npixy_full' in d)):
+    if not all(('npixx_full' in d, 'npixy_full' in d)):
         # uvw from get_uvw already in lambda at ch0
         urange = d['urange'][d['scan']] * (d['freq'].max()
                                            / d['freq_orig'][0])
