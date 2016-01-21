@@ -278,21 +278,23 @@ def plot_summary(fileroot, scans, remove=[], snrmin=0, snrmax=999):
     snrmin, snrmax define how to filter cands read and written by abs(snr)
     """
 
-    mergepkl = 'cands_' + fileroot + '_merge.pkl'
-
-    if fileroot != mergepkl:      # if fileroot is not merge file, create merge file
+    try:
+        # see if this is a mergepkl
+        d = pickle.load(open(fileroot, 'r'))
+        locs, props = read_candidates(fileroot, snrmin=snrmin, snrmax=snrmax)
+        mergepkl = fileroot
+        logger.info('fileroot is a mergefile. Reading...')
+    except:
+        logger.info('Looking for candsfiles for %s' % fileroot)
         pkllist = []
         for scan in scans:
             pklfile = 'cands_' + fileroot + '_sc' + str(scan) + '.pkl'
             if os.path.exists(pklfile):
                 pkllist.append(pklfile)
         merge_cands(pkllist, outroot=fileroot, remove=remove, snrmin=snrmin, snrmax=snrmax)
-    else:
-        logger.info('fileroot seems to be mergefile...')
-        outroot = fileroot.split('_')[1]
-
-    d = pickle.load(open(mergepkl, 'r'))
-    locs, props = read_candidates(mergepkl, snrmin=snrmin, snrmax=snrmax)
+        mergepkl = 'cands_' + fileroot + '_merge.pkl'
+        d = pickle.load(open(mergepkl, 'r'))
+        locs, props = read_candidates(mergepkl, snrmin=snrmin, snrmax=snrmax)
 
     if not len(locs):
         logger.info('No candidates in mergepkl.')
@@ -364,12 +366,12 @@ def plot_noise(fileroot, scans):
     bins = n.linspace(minnoise, maxnoise, 50)
     fig = plt.Figure(figsize=(10,10))
     ax = fig.add_subplot(211, axisbg='white')
-    stuff = ax.hist(noises, bins=bins, histtype='bar', lw='none', ec='none')
+    stuff = ax.hist(noises, bins=bins, histtype='bar', lw=None, ec=None)
     ax.set_title('Histograms of noise samples')
     ax.set_xlabel('Image RMS (Jy)')
     ax.set_ylabel('Number of noise measurements')
     ax2 = fig.add_subplot(212, axisbg='white')
-    stuff = ax2.hist(n.array([noises[i][j] for i in range(len(noises)) for j in range(len(noises[i]))]), bins=bins, cumulative=-1, normed=True, log=False, histtype='bar', lw='none', ec='none')
+    stuff = ax2.hist(n.array([noises[i][j] for i in range(len(noises)) for j in range(len(noises[i]))]), bins=bins, cumulative=-1, normed=True, log=False, histtype='bar', lw=None, ec=None)
     ax2.set_xlabel('Image RMS (Jy)')
     ax2.set_ylabel('Number with noise > image RMS')
 
@@ -480,7 +482,7 @@ def plot_dmcount(d, times, dts, outroot):
             bins = n.round(times[good]).astype('int')
             counts = n.bincount(bins)
 
-            ax2[dtind].scatter(n.arange(n.amax(bins)+1), counts, facecolor='none', alpha=0.5, clip_on=False)
+            ax2[dtind].scatter(n.arange(n.amax(bins)+1), counts, facecolor=None, alpha=0.5, clip_on=False)
             ax2[dtind].axis( (mint, maxt, 0, 1.1*counts.max()) )
 
             # label high points
@@ -579,7 +581,7 @@ def plot_lm(d, snrs, l1s, m1s, outroot):
     good = n.where(snrs > 0)
     sizes = (snrs[good]-snrmin)**5   # set scaling to give nice visual sense of SNR
     xarr = 60*n.degrees(l1s[good]); yarr = 60*n.degrees(m1s[good])
-    ax4.scatter(xarr, yarr, s=sizes, facecolor='none', alpha=0.5, clip_on=False)
+    ax4.scatter(xarr, yarr, s=sizes, facecolor=None, alpha=0.5, clip_on=False)
     # plot negative
     good = n.where(snrs < 0)
     sizes = (n.abs(snrs[good])-snrmin)**5   # set scaling to give nice visual sense of SNR
@@ -845,6 +847,8 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
             if not hasattr(params, key):
                 junk = d0.pop(key)
 
+        d0['npix'] = 0; d0['uvres'] = 0
+
         # get cand data
         d = rt.set_pipeline(filename, scan, **d0)
         im, data = rt.pipeline_reproduce(d, loc[candnum], product='imdata')
@@ -857,7 +861,20 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
         # optionally return data
         if returndata:
             return (im, data)
-        
+
+def refine_cand(candsfile, candloc=[], threshold=0):
+    """ Helper function to interact with merged cands file and refine analysis
+    If no candloc (len 6: scan, segment, candint, dmind, dtind, beamnum) is provided, it will print all cands above threshold.
+    """
+
+    if not candloc:
+        plot_cand(candsfile, candloc=[], candnum=-1, threshold=threshold, savefile=False, returndata=False)
+    else:
+        d = pickle.load(open(candsfile, 'r'))
+        cands = rt.pipeline_refine(d, candloc)
+
+    return cands
+       
 def make_cand_plot(d, im, data, loclabel, outname=''):
     """ Builds candidate plot.
     Expects phased, dedispersed data (cut out in time, dual-pol), image, and metadata
@@ -891,7 +908,7 @@ def make_cand_plot(d, im, data, loclabel, outname=''):
     # add annotating info
     ax.text(0.1, 0.9, d['fileroot'], fontname='sans-serif', transform = ax.transAxes)
     ax.text(0.1, 0.8, 'sc %d, seg %d, int %d, DM %.1f, dt %d' % (scan, segment, candint, d['dmarr'][dmind], d['dtarr'][dtind]), fontname='sans-serif', transform = ax.transAxes)
-    ax.text(0.1, 0.7, 'Peak: (' + str(n.round(l1, 3)) + '\' ,' + str(n.round(m1, 3)) + '\'), SNR: ' + str(n.round(snrobs, 1)), fontname='sans-serif', transform = ax.transAxes)
+    ax.text(0.1, 0.7, 'Peak: (' + str(n.round(l1, 3)) + ' ,' + str(n.round(m1, 3)) + '), SNR: ' + str(n.round(snrobs, 1)), fontname='sans-serif', transform = ax.transAxes)
 
     # plot dynamic spectra
     left, width = 0.6, 0.2
@@ -932,8 +949,6 @@ def make_cand_plot(d, im, data, loclabel, outname=''):
     # image
     ax = fig.add_subplot(223)
     fov = n.degrees(1./d['uvres'])*60.
-#    ax.scatter(((xpix/2-srcra[0])-0.05*xpix)*fov/xpix, (ypix/2-srcdec[0])*fov/ypix, s=80, marker='<', facecolor='none')
-#    ax.scatter(((xpix/2-srcra[0])+0.05*xpix)*fov/xpix, (ypix/2-srcdec[0])*fov/ypix, s=80, marker='>', facecolor='none')
     impl = ax.imshow(im.transpose(), aspect='equal', origin='upper', interpolation='nearest', extent=[fov/2, -fov/2, -fov/2, fov/2], cmap=plt.get_cmap('Greys'), vmin=0, vmax=0.5*im.max())
     ax.set_xlabel('RA Offset (arcmin)')
     ax.set_ylabel('Dec Offset (arcmin)')
@@ -975,7 +990,9 @@ def source_location(pt_ra, pt_dec, l1, m1):
     """
     import math
 
-    srcra = n.degrees(pt_ra + l1/math.cos(pt_dec)); srcdec = n.degrees(pt_dec + m1)
+    srcra = n.degrees(pt_ra + l1/math.cos(pt_dec))
+    srcdec = n.degrees(pt_dec + m1)
+
     return deg2HMS(srcra, srcdec)
 
 def deg2HMS(ra='', dec='', round=False):

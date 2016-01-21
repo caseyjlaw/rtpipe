@@ -229,10 +229,11 @@ def pipeline_dataprep(d, segment):
     # d now has segment keyword defined
     return d
 
-def pipeline_reproduce(d, candloc, product='data'):
+def pipeline_reproduce(d, candloc=[], segment=None, product='data'):
     """ Reproduce candidates with location candloc 
     candloc is length 5 or 6 with ([scan], segment, candint, dmind, dtind, beamnum).
     if merge pkl file given, candloc must have scan number first.
+    d and segment can be given, if only reading data
     product can be 'data', 'dataph', 'imdata'
     """
 
@@ -264,12 +265,11 @@ def pipeline_reproduce(d, candloc, product='data'):
 #        d['segmenttimes'] = d['segmenttimesdict'][scan]
     elif len(candloc) == 5:  # if not a merge pkl, then d['scan'] is correct
         segment, candint, dmind, dtind, beamnum = candloc        
+    elif isinstance(segment, int):
+        assert product == 'data', 'If only providing segment, then only data product can be produced.'
     else:
-        logger.error('candloc must be length 5 or 6.')
-
-    # set better defaults for reproducing
-    d['savecands'] = False
-    d['savenoise'] = False
+        logger.error('candloc must be length 5 or 6 or segment provided.')
+        return
 
     with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
         readpool.apply(pipeline_dataprep, (d, segment))
@@ -539,6 +539,88 @@ def make_transient(rms, DMmax, Amin=6., Amax=20., rmax=20., rmin=0., DMmin=0.):
     DM = random.uniform(DMmin, DMmax)
     return loff, moff, A, DM
 
+def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[]):
+    """ 
+    Reproduces candidate and potentially improves sensitivity through better DM and imaging parameters.
+    scale* parameters enhance sensitivity by making refining dmgrid and images.
+    Other options include: 
+      d0['selectpol'] = ['RR']
+      d0['flaglist'] = [('blstd', 2.5, 0.05)]
+    """
+
+    import rtpipe.parseparams as pp
+
+    assert len(candloc) == 6, 'candloc should be (scan, segment, candint, dmind, dtind, beamnum).'
+    scan, segment, candint, dmind, dtind, beamnum = candloc
+
+    # if file not at stated full path, assume it is local
+    if not os.path.exists(d0['filename']):
+        workdir = os.getcwd()
+        filename = os.path.join(workdir, os.path.basename(d0['filename']))
+    else:
+        filename = d0['filename']
+
+    # clean up d0 of superfluous keys
+    params = pp.Params()  # will be used as input to rt.set_pipeline
+    for key in d0.keys():
+        if not hasattr(params, key):
+            junk = d0.pop(key)
+
+    d0['npix'] = 0; d0['uvres'] = 0
+    d0['savecands'] = False
+    d0['savenoise'] = False
+
+    # redefine d. many parameters modified after this to keep from messing up time boundaries/cand location
+    d = set_pipeline(filename, scan, **d0)
+    if chans:
+        d['chans'] = chans
+
+    # define memroy space
+    # trim data?
+    data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
+    u_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    v_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    w_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
+    data = numpyview(data_mem, 'complex64', datashape(d))
+    u = numpyview(u_mem, 'float32', d['nbl'])
+    v = numpyview(v_mem, 'float32', d['nbl'])
+    w = numpyview(w_mem, 'float32', d['nbl'])
+
+    # fill data, uvw
+    data[:] = pipeline_reproduce(d, segment=segment, product='data')
+    d['segment'] = segment
+    u[:], v[:], w[:] = ps.get_uvw_segment(d, segment)
+
+    # refine parameters
+    dmcand = d['dmarr'][dmind]
+    try:
+        dmdelta = d['dmarr'][dmind+1] - d['dmarr'][dmind]
+    except IndexError:
+        try:
+            dmdelta = d['dmarr'][dmind] - d['dmarr'][dmind-1]
+        except IndexError:
+            dmdelta = 0.1*dmcand
+
+    d['dmarr'] = list(n.arange(dmcand-dmdelta, dmcand+dmdelta, dmdelta/scaledm))
+    d['dtarr'] = [d['dtarr'][dtind]]
+    d['npixx'] = scalepix*d['npixx']
+    d['npixy'] = scalepix*d['npixy']
+    d['uvres'] = scaleuv*d['uvres']
+
+    # search
+    logger.info('Refining DM grid to %s and expanding images to (%d, %d) pix with uvres %d' % (str(d['dmarr']), d['npixx'], d['npixy'], d['uvres']))
+    cands = search(d, data_mem, u_mem, v_mem, w_mem)
+
+# making cand plot from this
+# need to keep from confusing old and new indices
+#    im, data = rt.pipeline_reproduce(d, loc[candnum], product='imdata')
+#    scan, segment, candint, dmind, dtind, beamnum = loc
+#    loclabel = scan, segment, candint, dmind, dtind, beamnum
+#    make_cand_plot(d, im, data, loclabel, outname=outname)
+
+    # return info to reproduce/visualize refined cands
+    return d, cands
+
 def pipeline_lightcurve(d, l1=0, m1=0, segments=[], scan=-1):
     """ Makes lightcurve at given (l1, m1)
     l1, m1 define phase center. if not set, then image max is used.
@@ -702,17 +784,18 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         d['npixx_full'] = (2**p2x * 3**p3x)[0]
         d['npixy_full'] = (2**p2y * 3**p3y)[0]
 
-    if d['npix'] == 0:
-        if d.has_key('npix_max'):   # optional 'do not exceed' image specification
+    # set number of pixels to image
+    d['npixx'] = d['npixx_full']
+    d['npixy'] = d['npixy_full']
+    if 'npix_max' in d:
+        if d['npix_max']:
             d['npixx'] = min(d['npix_max'], d['npixx_full'])
             d['npixy'] = min(d['npix_max'], d['npixy_full'])
-        else:    # otherwise, go with full res
-            d['npixx'] = d['npixx_full']
-            d['npixy'] = d['npixy_full']
-        d['npix'] = max(d['npixx'], d['npixy'])   # this used to define fringe time
-    else:
+    if d['npix']:
         d['npixx'] = d['npix']
         d['npixy'] = d['npix']
+    else:
+        d['npix'] = max(d['npixx'], d['npixy'])   # this used to define fringe time
 
     # define dmarr, if not already
     if len(d['dmarr']) == 0:
@@ -894,7 +977,7 @@ def correct_dmdt(d, dmind, dtind, blrange):
     rtlib.dedisperse_resample(data_resamp, d['freq'], d['inttime'], d['dmarr'][dmind], d['dtarr'][dtind], blrange, verbose=0)        # dedisperses data.
 
 def correct_dm(d, dm, blrange):
-    """ Dedisperses data *in place*.
+    """ Dedisperses data into data_resamp
     Drops edges, since it assumes that data is read with overlapping chunks in time.
     """
 
@@ -905,7 +988,7 @@ def correct_dm(d, dm, blrange):
     rtlib.dedisperse_par(data_resamp, d['freq'], d['inttime'], dm, blrange, verbose=0)        # dedisperses data.
 
 def correct_dt(d, dt, blrange):
-    """ Resamples data *in place*.
+    """ Resamples data_resamp
     Drops edges, since it assumes that data is read with overlapping chunks in time.
     """
 
@@ -1025,8 +1108,9 @@ def image1(d, u, v, w, dmind, dtind, beamnum, irange):
             elif feature in ['specstd', 'specskew', 'speckurtosis']:  # this is standard set and must all appear together
                 if feature == 'specstd':  # first this one, then others will use same data
                     seli = (i0+candints[i])*d['dtarr'][dtind]
-                    rtlib.phaseshift_threaded(data_resamp[seli:seli+1], d, l1, m1, u, v)
-                    data = n.ma.masked_equal(data_resamp[seli:seli+1], 0j)
+                    datasel = data_resamp[seli:seli+1].copy()
+                    rtlib.phaseshift_threaded(datasel, d, l1, m1, u, v)
+                    data = n.ma.masked_equal(datasel, 0j)
                     spec = data.mean(axis=3).mean(axis=1).mean(axis=0).real
                     std = spec.std(axis=0)
                     ff.append(std)
