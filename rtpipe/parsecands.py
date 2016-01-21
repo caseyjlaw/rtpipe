@@ -366,12 +366,12 @@ def plot_noise(fileroot, scans):
     bins = n.linspace(minnoise, maxnoise, 50)
     fig = plt.Figure(figsize=(10,10))
     ax = fig.add_subplot(211, axisbg='white')
-    stuff = ax.hist(noises, bins=bins, histtype='bar', lw='none', ec='none')
+    stuff = ax.hist(noises, bins=bins, histtype='bar', lw=None, ec=None)
     ax.set_title('Histograms of noise samples')
     ax.set_xlabel('Image RMS (Jy)')
     ax.set_ylabel('Number of noise measurements')
     ax2 = fig.add_subplot(212, axisbg='white')
-    stuff = ax2.hist(n.array([noises[i][j] for i in range(len(noises)) for j in range(len(noises[i]))]), bins=bins, cumulative=-1, normed=True, log=False, histtype='bar', lw='none', ec='none')
+    stuff = ax2.hist(n.array([noises[i][j] for i in range(len(noises)) for j in range(len(noises[i]))]), bins=bins, cumulative=-1, normed=True, log=False, histtype='bar', lw=None, ec=None)
     ax2.set_xlabel('Image RMS (Jy)')
     ax2.set_ylabel('Number with noise > image RMS')
 
@@ -482,7 +482,7 @@ def plot_dmcount(d, times, dts, outroot):
             bins = n.round(times[good]).astype('int')
             counts = n.bincount(bins)
 
-            ax2[dtind].scatter(n.arange(n.amax(bins)+1), counts, facecolor='none', alpha=0.5, clip_on=False)
+            ax2[dtind].scatter(n.arange(n.amax(bins)+1), counts, facecolor=None, alpha=0.5, clip_on=False)
             ax2[dtind].axis( (mint, maxt, 0, 1.1*counts.max()) )
 
             # label high points
@@ -581,7 +581,7 @@ def plot_lm(d, snrs, l1s, m1s, outroot):
     good = n.where(snrs > 0)
     sizes = (snrs[good]-snrmin)**5   # set scaling to give nice visual sense of SNR
     xarr = 60*n.degrees(l1s[good]); yarr = 60*n.degrees(m1s[good])
-    ax4.scatter(xarr, yarr, s=sizes, facecolor='none', alpha=0.5, clip_on=False)
+    ax4.scatter(xarr, yarr, s=sizes, facecolor=None, alpha=0.5, clip_on=False)
     # plot negative
     good = n.where(snrs < 0)
     sizes = (n.abs(snrs[good])-snrmin)**5   # set scaling to give nice visual sense of SNR
@@ -949,8 +949,6 @@ def make_cand_plot(d, im, data, loclabel, outname=''):
     # image
     ax = fig.add_subplot(223)
     fov = n.degrees(1./d['uvres'])*60.
-#    ax.scatter(((xpix/2-srcra[0])-0.05*xpix)*fov/xpix, (ypix/2-srcdec[0])*fov/ypix, s=80, marker='<', facecolor='none')
-#    ax.scatter(((xpix/2-srcra[0])+0.05*xpix)*fov/xpix, (ypix/2-srcdec[0])*fov/ypix, s=80, marker='>', facecolor='none')
     impl = ax.imshow(im.transpose(), aspect='equal', origin='upper', interpolation='nearest', extent=[fov/2, -fov/2, -fov/2, fov/2], cmap=plt.get_cmap('Greys'), vmin=0, vmax=0.5*im.max())
     ax.set_xlabel('RA Offset (arcmin)')
     ax.set_ylabel('Dec Offset (arcmin)')
