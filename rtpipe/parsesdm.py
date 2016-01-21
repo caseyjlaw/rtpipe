@@ -180,7 +180,7 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
         configid = [row.configDescriptionId for row in sdm['Main']
                     if d['scan'] == int(row.scanNumber)][0]
         antids = [row.antennaId for row in sdm['ConfigDescription']
-                  if configid == row.configDescriptionId][0]
+                  if configid == row.configDescriptionId][0].split(' ')[2:]
         d['ants'] = [int(row.name.lstrip('ea'))
                      for antid in antids
                      for row in sdm['Antenna']
@@ -295,26 +295,16 @@ def read_bdf_segment(d, segment=-1):
     if d['applyonlineflags'] and segment > -1:
         sdm = sdmpy.SDM(d['filename'])
 
-        configid = [row.configDescriptionId for row in sdm['Main']
-                    if d['scan'] == int(row.scanNumber)][0]
-        antids = [row.antennaId for row in sdm['ConfigDescription']
-                  if configid == row.configDescriptionId][0]
-        ants = [int(row.name.lstrip('ea'))
-                     for antid in antids
-                     for row in sdm['Antenna']
-                     if antid == row.antennaId]
-
-        antdict = dict(zip(antids, ants))
-#        antdict = dict(zip([ant.antennaId for ant in sdm['Antenna']],
-#                           [int(ant.name.lstrip('ea'))
-#                            for ant in sdm['Antenna']]))
-        antflags = [(antdict[flag.antennaId.split(' ')[2]],
+        allantdict = dict(zip([ant.antennaId for ant in sdm['Antenna']],
+                           [int(ant.name.lstrip('ea'))
+                            for ant in sdm['Antenna']]))
+        antflags = [(allantdict[flag.antennaId.split(' ')[2]],
                      int(flag.startTime)/(1e9*24*3600),
                      int(flag.endTime)/(1e9*24*3600))
                     for flag in sdm['Flag']]  # assumes one flag per entry
         logger.info('Found online flags for %d antenna/time ranges.'
                     % (len(antflags)))
-        blarr = calc_blarr(d)
+        blarr = calc_blarr(d)  # d may define different ants than in allantdict
         timearr = np.linspace(d['segmenttimes'][segment][0],
                               d['segmenttimes'][segment][1], d['readints'])
         badints_cum = []
