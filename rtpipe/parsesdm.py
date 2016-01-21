@@ -176,9 +176,18 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
     # define ants/bls
     # hacking here to fit observatory-specific use of antenna names
     if 'VLA' in sdm['ExecBlock'][0]['telescopeName']:
-        # Not complete. Execblock defines ants per scan, which can change.
-        d['ants'] = [int(ant.name.lstrip('ea'))
-                     for ant in sdm['Antenna']]
+# find config first, then antids, then ant names
+        configid = [row.configDescriptionId for row in sdm['Main']
+                    if d['scan'] == int(row.scanNumber)][0]
+        antids = [row.antennaId for row in sdm['ConfigDescription']
+                  if configid == row.configDescriptionId][0]
+        d['ants'] = [int(row.name.lstrip('ea'))
+                     for antid in antids
+                     for row in sdm['Antenna']
+                     if antid == row.antennaId]
+# Not complete. Execblock defines ants per scan, which can change.
+#        d['ants'] = [int(ant.name.lstrip('ea'))
+#                     for ant in sdm['Antenna']]
     elif 'GMRT' in sdm['ExecBlock'][0]['telescopeName']:
         d['ants'] = [int(ant.antennaId.split('_')[1])
                      for ant in sdm['Antenna']]
@@ -285,9 +294,20 @@ def read_bdf_segment(d, segment=-1):
     # currently only implemented for segmented data
     if d['applyonlineflags'] and segment > -1:
         sdm = sdmpy.SDM(d['filename'])
-        antdict = dict(zip([ant.antennaId for ant in sdm['Antenna']],
-                           [int(ant.name.lstrip('ea'))
-                            for ant in sdm['Antenna']]))
+
+        configid = [row.configDescriptionId for row in sdm['Main']
+                    if d['scan'] == int(row.scanNumber)][0]
+        antids = [row.antennaId for row in sdm['ConfigDescription']
+                  if configid == row.configDescriptionId][0]
+        ants = [int(row.name.lstrip('ea'))
+                     for antid in antids
+                     for row in sdm['Antenna']
+                     if antid == row.antennaId]
+
+        antdict = dict(zip(antids, ants))
+#        antdict = dict(zip([ant.antennaId for ant in sdm['Antenna']],
+#                           [int(ant.name.lstrip('ea'))
+#                            for ant in sdm['Antenna']]))
         antflags = [(antdict[flag.antennaId.split(' ')[2]],
                      int(flag.startTime)/(1e9*24*3600),
                      int(flag.endTime)/(1e9*24*3600))
