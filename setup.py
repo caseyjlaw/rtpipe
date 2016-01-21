@@ -9,7 +9,7 @@ setup(
     description = 'Python scripts for fast transient searches with radio interferometer data',
     author = 'Casey Law',
     author_email = 'caseyjlaw@gmail.com',
-    version = '1.27',
+    version = '1.28',
     url = 'http://github.com/caseyjlaw/rtpipe',
     packages = find_packages(),        # get all python scripts in realtime
     dependency_links = ['http://github.com/caseyjlaw/sdmpy', 'http://github.com/caseyjlaw/sdmreader'],
