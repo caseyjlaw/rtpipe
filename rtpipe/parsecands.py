@@ -159,7 +159,8 @@ def merge_noises(pkllist, outroot=''):
 
     pkllist = [pkllist[i] for i in range(len(pkllist)) if ('merge' not in pkllist[i]) and ('seg' not in pkllist[i])]  # filter list down to per-scan noise pkls
     pkllist.sort(key=lambda i: int(i.rstrip('.pkl').split('_sc')[1]))  # sort by scan assuming filename structure
-    logger.info('Aggregating noise from %s' % pkllist)
+    scans = [int(ff.rstrip('.pkl').split('_sc')[1]) for ff in pkllist]
+    logger.info('Aggregating noise from scans %s' % scans)
 
     allnoise = []
     for pklfile in pkllist:
@@ -194,7 +195,8 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
 
     pkllist = [pkllist[i] for i in range(len(pkllist)) if ('merge' not in pkllist[i]) and ('seg' not in pkllist[i])]
     pkllist.sort(key=lambda i: int(i.rstrip('.pkl').split('_sc')[1]))  # assumes filename structure
-    logger.info('Aggregating cands from %s' % pkllist)
+    scans = [int(ff.rstrip('.pkl').split('_sc')[1]) for ff in pkllist]
+    logger.info('Aggregating cands from scans %s' % scans)
 
     # get sample state dict. use 'dict' suffix to define multi-scan metadata dictionaries
     mergeloc = []; mergeprop = []; mergetimes = []

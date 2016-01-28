@@ -9,7 +9,7 @@ from bokeh.models import HoverTool, TapTool, OpenURL
 from collections import OrderedDict 
 from rtpipe.parsecands import read_noise
 
-def plot_interactive(mergepkl, noisepkl='', thresh=6.0, savehtml=True, urlbase='http://www.aoc.nrao.edu/~claw/realfast/plots'):
+def plot_interactive(mergepkl, noisepkl='', thresh_plot=6.0, thresh_link=7.0, savehtml=True, urlbase='http://www.aoc.nrao.edu/~claw/realfast/plots'):
     """ Make interactive summary plot with bokeh
     if savehtml will write to html, otherwise returns tuple of bokeh plot objects
     saves to html locally and point to plots in urlbase.
@@ -41,32 +41,44 @@ def plot_interactive(mergepkl, noisepkl='', thresh=6.0, savehtml=True, urlbase='
     l1_min = min(l1); l1_max = max(l1)
     m1_min = min(m1); m1_max = max(m1)
 
-    snr,dm,l1,m1,time,specstd,imkur,key,sizes,colors,zs = candfilter(d, cands, thresh)
+    snr,dm,l1,m1,time,specstd,imkur,key,sizes,colors,zs = candfilter(d, cands, thresh=thresh_plot)
     scan, seg, candint, dmind, dtind, beamnum = zip(*key)  # unpack key into individual columns
     source = ColumnDataSource(data=dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind, dtind=dtind, sizes=sizes, colors=colors, zs=zs, key=key))
 
-    snr,dm,l1,m1,time,specstd,imkur,key,sizes,colors,zs = candfilter(d, cands, -1*thresh)
+# filter to one per scan max above sigma?
+#    scan = [kk[0] for kk in key]
+#    snr = [ss for ss in snr if ...unique...?]
+    snr,dm,l1,m1,time,specstd,imkur,key,sizes,colors,zs = candfilter(d, cands, thresh=thresh_link)
+    scan, seg, candint, dmind, dtind, beamnum = zip(*key)  # unpack key into individual columns
+    sourcelink = ColumnDataSource(data=dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind, dtind=dtind, sizes=sizes, colors=colors, zs=zs, abssnr=n.abs(snr), key=key))
+
+    snr,dm,l1,m1,time,specstd,imkur,key,sizes,colors,zs = candfilter(d, cands, thresh=-1*thresh_plot)
     scan, seg, candint, dmind, dtind, beamnum = zip(*key)  # unpack key into individual columns
     sourceneg = ColumnDataSource(data=dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind, dtind=dtind, sizes=sizes, colors=colors, zs=zs, abssnr=n.abs(snr), key=key))
 
+
     # DM-time plot
-    dmt = Figure(plot_width=950, plot_height=400, toolbar_location="left", x_axis_label='Time (s; rough)', y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), webgl=True, tools=TOOLS)
+    dmt = Figure(plot_width=950, plot_height=400, toolbar_location="left", x_axis_label='Time (s)', y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), webgl=True, tools=TOOLS)
     dmt.circle('time', 'dm', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
+    dmt.circle('time', 'dm', size='sizes', source=sourcelink, line_color='colors', fill_color=None, line_alpha=0.7)
     dmt.cross('time', 'dm', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
 
     # image location plot
     loc = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)', x_range=(l1_min, l1_max), y_range=(m1_min,m1_max), tools=TOOLS, webgl=True)
     loc.circle('l1', 'm1', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
+    loc.circle('l1', 'm1', size='sizes', source=sourcelink, line_color='colors', fill_color=None, line_alpha=0.7)
     loc.cross('l1', 'm1', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
 
     # cand spectrum/image statistics plot
     stat = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Spectral std', y_axis_label='Image kurtosis', x_range=(specstd_min, specstd_max), y_range=(imkur_min, imkur_max), tools=TOOLS, webgl=True)
     stat.circle('specstd', 'imkur', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
+    stat.circle('specstd', 'imkur', size='sizes', source=sourcelink, line_color='colors', fill_color=None, line_alpha=0.7)
     stat.cross('specstd', 'imkur', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
     
     # norm prob plot
     norm = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed', y_axis_label='SNR expected', tools=TOOLS, webgl=True)
     norm.circle('snr', 'zs', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
+    norm.circle('snr', 'zs', size='sizes', source=sourcelink, line_color='colors', fill_color=None, line_alpha=0.7)
     norm.cross('abssnr', 'zs', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
 
     # noise histogram
@@ -152,7 +164,7 @@ def candfilter(d, cands, thresh=0):
         dm = [d['dmarr'][k[3]] for k in cands.iterkeys() if cands[k][0] > thresh]
         l1 = [cands[k][2] for k in cands.iterkeys() if cands[k][0] > thresh]
         m1 = [cands[k][3] for k in cands.iterkeys() if cands[k][0] > thresh]
-        time = [d['inttime'] * (k[0] * d['nints'] + k[1] * d['readints'] + k[2]) for k in cands.iterkeys() if cands[k][0] > thresh]
+        time = [d['segmenttimesdict'][k[0]][k[1],0] + (d['inttime']/(24*3600.))*k[2] for k in cands.iterkeys() if cands[k][0] > thresh]
         specstd = [cands[k][4] for k in cands.iterkeys() if cands[k][0] > thresh]
         imkur = [cands[k][8] for k in cands.iterkeys() if cands[k][0] > thresh]
         key = [k for k in cands.iterkeys() if cands[k][0] > thresh]
@@ -162,7 +174,7 @@ def candfilter(d, cands, thresh=0):
         dm = [d['dmarr'][k[3]] for k in cands.iterkeys() if cands[k][0] < thresh]
         l1 = [cands[k][2] for k in cands.iterkeys() if cands[k][0] < thresh]
         m1 = [cands[k][3] for k in cands.iterkeys() if cands[k][0] < thresh]
-        time = [d['inttime'] * (k[0] * d['nints'] + k[1] * d['readints'] + k[2]) for k in cands.iterkeys() if cands[k][0] < thresh]
+        time = [d['segmenttimesdict'][k[0]][k[1],0] + (d['inttime']/(24*3600.))*k[2] for k in cands.iterkeys() if cands[k][0] < thresh]
         specstd = [cands[k][4] for k in cands.iterkeys() if cands[k][0] < thresh]
         imkur = [cands[k][8] for k in cands.iterkeys() if cands[k][0] < thresh]
         key = [k for k in cands.iterkeys() if cands[k][0] < thresh]
@@ -172,7 +184,7 @@ def candfilter(d, cands, thresh=0):
         dm = [d['dmarr'][k[3]] for k in cands.iterkeys()]
         l1 = [cands[k][2] for k in cands.iterkeys()]
         m1 = [cands[k][3] for k in cands.iterkeys()]
-        time = [d['inttime'] * (k[0] * d['nints'] + k[1] * d['readints'] + k[2]) for k in cands.iterkeys()]
+        time = [d['segmenttimesdict'][k[0]][k[1],0] + (d['inttime']/(24*3600.))*k[2] for k in cands.iterkeys()]
         specstd = [cands[k][4] for k in cands.iterkeys()]
         imkur = [cands[k][8] for k in cands.iterkeys()]
         key = [k for k in cands.iterkeys()]
