@@ -8,6 +8,8 @@ import types, glob, os, logging, sys
 import cPickle as pickle
 import rtpipe.RT as rt
 import rtpipe.parseparams as pp
+import json
+import requests
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -378,6 +380,36 @@ def plot_noise(fileroot, scans):
     canvas = FigureCanvasAgg(fig)
     canvas.print_figure(outname)
     logger.info('Saved noise hist to %s' % outname)
+
+
+def postcands(mergepkl, url='http://localhost:9200/realfast/cands/_bulk?', snrmin=0, snrmax=999):
+    """ Posts candidate info to elasticsearch index """
+
+    d = pickle.load(open(mergepkl, 'rb'))
+    loc, prop = read_candidates(mergepkl, snrmin=snrmin, snrmax=snrmax)
+    times = int2mjd(d, loc)
+
+    alldata = []
+    for i in range(len(loc)):
+        data = {}
+        data['filename'] = os.path.basename(d['filename'])
+        data['@timestamp'] = times[i]
+        for featureind in d['featureind']:
+            data[featureind] = loc[i][d['featureind'].index(featureind)]
+        for feature in d['features']:
+            data[feature] = prop[i][d['features'].index(feature)]
+
+        idobj = {}
+        idobj['_id'] = '{:.7f}_{}_{}'.format(data['@timestamp'], data['dmind'], data['dtind'])
+        
+        alldata.append({"index":idobj})
+        alldata.append(data)
+
+    jsonStr = json.dumps(alldata, separators=(',', ':'))
+    cleanjson = jsonStr.replace('}}, ','}}\n').replace('},', '}\n').replace(']', '').replace('[', '')
+    r = requests.post(url, data=cleanjson)
+    logger.debug('%s' % r)
+
 
 def int2mjd(d, loc):
     """ Function to convert segment+integration into mjd seconds.
