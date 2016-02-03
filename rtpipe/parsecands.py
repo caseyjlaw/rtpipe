@@ -14,10 +14,11 @@ import requests
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-def read_candidates(candsfile, snrmin=0, snrmax=999):
+def read_candidates(candsfile, snrmin=0, snrmax=999, returnstate=False):
     """ Reads candidate pkl file into numpy array.
-    Returns tuple of two numpy arrays (location, features).
+    Default is to return tuple of two numpy arrays (location, features).
     snrmin and snrmax can trim based on absolute value of snr (pos and neg kept).
+    returnstate will instead return (loc, prop, state)
     """
 
     # read in pickle file of candidates
@@ -26,7 +27,10 @@ def read_candidates(candsfile, snrmin=0, snrmax=999):
         cands = pickle.load(pkl)
     if cands == 0:
         logger.info('No cands found from %s.' % candsfile)
-        return (n.array([]), n.array([]))
+        if returnstate:
+            return (n.array([]), n.array([]), d)
+        else:
+            return (n.array([]), n.array([]))
 
     if 'snr2' in d['features']:
         snrcol = d['features'].index('snr2')
@@ -41,7 +45,10 @@ def read_candidates(candsfile, snrmin=0, snrmax=999):
             prop.append( list(cands[kk]) )    #[snrcol], cands[kk][l1col], cands[kk][m1col]) )
 
     logger.info('Read %d candidates from %s.' % (len(loc), candsfile))
-    return n.array(loc), prop
+    if returnstate:
+        return n.array(loc), prop, d
+    else:
+        return n.array(loc), prop
 
 def read_noise(noisefile):
     """ Function to read a noise file and parse columns.
