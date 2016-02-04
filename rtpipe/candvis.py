@@ -9,7 +9,7 @@ from bokeh.models import HoverTool, TapTool, OpenURL
 from collections import OrderedDict 
 from rtpipe.parsecands import read_noise, read_candidates
 
-def getcanddata(mergepkl, noisepkl=None, sizerange=(2,70)):
+def calcdata(mergepkl, noisepkl=None, sizerange=(2,70)):
     """ Converts candidate data from merged pkl file to dictionary for bokeh """
 
     # get cands from pkl
@@ -34,6 +34,7 @@ def getcanddata(mergepkl, noisepkl=None, sizerange=(2,70)):
 
     # define data to plot
     snr = [cands[k][snrcol] for k in cands.iterkeys()]
+    abssnr = [abs(cands[k][snrcol]) for k in cands.iterkeys()]
     dm = [d['dmarr'][k[dmindcol]] for k in cands.iterkeys()]
     l1 = [cands[k][l1col] for k in cands.iterkeys()]
     m1 = [cands[k][m1col] for k in cands.iterkeys()]
@@ -42,28 +43,30 @@ def getcanddata(mergepkl, noisepkl=None, sizerange=(2,70)):
     imkur = [cands[k][imkurcol] for k in cands.iterkeys()]
     key = [k for k in cands.iterkeys()]
     scan, seg, candint, dmind, dtind, beamnum = zip(*key)
-#    zs = normprob(d, snr)
-
-    snr_max = max([abs(s) for s in snr])
-    snr_min = min([abs(s) for s in snr])
-    sizes = [sizerange[0] + sizerange[1] * ((abs(s) - snr_min)/(snr_max - snr_min))**2 for s in snr]
-
+    zs = normprob(d, snr)
+    sizes = calcsize(snr)
     colors = colorsat(l1, m1)
 
-    data = dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind, dtind=dtind, sizes=sizes, colors=colors, key=key)
+    data = dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd,
+                imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind,
+                dtind=dtind, sizes=sizes, colors=colors, key=key, zs=zs, abssnr=abssnr)
     return data
 
 
 def calcinds(data, threshold, remove=[]):
     """ Find indexes for data above (or below) given threshold. """
 
+    # select by time, too
+
     if threshold >= 0:
-        return [i for (i, snr) in enumerate(data['snr']) if snr > threshold]
+        return [i for (i, snr) in enumerate(data['snr'])
+                if snr > threshold]
     elif threshold < 0:
-        return [i for (i, snr) in enumerate(data['snr']) if snr < threshold]
+        return [i for (i, snr) in enumerate(data['snr'])
+                if snr < threshold]
 
 
-def makeplot(data, circleinds=None, crossinds=None, linkinds=None, htmlname=None):
+def makeplot(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None, urlbase='http://www.aoc.nrao.edu/~claw/realfast/plots'):
     """ Create interactive plot from data dictionary
 
     data has keys of snr, time, dm, sizes, key and more.
@@ -73,7 +76,8 @@ def makeplot(data, circleinds=None, crossinds=None, linkinds=None, htmlname=None
 
     # set up data dictionary
     if not circleinds: circleinds = range(len(data))
-    source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds])) for (key, value) in data.iteritems()}))
+    source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds])) 
+                                           for (key, value) in data.iteritems()}))
 
     # set ranges
     dm = data['dm']
@@ -95,56 +99,67 @@ def makeplot(data, circleinds=None, crossinds=None, linkinds=None, htmlname=None
     m1_min = min(m1)
     m1_max = max(m1)
 
-    TOOLS = "pan,box_select,wheel_zoom,reset"
+    TOOLS = "hover,tap,pan,box_select,wheel_zoom,reset"
 
     # DM-time plot
-    dmt = Figure(plot_width=950, plot_height=400, toolbar_location="left", x_axis_label='Time (MJD)', y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), webgl=True, tools=TOOLS)
-    dmt.circle('time', 'dm', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
+    dmt = Figure(plot_width=950, plot_height=400, toolbar_location="left", x_axis_label='Time (MJD)',
+                 y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), 
+                 webgl=True, tools=TOOLS)
+    dmt.circle('time', 'dm', size='sizes', source=source, line_color=None, fill_color='colors', 
+               fill_alpha=0.2)
 
     # image location plot
-    loc = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)', x_range=(l1_min, l1_max), y_range=(m1_min,m1_max), tools=TOOLS, webgl=True)
-    loc.circle('l1', 'm1', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
+    loc = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)',
+                 y_axis_label='m1 (rad)', x_range=(l1_min, l1_max), y_range=(m1_min,m1_max), tools=TOOLS, webgl=True)
+    loc.circle('l1', 'm1', size='sizes', source=source, line_color=None, fill_color='colors',
+               fill_alpha=0.2)
 
     # cand spectrum/image statistics plot
-    stat = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Spectral std', y_axis_label='Image kurtosis', x_range=(specstd_min, specstd_max), y_range=(imkur_min, imkur_max), tools=TOOLS, webgl=True)
-    stat.circle('specstd', 'imkur', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
+    stat = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Spectral std',
+                  y_axis_label='Image kurtosis', x_range=(specstd_min, specstd_max), 
+                  y_range=(imkur_min, imkur_max), tools=TOOLS, webgl=True)
+    stat.circle('specstd', 'imkur', size='sizes', source=source, line_color=None, fill_color='colors',
+                fill_alpha=0.2)
 
     # norm prob plot
-#    norm = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed', y_axis_label='SNR expected', tools=TOOLS, webgl=True)
-#    norm.circle('snr', 'zs', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
+    norm = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed', y_axis_label='SNR expected', tools=TOOLS, webgl=True)
+    norm.circle('snr', 'zs', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
 
     # set up negative symbols, if indexes in place
     if crossinds:
-        sourceneg = ColumnDataSource(data = dict({(key, tuple([value[i] for i in crossinds])) for (key, value) in data.iteritems()}))
+        sourceneg = ColumnDataSource(data = dict({(key, tuple([value[i] for i in crossinds]))
+                                                  for (key, value) in data.iteritems()}))
         dmt.cross('time', 'dm', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
         loc.cross('l1', 'm1', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
         stat.cross('specstd', 'imkur', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
-#        norm.cross('abssnr', 'zs', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
+        norm.cross('abssnr', 'zs', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
 
-    if linkinds:
-        sourcelink = ColumnDataSource(data = dict({(key, tuple([value[i] for i in linkinds])) for (key, value) in data.iteritems()}))
-        dmt.circle('time', 'dm', size='sizes', source=sourcelink, line_color='colors', fill_color=None, line_alpha=0.7)
-        loc.circle('l1', 'm1', size='sizes', source=sourcelink, line_color='colors', fill_color=None, line_alpha=0.7)
-        stat.circle('specstd', 'imkur', size='sizes', source=sourcelink, line_color='colors', fill_color=None, line_alpha=0.7)
-#        norm.circle('snr', 'zs', size='sizes', source=sourcelink, line_color='colors', fill_color=None, line_alpha=0.7)
+    if edgeinds:
+        sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
+                                                   for (key, value) in data.iteritems()}))
+        dmt.circle('time', 'dm', size='sizes', source=sourceedge, line_color='colors', fill_color=None, line_alpha=0.7)
+        loc.circle('l1', 'm1', size='sizes', source=sourceedge, line_color='colors', fill_color=None, line_alpha=0.7)
+        stat.circle('specstd', 'imkur', size='sizes', source=sourceedge, line_color='colors', fill_color=None, line_alpha=0.7)
+        norm.circle('snr', 'zs', size='sizes', source=sourceedge, line_color='colors', fill_color=None, line_alpha=0.7)
 
     # define hover and url behavior
-    # hover = dmt.select(dict(type=HoverTool)); hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    # hover = loc.select(dict(type=HoverTool)); hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    # hover = stat.select(dict(type=HoverTool));  hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    # hover = norm.select(dict(type=HoverTool));  hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    # url = '%s/%s_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png' % (urlbase, os.path.basename(mergepkl.rstrip('_merge.pkl')) )
-    # taptool = dmt.select(type=TapTool);  taptool.callback = OpenURL(url=url)
-    # taptool = loc.select(type=TapTool);  taptool.callback = OpenURL(url=url)    
-    # taptool = stat.select(type=TapTool);  taptool.callback = OpenURL(url=url)    
-    # taptool = norm.select(type=TapTool);  taptool.callback = OpenURL(url=url)
+    hover = dmt.select(dict(type=HoverTool)); hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    hover = loc.select(dict(type=HoverTool)); hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    hover = stat.select(dict(type=HoverTool));  hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    hover = norm.select(dict(type=HoverTool));  hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    if htmlname:
+        url = '%s/%s_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png' % (urlbase, os.path.basename(htmlname.rstrip('.html')) )
+        taptool = dmt.select(type=TapTool);  taptool.callback = OpenURL(url=url)
+        taptool = loc.select(type=TapTool);  taptool.callback = OpenURL(url=url)    
+        taptool = stat.select(type=TapTool);  taptool.callback = OpenURL(url=url)    
+        taptool = norm.select(type=TapTool);  taptool.callback = OpenURL(url=url)
 
     # arrange plots
     top = HBox(children=[dmt])
     middle = HBox(children=[loc, stat])
-#    bottom = HBox(children=[norm])
+    bottom = HBox(children=[norm])
 #    bottom = HBox(children=[norm, noiseplot])
-    combined = VBox(children=[top,middle])
+    combined = VBox(children=[top, middle, bottom])
 
     if htmlname:
         output_file(htmlname)
@@ -281,8 +296,8 @@ def normprob(d, snrs):
     input should be all of one sign (all pos or neg)
     """
 
-    signs = [n.sign(snr) for snr in snrs]
-    assert all(signs) or not all(signs), 'Signs of all snr values should be the same'
+#    signs = [n.sign(snr) for snr in snrs]
+#    assert all(signs) or not all(signs), 'Signs of all snr values should be the same'
 
     # define norm quantile functions
     Z = lambda quan: n.sqrt(2)*erfinv( 2*quan - 1) 
@@ -300,15 +315,16 @@ def normprob(d, snrs):
     logger.info('Calculating normal probability distribution for npix*nints*ndms*dtfactor = %d' % (ntrials))
 
     # calc normal quantile
-    try:
-        if n.sign(snrs[0]) > 0:
-            snrsort = sorted([s for s in snrs if s > 0], reverse=True)
-            zval = [Z(quan(ntrials, snrsort.index(snr)+1)) for snr in snrs]   # assumes unique snr values
-        elif n.sign(snrs[0]) < 0:
-            snrsort = sorted([abs(s) for s in snrs if s < 0], reverse=True)
-            zval = [Z(quan(ntrials, snrsort.index(abs(snr))+1)) for snr in snrs if snr < 0]
-    except IndexError, ValueError:
-        zval = []
+#    try:
+#        if n.sign(snrs[0]) > 0:
+    snrsortpos = sorted([s for s in snrs if s > 0], reverse=True)
+    snrsortneg = sorted([abs(s) for s in snrs if s < 0], reverse=True)
+    zval = []
+    for snr in snrs:
+        if snr >= 0:
+            zval.append(Z(quan(ntrials, snrsortpos.index(snr)+1)))
+        else:
+            zval.append(Z(quan(ntrials, snrsortneg.index(abs(snr))+1)))
 
     return zval
 
