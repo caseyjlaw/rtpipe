@@ -3,13 +3,38 @@ import numpy as n
 import logging, pickle, os
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-from bokeh.plotting import ColumnDataSource, Figure, save, output_file, vplot
-from bokeh.models.widgets import VBox, HBox
+from bokeh.plotting import ColumnDataSource, figure, save, output_file, vplot, hplot
 from bokeh.models import HoverTool, TapTool, OpenURL
 from collections import OrderedDict 
 from rtpipe.parsecands import read_noise, read_candidates
 
-def calcdata(mergepkl, noisepkl=None, sizerange=(2,70)):
+
+def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignoret=None, savehtml=True, urlbase='http://www.aoc.nrao.edu/~claw/realfast/plots'):
+    """ Backwards compatible function for making interactive candidate summary plot """
+
+    data = calcdata(mergepkl)
+    circleinds = calcinds(data, thresh, ignoret)
+    crossinds = calcinds(data, -1*thresh, ignoret)
+    edgeinds = calcinds(data, thresh_link, ignoret)
+
+    ontime = calcontime(data)
+    logger.info('Total on target time: {} s'.format(ontime))
+
+    if noisepkl:
+        noiseplot = plotnoise(noisepkl)
+    else:
+        noiseplot = None
+
+    combined = plotall(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, htmlname=None, noiseplot=noiseplot)
+
+    if savehtml:
+        output_file(mergepkl.rstrip('.pkl') + '.html')
+        save(combined)
+    else:
+        return combined
+
+
+def calcdata(mergepkl, sizerange=(2,70)):
     """ Converts candidate data from merged pkl file to dictionary for bokeh """
 
     # get cands from pkl
@@ -38,7 +63,8 @@ def calcdata(mergepkl, noisepkl=None, sizerange=(2,70)):
     dm = [d['dmarr'][k[dmindcol]] for k in cands.iterkeys()]
     l1 = [cands[k][l1col] for k in cands.iterkeys()]
     m1 = [cands[k][m1col] for k in cands.iterkeys()]
-    time = [d['segmenttimesdict'][k[scancol]][k[segmentcol],0] + (d['inttime']/(24*3600.))*k[intcol] for k in cands.iterkeys()]
+    time = [24*3600*d['segmenttimesdict'][k[scancol]][k[segmentcol],0] + d['inttime']*k[intcol] for k in cands.iterkeys()]
+    time = time - min(time)
     specstd = [cands[k][specstdcol] for k in cands.iterkeys()]
     imkur = [cands[k][imkurcol] for k in cands.iterkeys()]
     key = [k for k in cands.iterkeys()]
@@ -53,20 +79,66 @@ def calcdata(mergepkl, noisepkl=None, sizerange=(2,70)):
     return data
 
 
-def calcinds(data, threshold, remove=[]):
+def calcignoret(data, ignoret=None, threshold=20):
+    """ Find bad time ranges from distribution of candidates.
+
+    ignoret is list of tuples [(t0, t1), (t2, t3)] defining ranges to ignore.
+    threshold is made above std of candidate distribution in time.
+    """
+
+    time = data['time']
+    time.sort()
+
+    ww = n.ones(len(time), dtype=bool)  # initialize pass filter
+    if ignoret:
+        for (t0, t1) in ignoret:
+            ww = ww & n.where( (time < t0) | (time > t1), True, False )
+
+    bins = n.round(time[ww]).astype('int')
+    counts = n.bincount(bins)
+    high = n.where(counts > n.median(counts) + threshold*counts.std())[0]
+
+    logger.info('High times:')
+    logger.info('Bin (sec)\tCount (per sec)')
+    for hh in high:
+        logger.info('{}\t{}'.format(hh, counts[hh]))
+    return ignoret   # convenience
+
+
+def calcinds(data, threshold, ignoret=None):
     """ Find indexes for data above (or below) given threshold. """
 
     # select by time, too
 
-    if threshold >= 0:
-        return [i for (i, snr) in enumerate(data['snr'])
-                if snr > threshold]
-    elif threshold < 0:
-        return [i for (i, snr) in enumerate(data['snr'])
-                if snr < threshold]
+    inds = []
+    for i in range(len(data['time'])):
+        snr = data['snr'][i]
+        time = data['time'][i]
+        if (threshold >= 0 and snr > threshold) or (threshold < 0 and snr < threshold):
+            if ignoret:
+                incl = [t0 for (t0, t1) in ignoret if n.round(time).astype(int) in range(t0,t1)]
+                logger.debug('{} {} {} {}'.format(n.round(time).astype(int), t0, t1, incl))
+                if not incl:
+                    inds.append(i)
+            else:
+                inds.append(i)
+
+    return inds
 
 
-def makeplot(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None, urlbase='http://www.aoc.nrao.edu/~claw/realfast/plots'):
+def calcontime(data):
+    """ Given indices of good times, calculate total on time in data. """
+
+    time = data['time']
+    time_min = min(time)
+    time_max = max(time)
+
+    # extend this to use ignoret or circleinds
+
+    return time_max - time_min
+
+
+def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None, noiseplot=None, urlbase='http://www.aoc.nrao.edu/~claw/realfast/plots'):
     """ Create interactive plot from data dictionary
 
     data has keys of snr, time, dm, sizes, key and more.
@@ -102,27 +174,28 @@ def makeplot(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None
     TOOLS = "hover,tap,pan,box_select,wheel_zoom,reset"
 
     # DM-time plot
-    dmt = Figure(plot_width=950, plot_height=400, toolbar_location="left", x_axis_label='Time (MJD)',
+    dmt = figure(plot_width=1000, plot_height=500, toolbar_location="left", x_axis_label='Time (s; relative)',
                  y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), 
                  webgl=True, tools=TOOLS)
     dmt.circle('time', 'dm', size='sizes', source=source, line_color=None, fill_color='colors', 
                fill_alpha=0.2)
 
     # image location plot
-    loc = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)',
-                 y_axis_label='m1 (rad)', x_range=(l1_min, l1_max), y_range=(m1_min,m1_max), tools=TOOLS, webgl=True)
+    loc = figure(plot_width=475, plot_height=425, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)',
+                 x_range=(l1_min, l1_max), y_range=(m1_min,m1_max), tools=TOOLS, webgl=True)
     loc.circle('l1', 'm1', size='sizes', source=source, line_color=None, fill_color='colors',
                fill_alpha=0.2)
 
     # cand spectrum/image statistics plot
-    stat = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Spectral std',
+    stat = figure(plot_width=475, plot_height=425, toolbar_location="left", x_axis_label='Spectral std',
                   y_axis_label='Image kurtosis', x_range=(specstd_min, specstd_max), 
                   y_range=(imkur_min, imkur_max), tools=TOOLS, webgl=True)
     stat.circle('specstd', 'imkur', size='sizes', source=source, line_color=None, fill_color='colors',
                 fill_alpha=0.2)
 
     # norm prob plot
-    norm = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed', y_axis_label='SNR expected', tools=TOOLS, webgl=True)
+    norm = figure(plot_width=475, plot_height=425, toolbar_location="left", x_axis_label='SNR observed',
+                  y_axis_label='SNR expected', tools=TOOLS, webgl=True)
     norm.circle('snr', 'zs', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
 
     # set up negative symbols, if indexes in place
@@ -137,10 +210,10 @@ def makeplot(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None
     if edgeinds:
         sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
                                                    for (key, value) in data.iteritems()}))
-        dmt.circle('time', 'dm', size='sizes', source=sourceedge, line_color='colors', fill_color=None, line_alpha=0.7)
-        loc.circle('l1', 'm1', size='sizes', source=sourceedge, line_color='colors', fill_color=None, line_alpha=0.7)
-        stat.circle('specstd', 'imkur', size='sizes', source=sourceedge, line_color='colors', fill_color=None, line_alpha=0.7)
-        norm.circle('snr', 'zs', size='sizes', source=sourceedge, line_color='colors', fill_color=None, line_alpha=0.7)
+        dmt.circle('time', 'dm', size='sizes', source=sourceedge, line_color='colors', fill_color=None, line_alpha=0.5)
+        loc.circle('l1', 'm1', size='sizes', source=sourceedge, line_color='colors', fill_color=None, line_alpha=0.5)
+        stat.circle('specstd', 'imkur', size='sizes', source=sourceedge, line_color='colors', fill_color=None, line_alpha=0.5)
+        norm.circle('snr', 'zs', size='sizes', source=sourceedge, line_color='colors', fill_color=None, line_alpha=0.5)
 
     # define hover and url behavior
     hover = dmt.select(dict(type=HoverTool)); hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
@@ -155,11 +228,13 @@ def makeplot(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None
         taptool = norm.select(type=TapTool);  taptool.callback = OpenURL(url=url)
 
     # arrange plots
-    top = HBox(children=[dmt])
-    middle = HBox(children=[loc, stat])
-    bottom = HBox(children=[norm])
-#    bottom = HBox(children=[norm, noiseplot])
-    combined = VBox(children=[top, middle, bottom])
+    top = hplot(vplot(dmt), width=1000)
+    middle = hplot(vplot(loc), vplot(stat), width=1000)
+    if noiseplot:
+        bottom = hplot(vplot(norm), vplot(noiseplot), width=1000)
+    else:
+        bottom = hplot(vplot(norm), width=1000)
+    combined = vplot(top, middle, bottom, width=1000)
 
     if htmlname:
         output_file(htmlname)
@@ -168,127 +243,19 @@ def makeplot(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None
         return combined
 
 
-def noise():
+def plotnoise(noisepkl):
+    """ Merged noise pkl converted to interactive cumulative histogram """
 
     # noise histogram
-    if noisepkl:
-        logger.info('Found merged noise file at %s' % noisepkl)
-        noises = read_noise(noisepkl)
-        imnoise = n.sort(noises[4])
-        frac = [float(count)/len(imnoise) for count in reversed(range(1, len(imnoise)+1))]
-        noiseplot = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Noise image std', y_axis_label='Cumulative fraction', tools='pan, wheel_zoom, reset')
-        noiseplot.line(imnoise, frac)
-    else:
-        logger.info('No merged noise file at %s' % noisepkl)
+    noises = read_noise(noisepkl)
+    imnoise = n.sort(noises[4])
+    frac = [float(count)/len(imnoise) for count in reversed(range(1, len(imnoise)+1))]
+    noiseplot = figure(plot_width=475, plot_height=425, toolbar_location="left", x_axis_label='Noise image std',
+                       y_axis_label='Cumulative fraction', tools='pan, wheel_zoom, reset')
+    noiseplot.line(imnoise, frac)
 
+    return noiseplot
 
-def plot_interactive(mergepkl, noisepkl='', thresh_plot=6.0, thresh_link=7.0, savehtml=True, urlbase='http://www.aoc.nrao.edu/~claw/realfast/plots'):
-    """ Make interactive summary plot with bokeh
-    if savehtml will write to html, otherwise returns tuple of bokeh plot objects
-    saves to html locally and point to plots in urlbase.
-    """
-
-    with open(mergepkl,'r') as pkl:
-        d = pickle.load(pkl)
-        cands = pickle.load(pkl)
-
-    assert 'scan' in d['featureind'], 'This does not appear to be a merged cands pkl file.'
-
-    # try to find noisepkl
-    if not noisepkl:
-        noisetest = os.path.join(os.path.dirname(mergepkl), 'noise' + os.path.basename(mergepkl).lstrip('cands'))
-        if os.path.exists(noisetest):
-            noisepkl = noisetest
-
-    TOOLS = "tap,hover,pan,box_select,wheel_zoom,reset"
-    output_file(mergepkl.rstrip('.pkl') + '.html')
-
-    # get columns
-    snrorig = [cands[k][0] for k in cands.iterkeys()]
-    
-    snr,dm,l1,m1,time,specstd,imkur,key,sizes,colors,zs = candfilter(d, cands, thresh=0)
-    dm_min = min(min(dm), max(dm)/1.2); dm_max = max(max(dm), min(dm)*1.2)
-    time_min = min(time); time_max = max(time)
-    specstd_min = min(specstd); specstd_max = max(specstd)
-    imkur_min = min(imkur); imkur_max = max(imkur)
-    l1_min = min(l1); l1_max = max(l1)
-    m1_min = min(m1); m1_max = max(m1)
-
-    snr,dm,l1,m1,time,specstd,imkur,key,sizes,colors,zs = candfilter(d, cands, thresh=thresh_plot)
-    scan, seg, candint, dmind, dtind, beamnum = zip(*key)  # unpack key into individual columns
-    source = ColumnDataSource(data=dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind, dtind=dtind, sizes=sizes, colors=colors, zs=zs, key=key))
-
-# filter to one per scan max above sigma?
-#    scan = [kk[0] for kk in key]
-#    snr = [ss for ss in snr if ...unique...?]
-    snr,dm,l1,m1,time,specstd,imkur,key,sizes,colors,zs = candfilter(d, cands, thresh=thresh_link)
-    scan, seg, candint, dmind, dtind, beamnum = zip(*key)  # unpack key into individual columns
-    sourcelink = ColumnDataSource(data=dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind, dtind=dtind, sizes=sizes, colors=colors, zs=zs, abssnr=n.abs(snr), key=key))
-
-    snr,dm,l1,m1,time,specstd,imkur,key,sizes,colors,zs = candfilter(d, cands, thresh=-1*thresh_plot)
-    scan, seg, candint, dmind, dtind, beamnum = zip(*key)  # unpack key into individual columns
-    sourceneg = ColumnDataSource(data=dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind, dtind=dtind, sizes=sizes, colors=colors, zs=zs, abssnr=n.abs(snr), key=key))
-
-
-    # DM-time plot
-    dmt = Figure(plot_width=950, plot_height=400, toolbar_location="left", x_axis_label='Time (s)', y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), webgl=True, tools=TOOLS)
-    dmt.circle('time', 'dm', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
-    dmt.circle('time', 'dm', size='sizes', source=sourcelink, line_color='colors', fill_color=None, line_alpha=0.7)
-    dmt.cross('time', 'dm', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
-
-    # image location plot
-    loc = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)', x_range=(l1_min, l1_max), y_range=(m1_min,m1_max), tools=TOOLS, webgl=True)
-    loc.circle('l1', 'm1', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
-    loc.circle('l1', 'm1', size='sizes', source=sourcelink, line_color='colors', fill_color=None, line_alpha=0.7)
-    loc.cross('l1', 'm1', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
-
-    # cand spectrum/image statistics plot
-    stat = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Spectral std', y_axis_label='Image kurtosis', x_range=(specstd_min, specstd_max), y_range=(imkur_min, imkur_max), tools=TOOLS, webgl=True)
-    stat.circle('specstd', 'imkur', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
-    stat.circle('specstd', 'imkur', size='sizes', source=sourcelink, line_color='colors', fill_color=None, line_alpha=0.7)
-    stat.cross('specstd', 'imkur', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
-    
-    # norm prob plot
-    norm = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed', y_axis_label='SNR expected', tools=TOOLS, webgl=True)
-    norm.circle('snr', 'zs', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
-    norm.circle('snr', 'zs', size='sizes', source=sourcelink, line_color='colors', fill_color=None, line_alpha=0.7)
-    norm.cross('abssnr', 'zs', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
-
-    # noise histogram
-    if noisepkl:
-        logger.info('Found merged noise file at %s' % noisepkl)
-        noises = read_noise(noisepkl)
-        imnoise = n.sort(noises[4])
-        frac = [float(count)/len(imnoise) for count in reversed(range(1, len(imnoise)+1))]
-        noiseplot = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Noise image std', y_axis_label='Cumulative fraction', tools='pan, wheel_zoom, reset')
-        noiseplot.line(imnoise, frac)
-    else:
-        logger.info('No merged noise file at %s' % noisepkl)
-
-    # define hover and url behavior
-    hover = dmt.select(dict(type=HoverTool)); hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    hover = loc.select(dict(type=HoverTool)); hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    hover = stat.select(dict(type=HoverTool));  hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    hover = norm.select(dict(type=HoverTool));  hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    url = '%s/%s_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png' % (urlbase, os.path.basename(mergepkl.rstrip('_merge.pkl')) )
-    taptool = dmt.select(type=TapTool);  taptool.callback = OpenURL(url=url)
-    taptool = loc.select(type=TapTool);  taptool.callback = OpenURL(url=url)    
-    taptool = stat.select(type=TapTool);  taptool.callback = OpenURL(url=url)    
-    taptool = norm.select(type=TapTool);  taptool.callback = OpenURL(url=url)
-
-    # arrange plots
-    top = HBox(children=[dmt])
-    middle = HBox(children=[loc, stat])
-    if noisepkl:
-        bottom = HBox(children=[norm, noiseplot])
-    else:
-        bottom = HBox(children=[norm])
-    combined = VBox(children=[top,middle,bottom])
-
-    if savehtml:
-        save(combined)
-    else:
-        return combined
 
 def normprob(d, snrs):
     """ Function takes state dict and snr list 
