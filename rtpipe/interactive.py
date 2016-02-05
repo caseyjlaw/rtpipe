@@ -86,8 +86,7 @@ def calcignoret(data, ignoret=None, threshold=20):
     threshold is made above std of candidate distribution in time.
     """
 
-    time = data['time']
-    time.sort()
+    time = sorted(data['time'])
 
     ww = n.ones(len(time), dtype=bool)  # initialize pass filter
     if ignoret:
