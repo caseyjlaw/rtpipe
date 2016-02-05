@@ -12,13 +12,12 @@ from rtpipe.parsecands import read_noise, read_candidates
 def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignoret=None, savehtml=True, urlbase='http://www.aoc.nrao.edu/~claw/realfast/plots'):
     """ Backwards compatible function for making interactive candidate summary plot """
 
-    data = calcdata(mergepkl)
+    data = readdata(mergepkl)
     circleinds = calcinds(data, thresh, ignoret)
     crossinds = calcinds(data, -1*thresh, ignoret)
     edgeinds = calcinds(data, thresh_link, ignoret)
 
-    ontime = calcontime(data)
-    logger.info('Total on target time: {} s'.format(ontime))
+    logger.info('Total on target time: {} s'.format(calcontime(data)))
 
     if noisepkl:
         noiseplot = plotnoise(noisepkl)
@@ -34,7 +33,7 @@ def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignor
         return combined
 
 
-def calcdata(mergepkl, sizerange=(2,70)):
+def readdata(mergepkl, sizerange=(2,70)):
     """ Converts candidate data from merged pkl file to dictionary for bokeh """
 
     # get cands from pkl
@@ -79,14 +78,14 @@ def calcdata(mergepkl, sizerange=(2,70)):
     return data
 
 
-def calcignoret(data, ignoret=None, threshold=20):
+def findhight(data, ignoret=None, threshold=20):
     """ Find bad time ranges from distribution of candidates.
 
     ignoret is list of tuples [(t0, t1), (t2, t3)] defining ranges to ignore.
     threshold is made above std of candidate distribution in time.
     """
 
-    time = sorted(data['time'])
+    time = n.sort(data['time'])
 
     ww = n.ones(len(time), dtype=bool)  # initialize pass filter
     if ignoret:
