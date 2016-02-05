@@ -977,7 +977,7 @@ def make_cand_plot(d, im, data, loclabel, outname=''):
     ax_sp.set_xticks(n.linspace(xmin,xmax,3).round(2))
     ax_sp.set_xlabel('Flux (Jy)')
     lc = dd.mean(axis=0)
-    lenlc = n.where(lc == 0)[0][0]
+    lenlc = len(data)  # old (stupid) way: lenlc = n.where(lc == 0)[0][0]
     ax_lc.plot(range(0,lenlc)+range(2*lenlc,3*lenlc), list(lc)[:lenlc] + list(lc)[-lenlc:], 'k.')
     ax_lc.plot(range(0,lenlc)+range(2*lenlc,3*lenlc), list(n.zeros(lenlc)) + list(n.zeros(lenlc)), 'k:')
     ax_lc.set_xlabel('Integration')

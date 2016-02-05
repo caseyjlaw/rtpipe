@@ -98,10 +98,14 @@ def calcignoret(data, ignoret=None, threshold=20):
     counts = n.bincount(bins)
     high = n.where(counts > n.median(counts) + threshold*counts.std())[0]
 
-    logger.info('High times:')
-    logger.info('Bin (sec)\tCount (per sec)')
-    for hh in high:
-        logger.info('{}\t{}'.format(hh, counts[hh]))
+    if len(high):
+        logger.info('High times above {} sigma:'.format(threshold))
+        logger.info('Bin (sec) \t Count (per sec)')
+        for hh in high:
+            logger.info('{}    \t {}'.format(hh, counts[hh]))
+    else:
+        logger.info('No time bins with {} sigma excess'.format(threshold))
+
     return ignoret   # convenience
 
 
@@ -174,27 +178,27 @@ def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None,
     TOOLS = "hover,tap,pan,box_select,wheel_zoom,reset"
 
     # DM-time plot
-    dmt = figure(plot_width=1000, plot_height=500, toolbar_location="left", x_axis_label='Time (s; relative)',
+    dmt = figure(plot_width=950, plot_height=500, toolbar_location="left", x_axis_label='Time (s; relative)',
                  y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), 
                  webgl=True, tools=TOOLS)
     dmt.circle('time', 'dm', size='sizes', source=source, line_color=None, fill_color='colors', 
                fill_alpha=0.2)
 
     # image location plot
-    loc = figure(plot_width=475, plot_height=425, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)',
+    loc = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)',
                  x_range=(l1_min, l1_max), y_range=(m1_min,m1_max), tools=TOOLS, webgl=True)
     loc.circle('l1', 'm1', size='sizes', source=source, line_color=None, fill_color='colors',
                fill_alpha=0.2)
 
     # cand spectrum/image statistics plot
-    stat = figure(plot_width=475, plot_height=425, toolbar_location="left", x_axis_label='Spectral std',
+    stat = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Spectral std',
                   y_axis_label='Image kurtosis', x_range=(specstd_min, specstd_max), 
                   y_range=(imkur_min, imkur_max), tools=TOOLS, webgl=True)
     stat.circle('specstd', 'imkur', size='sizes', source=source, line_color=None, fill_color='colors',
                 fill_alpha=0.2)
 
     # norm prob plot
-    norm = figure(plot_width=475, plot_height=425, toolbar_location="left", x_axis_label='SNR observed',
+    norm = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed',
                   y_axis_label='SNR expected', tools=TOOLS, webgl=True)
     norm.circle('snr', 'zs', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
 
@@ -228,13 +232,13 @@ def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None,
         taptool = norm.select(type=TapTool);  taptool.callback = OpenURL(url=url)
 
     # arrange plots
-    top = hplot(vplot(dmt), width=1000)
-    middle = hplot(vplot(loc), vplot(stat), width=1000)
+    top = hplot(vplot(dmt), width=950)
+    middle = hplot(vplot(loc), vplot(stat), width=950)
     if noiseplot:
-        bottom = hplot(vplot(norm), vplot(noiseplot), width=1000)
+        bottom = hplot(vplot(norm), vplot(noiseplot), width=950)
     else:
-        bottom = hplot(vplot(norm), width=1000)
-    combined = vplot(top, middle, bottom, width=1000)
+        bottom = hplot(vplot(norm), width=950)
+    combined = vplot(top, middle, bottom, width=950)
 
     if htmlname:
         output_file(htmlname)
@@ -250,7 +254,7 @@ def plotnoise(noisepkl):
     noises = read_noise(noisepkl)
     imnoise = n.sort(noises[4])
     frac = [float(count)/len(imnoise) for count in reversed(range(1, len(imnoise)+1))]
-    noiseplot = figure(plot_width=475, plot_height=425, toolbar_location="left", x_axis_label='Noise image std',
+    noiseplot = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Noise image std',
                        y_axis_label='Cumulative fraction', tools='pan, wheel_zoom, reset')
     noiseplot.line(imnoise, frac)
 
