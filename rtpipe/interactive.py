@@ -147,7 +147,7 @@ def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None,
     """
 
     # set up data dictionary
-    if not circleinds: circleinds = range(len(data))
+    if not circleinds: circleinds = range(len(data['snr']))
     source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds])) 
                                            for (key, value) in data.iteritems()}))
 
