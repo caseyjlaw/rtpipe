@@ -8,14 +8,17 @@ import types, glob, os, logging, sys
 import cPickle as pickle
 import rtpipe.RT as rt
 import rtpipe.parseparams as pp
+import json
+import requests
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-def read_candidates(candsfile, snrmin=0, snrmax=999):
+def read_candidates(candsfile, snrmin=0, snrmax=999, returnstate=False):
     """ Reads candidate pkl file into numpy array.
-    Returns tuple of two numpy arrays (location, features).
+    Default is to return tuple of two numpy arrays (location, features).
     snrmin and snrmax can trim based on absolute value of snr (pos and neg kept).
+    returnstate will instead return (loc, prop, state)
     """
 
     # read in pickle file of candidates
@@ -24,7 +27,10 @@ def read_candidates(candsfile, snrmin=0, snrmax=999):
         cands = pickle.load(pkl)
     if cands == 0:
         logger.info('No cands found from %s.' % candsfile)
-        return (n.array([]), n.array([]))
+        if returnstate:
+            return (n.array([]), n.array([]), d)
+        else:
+            return (n.array([]), n.array([]))
 
     if 'snr2' in d['features']:
         snrcol = d['features'].index('snr2')
@@ -39,7 +45,10 @@ def read_candidates(candsfile, snrmin=0, snrmax=999):
             prop.append( list(cands[kk]) )    #[snrcol], cands[kk][l1col], cands[kk][m1col]) )
 
     logger.info('Read %d candidates from %s.' % (len(loc), candsfile))
-    return n.array(loc), prop
+    if returnstate:
+        return n.array(loc), prop, d
+    else:
+        return n.array(loc), prop
 
 def read_noise(noisefile):
     """ Function to read a noise file and parse columns.
@@ -159,7 +168,8 @@ def merge_noises(pkllist, outroot=''):
 
     pkllist = [pkllist[i] for i in range(len(pkllist)) if ('merge' not in pkllist[i]) and ('seg' not in pkllist[i])]  # filter list down to per-scan noise pkls
     pkllist.sort(key=lambda i: int(i.rstrip('.pkl').split('_sc')[1]))  # sort by scan assuming filename structure
-    logger.info('Aggregating noise from %s' % pkllist)
+    scans = [int(ff.rstrip('.pkl').split('_sc')[1]) for ff in pkllist]
+    logger.info('Aggregating noise from scans %s' % scans)
 
     allnoise = []
     for pklfile in pkllist:
@@ -194,7 +204,8 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
 
     pkllist = [pkllist[i] for i in range(len(pkllist)) if ('merge' not in pkllist[i]) and ('seg' not in pkllist[i])]
     pkllist.sort(key=lambda i: int(i.rstrip('.pkl').split('_sc')[1]))  # assumes filename structure
-    logger.info('Aggregating cands from %s' % pkllist)
+    scans = [int(ff.rstrip('.pkl').split('_sc')[1]) for ff in pkllist]
+    logger.info('Aggregating cands from scans %s' % scans)
 
     # get sample state dict. use 'dict' suffix to define multi-scan metadata dictionaries
     mergeloc = []; mergeprop = []; mergetimes = []
@@ -378,6 +389,36 @@ def plot_noise(fileroot, scans):
     canvas = FigureCanvasAgg(fig)
     canvas.print_figure(outname)
     logger.info('Saved noise hist to %s' % outname)
+
+
+def postcands(mergepkl, url='http://localhost:9200/realfast/cands/_bulk?', snrmin=0, snrmax=999):
+    """ Posts candidate info to elasticsearch index """
+
+    d = pickle.load(open(mergepkl, 'rb'))
+    loc, prop = read_candidates(mergepkl, snrmin=snrmin, snrmax=snrmax)
+    times = int2mjd(d, loc)
+
+    alldata = []
+    for i in range(len(loc)):
+        data = {}
+        data['filename'] = os.path.basename(d['filename'])
+        data['@timestamp'] = times[i]
+        for featureind in d['featureind']:
+            data[featureind] = loc[i][d['featureind'].index(featureind)]
+        for feature in d['features']:
+            data[feature] = prop[i][d['features'].index(feature)]
+
+        idobj = {}
+        idobj['_id'] = '{:.7f}_{}_{}'.format(data['@timestamp'], data['dmind'], data['dtind'])
+        
+        alldata.append({"index":idobj})
+        alldata.append(data)
+
+    jsonStr = json.dumps(alldata, separators=(',', ':'))
+    cleanjson = jsonStr.replace('}}, ','}}\n').replace('},', '}\n').replace(']', '').replace('[', '')
+    r = requests.post(url, data=cleanjson)
+    logger.debug('%s' % r)
+
 
 def int2mjd(d, loc):
     """ Function to convert segment+integration into mjd seconds.
@@ -936,7 +977,7 @@ def make_cand_plot(d, im, data, loclabel, outname=''):
     ax_sp.set_xticks(n.linspace(xmin,xmax,3).round(2))
     ax_sp.set_xlabel('Flux (Jy)')
     lc = dd.mean(axis=0)
-    lenlc = n.where(lc == 0)[0][0]
+    lenlc = len(data)  # old (stupid) way: lenlc = n.where(lc == 0)[0][0]
     ax_lc.plot(range(0,lenlc)+range(2*lenlc,3*lenlc), list(lc)[:lenlc] + list(lc)[-lenlc:], 'k.')
     ax_lc.plot(range(0,lenlc)+range(2*lenlc,3*lenlc), list(n.zeros(lenlc)) + list(n.zeros(lenlc)), 'k:')
     ax_lc.set_xlabel('Integration')
