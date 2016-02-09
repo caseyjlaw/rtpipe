@@ -417,7 +417,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
                             cands[kk] = imageresult[kk]
 
         if 'sigma_plot' in d:
-            from rtpipe.parsecands import make_cand_plot as makecp
+            from rtpipe.reproduce import make_cand_plot as makecp
             if 'snr2' in d['features']:
                 snrcol = d['features'].index('snr2')
             elif 'snr1' in d['features']:
