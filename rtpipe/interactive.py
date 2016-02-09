@@ -17,7 +17,7 @@ def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignor
     crossinds = calcinds(data, -1*thresh, ignoret)
     edgeinds = calcinds(data, thresh_link, ignoret)
 
-    logger.info('Total on target time: {} s'.format(calcontime(data)))
+    logger.info('Total on target time: {} s'.format(calcontime(data, inds=circleinds+crossinds+edgeinds)))
 
     if noisepkl:
         noiseplot = plotnoise(noisepkl)
@@ -128,28 +128,38 @@ def calcinds(data, threshold, ignoret=None):
     return inds
 
 
-def calcontime(data):
-    """ Given indices of good times, calculate total on time in data. """
+def calcontime(data, inds=None):
+    """ Given indices of good times, calculate total time per scan with indices. """
 
-    time = data['time']
-    time_min = min(time)
-    time_max = max(time)
+    if not inds:
+        inds = range(len(data['time']))
+        logger.info('No indices provided. Assuming all are valid.')
 
-    # extend this to use ignoret or circleinds
+    scans = set([data['scan'][i] for i in inds])
+    total = 0.
+    for scan in scans:
+        time = [data['time'][i] for i in inds if data['scan'][i] == scan]
+        total += max(time) - min(time)
 
-    return time_max - time_min
+    return total
 
 
-def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None, noiseplot=None, urlbase='http://www.aoc.nrao.edu/~claw/realfast/plots'):
+def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None, noiseplot=None, url_path='../plots', fileroot=None):
     """ Create interactive plot from data dictionary
 
     data has keys of snr, time, dm, sizes, key and more.
     Optional index arguments are used to filter full data set.
     This can be used to remove bad segments or apply different symbols to subsets.
+    url_path is path difference to png files for taptool.
+    fileroot is the sdm file name used as root for all png files.
     """
 
     # set up data dictionary
     if not circleinds: circleinds = range(len(data['snr']))
+    if edgeinds:  # to remove double refs
+        logger.info('{} circles (positive, not linked) and {} edges (positive, linked)'.format(len(circleinds), len(edgeinds)))
+        circleinds = list(set(circleinds) - set(edgeinds))
+
     source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds])) 
                                            for (key, value) in data.iteritems()}))
 
@@ -212,22 +222,30 @@ def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None,
     if edgeinds:
         sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
                                                    for (key, value) in data.iteritems()}))
-        dmt.circle('time', 'dm', size='sizes', source=sourceedge, line_color='colors', fill_color=None, line_alpha=0.5)
-        loc.circle('l1', 'm1', size='sizes', source=sourceedge, line_color='colors', fill_color=None, line_alpha=0.5)
-        stat.circle('specstd', 'imkur', size='sizes', source=sourceedge, line_color='colors', fill_color=None, line_alpha=0.5)
-        norm.circle('snr', 'zs', size='sizes', source=sourceedge, line_color='colors', fill_color=None, line_alpha=0.5)
+        dmt.circle('time', 'dm', size='sizes', source=sourceedge, line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2)
+        loc.circle('l1', 'm1', size='sizes', source=sourceedge, line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2)
+        stat.circle('specstd', 'imkur', size='sizes', source=sourceedge, line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2)
+        norm.circle('snr', 'zs', size='sizes', source=sourceedge, line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2)
 
     # define hover and url behavior
-    hover = dmt.select(dict(type=HoverTool)); hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    hover = loc.select(dict(type=HoverTool)); hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    hover = stat.select(dict(type=HoverTool));  hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    hover = norm.select(dict(type=HoverTool));  hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    if htmlname:
-        url = '%s/%s_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png' % (urlbase, os.path.basename(htmlname.rstrip('.html')) )
-        taptool = dmt.select(type=TapTool);  taptool.callback = OpenURL(url=url)
-        taptool = loc.select(type=TapTool);  taptool.callback = OpenURL(url=url)    
-        taptool = stat.select(type=TapTool);  taptool.callback = OpenURL(url=url)    
-        taptool = norm.select(type=TapTool);  taptool.callback = OpenURL(url=url)
+    hover = dmt.select(dict(type=HoverTool))
+    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    hover = loc.select(dict(type=HoverTool))
+    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    hover = stat.select(dict(type=HoverTool))
+    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    hover = norm.select(dict(type=HoverTool))
+    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    if url_path and fileroot:
+        url = '{}/cands_{}_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png'.format(url_path, fileroot)
+        taptool = dmt.select(type=TapTool)
+        taptool.callback = OpenURL(url=url)
+        taptool = loc.select(type=TapTool)
+        taptool.callback = OpenURL(url=url)    
+        taptool = stat.select(type=TapTool)
+        taptool.callback = OpenURL(url=url)    
+        taptool = norm.select(type=TapTool)
+        taptool.callback = OpenURL(url=url)
 
     # arrange plots
     top = hplot(vplot(dmt), width=950)
