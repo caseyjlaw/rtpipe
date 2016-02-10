@@ -84,18 +84,11 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
             dtind = loc[candnum, dtindcol]
             beamnum = 0
         elif len(candloc) and (candnum < 0):
-            assert (len(candloc) == 5) or (len(candloc) == 6), 'candloc should be length 5 or 6 ( [scan], segment, candint, dmind, dtind, beamnum ).'
-            assert threshold == 0, 'Cannot yet filter with threshold if also providing candloc.'
-            candnum = [list(ll) for ll in loc].index(candloc)
-            assert isinstance(candnum, int), 'candnum not properly found based on candloc. should be an integer'
-            logger.info('Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum]))
+            assert len(candloc) == 6, 'candloc should be length 6 ( scan, segment, candint, dmind, dtind, beamnum ).'
+            logger.info('Reproducing and visualizing candidate %d at %s' % (candnum, candloc))
             dmarrorig = d0['dmarr']
             dtarrorig = d0['dtarr']
-            if scancol >= 0:  # we have a merge pkl
-                scan, segment, candint, dmind, dtind, beamnum = loc[candnum]
-            else:   # we have a scan-based cands pkl
-                segment, candint, dmind, dtind, beamnum = loc[candnum]
-                scan = d0['scan']
+            scan, segment, candint, dmind, dtind, beamnum = candloc
         else:
             raise Exception, 'Provide candnum or candloc, not both'
 
@@ -109,14 +102,16 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
         # clean up d0 of superfluous keys
         params = pp.Params()  # will be used as input to rt.set_pipeline
         for key in d0.keys():
-            if not hasattr(params, key):
+            if not hasattr(params, key) and 'memory_limit' not in key:
                 _ = d0.pop(key)
 
-        d0['npix'] = 0; d0['uvres'] = 0
-
+        d0['npix'] = 0
+        d0['uvres'] = 0
+        d0['nsegments'] = 0
+        d0['nologfile'] = True
         # get cand data
         d = rt.set_pipeline(filename, scan, **d0)
-        im, data = rt.pipeline_reproduce(d, loc[candnum], product='imdata')
+        im, data = rt.pipeline_reproduce(d, candloc, product='imdata') # removed loc[candnum]
 
         # optionally plot
         if savefile:
@@ -126,6 +121,7 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
         # optionally return data
         if returndata:
             return (im, data)
+
 
 def refine_cand(candsfile, candloc=[], threshold=0):
     """ Helper function to interact with merged cands file and refine analysis
@@ -144,6 +140,7 @@ def refine_cand(candsfile, candloc=[], threshold=0):
 
     return cands
        
+
 def make_cand_plot(d, im, data, loclabel, outname=''):
     """ Builds candidate plot.
     Expects phased, dedispersed data (cut out in time, dual-pol), image, and metadata
@@ -218,12 +215,16 @@ def make_cand_plot(d, im, data, loclabel, outname=''):
     # image
     ax = fig.add_subplot(223)
     fov = np.degrees(1./d['uvres'])*60.
-    impl = ax.imshow(im.transpose(), aspect='equal', origin='upper', interpolation='nearest', extent=[fov/2, -fov/2, -fov/2, fov/2], cmap=plt.get_cmap('Greys'), vmin=0, vmax=0.5*im.max())
+    impl = ax.imshow(im.transpose(), aspect='equal', origin='upper',
+                     interpolation='nearest', extent=[fov/2, -fov/2, -fov/2, fov/2],
+                     cmap=plt.get_cmap('Greys'), vmin=0, vmax=0.5*im.max())
     ax.set_xlabel('RA Offset (arcmin)')
     ax.set_ylabel('Dec Offset (arcmin)')
 
     if not outname:
-        outname = os.path.join(d['workdir'], 'cands_%s_sc%d-seg%d-i%d-dm%d-dt%d.png' % (d['fileroot'], scan, segment, candint, dmind, dtind))
+        outname = os.path.join(d['workdir'],
+                               'cands_{}_sc{}-seg{}-i{}-dm{}-dt{}.png'.format(d['fileroot'], scan,
+                                                                              segment, candint, dmind, dtind))
 
     try:
         canvas = FigureCanvasAgg(fig)
@@ -232,18 +233,21 @@ def make_cand_plot(d, im, data, loclabel, outname=''):
         logger.warn('Could not write figure to %s' % outname)
 
 
-def convertloc(candsfile, candloc, nsegments):
-    """ For given state and location that are too bulky, calculate new location given nsegments. """
+def convertloc(candsfile, candloc, memory_limit):
+    """ For given state and location that are too bulky, calculate new location given memory_limit. """
 
-    scan, segment, candint, dmind, dtind, beamnum = loc
+    scan, segment, candint, dmind, dtind, beamnum = candloc
 
     # set up state and find absolute integration of candidate
     d0 = pickle.load(open(candsfile, 'r'))
+    filename = os.path.basename(d0['filename'])
     readints0 = d0['readints']
-    nskip0 = (24*3600*(d0['segmenttimesdict'][scan][segment, 0]
-                      - d0['starttime_mjddict'][scan])
+    nskip0 = (24*3600*(d0['segmenttimes'][segment, 0]
+                      - d0['starttime_mjd'])
              / d0['inttime']).astype(int)
     candint_abs = nskip0 + candint
+
+    logger.debug('readints0 {} nskip0 {}, candint_abs {}'.format(readints0, nskip0, candint_abs))
 
     # clean up d0 and resubmit to set_pipeline
     params = pp.Params()
@@ -253,11 +257,64 @@ def convertloc(candsfile, candloc, nsegments):
     d0['nologfile'] = True
     d0['npix'] = 0
     d0['uvres'] = 0
-    d0['nsegments'] = nsegments
-    d = rt.set_pipeline(filename, scan, **d0)
+    d0['nsegments'] = 0
+    d0['memory_limit'] = memory_limit
+    d = rt.set_pipeline(os.path.basename(filename), scan, **d0)
 
     # find best segment for new state
-    segment_new = candint_abs/d['readints']
-    candint_new = candint_abs - segment_new * d['readints']
+    readints = d['readints']
+    nskips = [(24*3600*(d['segmenttimes'][segment, 0]
+                        - d['starttime_mjd']) / d['inttime']).astype(int)
+              for segment in range(d['nsegments'])]
 
-    return (scan, segment_new, candint_new, dmind, dtind, beamnum)
+    posind = [i for i in range(len(nskips)) if candint_abs - nskips[i] > 0]
+    segment_new = [seg for seg in posind if candint_abs - nskips[seg] == min([candint_abs - nskips[i] for i in posind])][0]
+    candint_new = candint_abs - nskips[segment_new]
+
+    logger.debug('nskips {}, segment_new {}'.format(nskips, segment_new))
+
+    return [scan, segment_new, candint_new, dmind, dtind, beamnum]
+
+
+def source_location(pt_ra, pt_dec, l1, m1):
+    """ Takes phase center and src l,m in radians to get ra,dec of source.
+    Returns string ('hh mm ss', 'dd mm ss')
+    """
+    import math
+
+    srcra = np.degrees(pt_ra + l1/math.cos(pt_dec))
+    srcdec = np.degrees(pt_dec + m1)
+
+    return deg2HMS(srcra, srcdec)
+
+
+def deg2HMS(ra='', dec='', round=False):
+    """ quick and dirty coord conversion. googled to find bdnyc.org.
+    """
+    RA, DEC, rs, ds = '', '', '', ''
+    if dec:
+        if str(dec)[0] == '-':
+            ds, dec = '-', abs(dec)
+        deg = int(dec)
+        decM = abs(int((dec-deg)*60))
+        if round:
+            decS = int((abs((dec-deg)*60)-decM)*60)
+        else:
+            decS = (abs((dec-deg)*60)-decM)*60
+        DEC = '{0}{1} {2} {3}'.format(ds, deg, decM, decS)
+  
+    if ra:
+        if str(ra)[0] == '-':
+            rs, ra = '-', abs(ra)
+        raH = int(ra/15)
+        raM = int(((ra/15)-raH)*60)
+        if round:
+            raS = int(((((ra/15)-raH)*60)-raM)*60)
+        else:
+            raS = ((((ra/15)-raH)*60)-raM)*60
+        RA = '{0}{1} {2} {3}'.format(rs, raH, raM, raS)
+  
+    if ra and dec:
+        return (RA, DEC)
+    else:
+        return RA or DEC
