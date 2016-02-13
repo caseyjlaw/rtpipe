@@ -9,13 +9,15 @@ from collections import OrderedDict
 from rtpipe.parsecands import read_noise, read_candidates
 
 
-def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignoret=None, savehtml=True, urlbase='http://www.aoc.nrao.edu/~claw/realfast/plots'):
+def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignoret=None, savehtml=True, url_path='plots'):
     """ Backwards compatible function for making interactive candidate summary plot """
 
     data = readdata(mergepkl)
     circleinds = calcinds(data, thresh, ignoret)
     crossinds = calcinds(data, -1*thresh, ignoret)
     edgeinds = calcinds(data, thresh_link, ignoret)
+
+    fileroot = mergepkl.rstrip('_merge.pkl').lstrip('cands_')
 
     logger.info('Total on target time: {} s'.format(calcontime(data, inds=circleinds+crossinds+edgeinds)))
 
@@ -24,10 +26,133 @@ def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignor
     else:
         noiseplot = None
 
-    combined = plotall(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, htmlname=None, noiseplot=noiseplot)
+    combined = plotall(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, htmlname=None, noiseplot=noiseplot, url_path=url_path, fileroot=fileroot)
 
     if savehtml:
         output_file(mergepkl.rstrip('.pkl') + '.html')
+        save(combined)
+    else:
+        return combined
+
+
+def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None, noiseplot=None, url_path='../plots', fileroot=None):
+    """ Create interactive plot from data dictionary
+
+    data has keys of snr, time, dm, sizes, key and more.
+    Optional index arguments are used to filter full data set.
+    This can be used to remove bad segments or apply different symbols to subsets.
+    url_path is path difference to png files for taptool. ('../plots' for jupyter notebook, 'plots' for public page)
+    fileroot is the sdm file name used as root for all png files.
+    """
+
+    # set up data dictionary
+    if not circleinds: circleinds = range(len(data['snrs']))
+    if edgeinds:  # to remove double refs
+        logger.info('{} circles (positive, not linked) and {} edges (positive, linked)'.format(len(circleinds), len(edgeinds)))
+        circleinds = list(set(circleinds) - set(edgeinds))
+
+    source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds])) 
+                                           for (key, value) in data.iteritems()}))
+
+    # set ranges
+    datalen = len(data['dm'])
+    inds = circleinds
+    if crossinds: inds += crossinds
+    if edgeinds: inds += edgeinds
+    dm = [data['dm'][i] for i in inds]
+    dm_min = min(min(dm), max(dm)/1.2)
+    dm_max = max(max(dm), min(dm)*1.2)
+    time = [data['time'][i] for i in inds]
+    time_min = min(time)
+    time_max = max(time)
+    specstd = [data['specstd'][i] for i in inds]
+    specstd_min = min(specstd)
+    specstd_max = max(specstd)
+    imkur = [data['imkur'][i] for i in inds]
+    imkur_min = min(imkur)
+    imkur_max = max(imkur)
+    l1 = [data['l1'][i] for i in inds]
+    l1_min = min(l1)
+    l1_max = max(l1)
+    m1 = [data['m1'][i] for i in inds]
+    m1_min = min(m1)
+    m1_max = max(m1)
+
+    TOOLS = "hover,tap,pan,box_select,wheel_zoom,reset"
+
+    # DM-time plot
+    dmt = figure(plot_width=950, plot_height=500, toolbar_location="left", x_axis_label='Time (s; relative)',
+                 y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), 
+                 webgl=True, tools=TOOLS)
+    dmt.circle('time', 'dm', size='sizes', source=source, line_color=None, fill_color='colors', 
+               fill_alpha=0.2)
+
+    # image location plot
+    loc = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)',
+                 x_range=(l1_min, l1_max), y_range=(m1_min,m1_max), tools=TOOLS, webgl=True)
+    loc.circle('l1', 'm1', size='sizes', source=source, line_color=None, fill_color='colors',
+               fill_alpha=0.2)
+
+    # cand spectrum/image statistics plot
+    stat = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Spectral std',
+                  y_axis_label='Image kurtosis', x_range=(specstd_min, specstd_max), 
+                  y_range=(imkur_min, imkur_max), tools=TOOLS, webgl=True)
+    stat.circle('specstd', 'imkur', size='sizes', source=source, line_color=None, fill_color='colors',
+                fill_alpha=0.2)
+
+    # norm prob plot
+    norm = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed',
+                  y_axis_label='SNR expected', tools=TOOLS, webgl=True)
+    norm.circle('snrs', 'zs', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
+
+    # set up negative symbols, if indexes in place
+    if crossinds:
+        sourceneg = ColumnDataSource(data = dict({(key, tuple([value[i] for i in crossinds]))
+                                                  for (key, value) in data.iteritems()}))
+        dmt.cross('time', 'dm', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
+        loc.cross('l1', 'm1', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
+        stat.cross('specstd', 'imkur', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
+        norm.cross('abssnr', 'zs', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
+
+    if edgeinds:
+        sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
+                                                   for (key, value) in data.iteritems()}))
+        dmt.circle('time', 'dm', size='sizes', source=sourceedge, line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2)
+        loc.circle('l1', 'm1', size='sizes', source=sourceedge, line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2)
+        stat.circle('specstd', 'imkur', size='sizes', source=sourceedge, line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2)
+        norm.circle('snrs', 'zs', size='sizes', source=sourceedge, line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2)
+
+    # define hover and url behavior
+    hover = dmt.select(dict(type=HoverTool))
+    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    hover = loc.select(dict(type=HoverTool))
+    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    hover = stat.select(dict(type=HoverTool))
+    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    hover = norm.select(dict(type=HoverTool))
+    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    if url_path and fileroot:
+        url = '{}/cands_{}_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png'.format(url_path, fileroot)
+        taptool = dmt.select(type=TapTool)
+        taptool.callback = OpenURL(url=url)
+        taptool = loc.select(type=TapTool)
+        taptool.callback = OpenURL(url=url)    
+        taptool = stat.select(type=TapTool)
+        taptool.callback = OpenURL(url=url)    
+        taptool = norm.select(type=TapTool)
+        taptool.callback = OpenURL(url=url)
+
+    # arrange plots
+    top = hplot(vplot(dmt), width=950)
+    middle = hplot(vplot(loc), vplot(stat), width=950)
+    if noiseplot:
+        bottom = hplot(vplot(norm), vplot(noiseplot), width=950)
+    else:
+        bottom = hplot(vplot(norm), width=950)
+    combined = vplot(top, middle, bottom, width=950)
+
+    if htmlname:
+        output_file(htmlname)
         save(combined)
     else:
         return combined
@@ -57,7 +182,7 @@ def readdata(mergepkl, sizerange=(2,70)):
     scancol = d['featureind'].index('scan')
 
     # define data to plot
-    snr = [cands[k][snrcol] for k in cands.iterkeys()]
+    snrs = [cands[k][snrcol] for k in cands.iterkeys()]
     abssnr = [abs(cands[k][snrcol]) for k in cands.iterkeys()]
     dm = [d['dmarr'][k[dmindcol]] for k in cands.iterkeys()]
     l1 = [cands[k][l1col] for k in cands.iterkeys()]
@@ -68,11 +193,11 @@ def readdata(mergepkl, sizerange=(2,70)):
     imkur = [cands[k][imkurcol] for k in cands.iterkeys()]
     key = [k for k in cands.iterkeys()]
     scan, seg, candint, dmind, dtind, beamnum = zip(*key)
-    zs = normprob(d, snr)
-    sizes = calcsize(snr)
+    zs = normprob(d, snrs)
+    sizes = calcsize(snrs)
     colors = colorsat(l1, m1)
 
-    data = dict(snr=snr, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd,
+    data = dict(snrs=snrs, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd,
                 imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind,
                 dtind=dtind, sizes=sizes, colors=colors, key=key, zs=zs, abssnr=abssnr)
     return data
@@ -114,7 +239,7 @@ def calcinds(data, threshold, ignoret=None):
 
     inds = []
     for i in range(len(data['time'])):
-        snr = data['snr'][i]
+        snr = data['snrs'][i]
         time = data['time'][i]
         if (threshold >= 0 and snr > threshold) or (threshold < 0 and snr < threshold):
             if ignoret:
@@ -144,125 +269,6 @@ def calcontime(data, inds=None):
     return total
 
 
-def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None, noiseplot=None, url_path='../plots', fileroot=None):
-    """ Create interactive plot from data dictionary
-
-    data has keys of snr, time, dm, sizes, key and more.
-    Optional index arguments are used to filter full data set.
-    This can be used to remove bad segments or apply different symbols to subsets.
-    url_path is path difference to png files for taptool.
-    fileroot is the sdm file name used as root for all png files.
-    """
-
-    # set up data dictionary
-    if not circleinds: circleinds = range(len(data['snr']))
-    if edgeinds:  # to remove double refs
-        logger.info('{} circles (positive, not linked) and {} edges (positive, linked)'.format(len(circleinds), len(edgeinds)))
-        circleinds = list(set(circleinds) - set(edgeinds))
-
-    source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds])) 
-                                           for (key, value) in data.iteritems()}))
-
-    # set ranges
-    dm = data['dm']
-    dm_min = min(min(dm), max(dm)/1.2)
-    dm_max = max(max(dm), min(dm)*1.2)
-    time = data['time']
-    time_min = min(time)
-    time_max = max(time)
-    specstd = data['specstd']
-    specstd_min = min(specstd)
-    specstd_max = max(specstd)
-    imkur = data['imkur']
-    imkur_min = min(imkur)
-    imkur_max = max(imkur)
-    l1 = data['l1']
-    l1_min = min(l1)
-    l1_max = max(l1)
-    m1 = data['m1']
-    m1_min = min(m1)
-    m1_max = max(m1)
-
-    TOOLS = "hover,tap,pan,box_select,wheel_zoom,reset"
-
-    # DM-time plot
-    dmt = figure(plot_width=950, plot_height=500, toolbar_location="left", x_axis_label='Time (s; relative)',
-                 y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), 
-                 webgl=True, tools=TOOLS)
-    dmt.circle('time', 'dm', size='sizes', source=source, line_color=None, fill_color='colors', 
-               fill_alpha=0.2)
-
-    # image location plot
-    loc = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)',
-                 x_range=(l1_min, l1_max), y_range=(m1_min,m1_max), tools=TOOLS, webgl=True)
-    loc.circle('l1', 'm1', size='sizes', source=source, line_color=None, fill_color='colors',
-               fill_alpha=0.2)
-
-    # cand spectrum/image statistics plot
-    stat = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Spectral std',
-                  y_axis_label='Image kurtosis', x_range=(specstd_min, specstd_max), 
-                  y_range=(imkur_min, imkur_max), tools=TOOLS, webgl=True)
-    stat.circle('specstd', 'imkur', size='sizes', source=source, line_color=None, fill_color='colors',
-                fill_alpha=0.2)
-
-    # norm prob plot
-    norm = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed',
-                  y_axis_label='SNR expected', tools=TOOLS, webgl=True)
-    norm.circle('snr', 'zs', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
-
-    # set up negative symbols, if indexes in place
-    if crossinds:
-        sourceneg = ColumnDataSource(data = dict({(key, tuple([value[i] for i in crossinds]))
-                                                  for (key, value) in data.iteritems()}))
-        dmt.cross('time', 'dm', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
-        loc.cross('l1', 'm1', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
-        stat.cross('specstd', 'imkur', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
-        norm.cross('abssnr', 'zs', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
-
-    if edgeinds:
-        sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
-                                                   for (key, value) in data.iteritems()}))
-        dmt.circle('time', 'dm', size='sizes', source=sourceedge, line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2)
-        loc.circle('l1', 'm1', size='sizes', source=sourceedge, line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2)
-        stat.circle('specstd', 'imkur', size='sizes', source=sourceedge, line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2)
-        norm.circle('snr', 'zs', size='sizes', source=sourceedge, line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2)
-
-    # define hover and url behavior
-    hover = dmt.select(dict(type=HoverTool))
-    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    hover = loc.select(dict(type=HoverTool))
-    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    hover = stat.select(dict(type=HoverTool))
-    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    hover = norm.select(dict(type=HoverTool))
-    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
-    if url_path and fileroot:
-        url = '{}/cands_{}_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png'.format(url_path, fileroot)
-        taptool = dmt.select(type=TapTool)
-        taptool.callback = OpenURL(url=url)
-        taptool = loc.select(type=TapTool)
-        taptool.callback = OpenURL(url=url)    
-        taptool = stat.select(type=TapTool)
-        taptool.callback = OpenURL(url=url)    
-        taptool = norm.select(type=TapTool)
-        taptool.callback = OpenURL(url=url)
-
-    # arrange plots
-    top = hplot(vplot(dmt), width=950)
-    middle = hplot(vplot(loc), vplot(stat), width=950)
-    if noiseplot:
-        bottom = hplot(vplot(norm), vplot(noiseplot), width=950)
-    else:
-        bottom = hplot(vplot(norm), width=950)
-    combined = vplot(top, middle, bottom, width=950)
-
-    if htmlname:
-        output_file(htmlname)
-        save(combined)
-    else:
-        return combined
-
-
 def plotnoise(noisepkl):
     """ Merged noise pkl converted to interactive cumulative histogram """
 
@@ -277,14 +283,13 @@ def plotnoise(noisepkl):
     return noiseplot
 
 
-def normprob(d, snrs):
-    """ Function takes state dict and snr list 
-    Returns list of expected snr given each input value's frequency of occurrence via the normal probability assumption
-    input should be all of one sign (all pos or neg)
-    """
+def normprob(d, snrs, inds=None):
+    """ Uses observed SNR distribution to calculate normal probability SNR
 
-#    signs = [n.sign(snr) for snr in snrs]
-#    assert all(signs) or not all(signs), 'Signs of all snr values should be the same'
+    Uses state dict to calculate number of trials.
+    snrs is list of all snrs in distribution.
+    Returns list of expected snr given each input value's frequency of occurrence via the normal probability assumption
+    """
 
     # define norm quantile functions
     Z = lambda quan: n.sqrt(2)*erfinv( 2*quan - 1) 
@@ -302,69 +307,38 @@ def normprob(d, snrs):
     logger.info('Calculating normal probability distribution for npix*nints*ndms*dtfactor = %d' % (ntrials))
 
     # calc normal quantile
-#    try:
-#        if n.sign(snrs[0]) > 0:
-    snrsortpos = sorted([s for s in snrs if s > 0], reverse=True)
-    snrsortneg = sorted([abs(s) for s in snrs if s < 0], reverse=True)
+    if not inds: inds = range(len(snrs))
+    snrsortpos = sorted([snrs[i] for i in inds if snrs[i] > 0], reverse=True)
+    snrsortneg = sorted([abs(snrs[i]) for i in inds if snrs[i] < 0], reverse=True)
+
     zval = []
-    for snr in snrs:
-        if snr >= 0:
+    for (i, snr) in enumerate(snrs):
+        if snr >= 0 and i in inds:
             zval.append(Z(quan(ntrials, snrsortpos.index(snr)+1)))
-        else:
+        elif snr < 0 and i in inds:
             zval.append(Z(quan(ntrials, snrsortneg.index(abs(snr))+1)))
+        else:
+            zval.append(0)
 
     return zval
 
-def candfilter(d, cands, thresh=0):
-    """ filters candidate data. if thresh is negative, returns values less than thresh.
-    default thresh=0 returns all
+
+def calcsize(snrs, sizerange=(2,70), inds=None):
+    """ Uses SNR to calculate symbol size.
+
+    snrs is a list of floats for candidate significance.
+    inds is an optional list of indexes to use to calculate symbol size.
+    Scaling of symbol size min max set by sizerange tuple (min, max).
     """
 
-    if thresh > 0:
-        snr = [cands[k][0] for k in cands.iterkeys() if cands[k][0] > thresh]
-        dm = [d['dmarr'][k[3]] for k in cands.iterkeys() if cands[k][0] > thresh]
-        l1 = [cands[k][2] for k in cands.iterkeys() if cands[k][0] > thresh]
-        m1 = [cands[k][3] for k in cands.iterkeys() if cands[k][0] > thresh]
-        time = [d['segmenttimesdict'][k[0]][k[1],0] + (d['inttime']/(24*3600.))*k[2] for k in cands.iterkeys() if cands[k][0] > thresh]
-        specstd = [cands[k][4] for k in cands.iterkeys() if cands[k][0] > thresh]
-        imkur = [cands[k][8] for k in cands.iterkeys() if cands[k][0] > thresh]
-        key = [k for k in cands.iterkeys() if cands[k][0] > thresh]
-        zs = normprob(d, snr)
-    elif thresh < 0:
-        snr = [cands[k][0] for k in cands.iterkeys() if cands[k][0] < thresh]
-        dm = [d['dmarr'][k[3]] for k in cands.iterkeys() if cands[k][0] < thresh]
-        l1 = [cands[k][2] for k in cands.iterkeys() if cands[k][0] < thresh]
-        m1 = [cands[k][3] for k in cands.iterkeys() if cands[k][0] < thresh]
-        time = [d['segmenttimesdict'][k[0]][k[1],0] + (d['inttime']/(24*3600.))*k[2] for k in cands.iterkeys() if cands[k][0] < thresh]
-        specstd = [cands[k][4] for k in cands.iterkeys() if cands[k][0] < thresh]
-        imkur = [cands[k][8] for k in cands.iterkeys() if cands[k][0] < thresh]
-        key = [k for k in cands.iterkeys() if cands[k][0] < thresh]
-        zs = normprob(d, snr)
+    if inds:
+        smax = max([abs(snrs[i]) for i in inds])
+        smin = min([abs(snrs[i]) for i in inds])
     else:
-        snr = [cands[k][0] for k in cands.iterkeys()]
-        dm = [d['dmarr'][k[3]] for k in cands.iterkeys()]
-        l1 = [cands[k][2] for k in cands.iterkeys()]
-        m1 = [cands[k][3] for k in cands.iterkeys()]
-        time = [d['segmenttimesdict'][k[0]][k[1],0] + (d['inttime']/(24*3600.))*k[2] for k in cands.iterkeys()]
-        specstd = [cands[k][4] for k in cands.iterkeys()]
-        imkur = [cands[k][8] for k in cands.iterkeys()]
-        key = [k for k in cands.iterkeys()]
-        zs = []
+        smax = max([abs(snr) for snr in snrs])
+        smin = min([abs(snr) for snr in snrs])
+    return [sizerange[0] + sizerange[1] * ((abs(snr) - smin)/(smax - smin))**3 for snr in snrs]
 
-    sizes = calcsize(snr)
-    colors = colorsat(l1, m1)
-    return snr, dm, l1, m1, time, specstd, imkur, key, sizes, colors, zs
-
-def calcsize(snr, sizerange=(3,60)):
-    """ Takes snr list and returns value to scale symbol size.
-    """
-
-    if snr:
-        smax = max([abs(s) for s in snr])
-        smin = min([abs(s) for s in snr])
-        return [sizerange[0] + sizerange[1] * ((abs(s) - smin)/(smax - smin))**3 for s in snr]
-    else:
-        return []
     
 def colorsat(l,m):
     """ Returns color for given l,m
