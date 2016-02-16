@@ -80,57 +80,57 @@ def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None,
 
     TOOLS = "hover,tap,pan,box_select,wheel_zoom,reset"
 
-    # DM-time plot
+    # reset-time plot
     dmt = figure(plot_width=950, plot_height=500, toolbar_location="left", x_axis_label='Time (s; relative)',
                  y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), 
                  webgl=True, tools=TOOLS)
-    dmt.circle('time', 'dm', size='sizes', source=source, line_color=None, fill_color='colors', 
+    dmt.circle(source.data['time'], source.data['dm'], size=source.data['sizes'], line_color=None, fill_color=source.data['colors'], 
                fill_alpha=0.2)
 
     # image location plot
     loc = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)',
                  x_range=(l1_min, l1_max), y_range=(m1_min,m1_max), tools=TOOLS, webgl=True)
-    loc.circle('l1', 'm1', size='sizes', source=source, line_color=None, fill_color='colors',
+    loc.circle(source.data['l1'], source.data['m1'], size=source.data['sizes'], line_color=None, fill_color=source.data['colors'],
                fill_alpha=0.2)
 
     # cand spectrum/image statistics plot
     stat = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Spectral std',
                   y_axis_label='Image kurtosis', x_range=(specstd_min, specstd_max), 
                   y_range=(imkur_min, imkur_max), tools=TOOLS, webgl=True)
-    stat.circle('specstd', 'imkur', size='sizes', source=source, line_color=None, fill_color='colors',
+    stat.circle(source.data['specstd'], source.data['imkur'], size=source.data['sizes'], line_color=None, fill_color=source.data['colors'],
                 fill_alpha=0.2)
 
     # norm prob plot
     norm = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed',
                   y_axis_label='SNR expected', tools=TOOLS, webgl=True)
-    norm.circle('snrs', 'zs', size='sizes', source=source, line_color=None, fill_color='colors', fill_alpha=0.2)
+    norm.circle(source.data['snrs'], source.data['zs'], size=source.data['sizes'], line_color=None, fill_color=source.data['colors'], fill_alpha=0.2)
 
     # set up negative symbols, if indexes in place
     if crossinds:
         sourceneg = ColumnDataSource(data = dict({(key, tuple([value[i] for i in crossinds]))
                                                   for (key, value) in data.iteritems()}))
-        dmt.cross('time', 'dm', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
-        loc.cross('l1', 'm1', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
-        stat.cross('specstd', 'imkur', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
-        norm.cross('abssnr', 'zs', size='sizes', source=sourceneg, line_color='colors', line_alpha=0.2)
+        dmt.cross(sourceneg.data['time'], sourceneg.data['dm'], size=sourceneg.data['sizes'], line_color=sourceneg.data['colors'], line_alpha=0.2)
+        loc.cross(sourceneg.data['l1'], sourceneg.data['m1'], size=sourceneg.data['sizes'], line_color=sourceneg.data['colors'], line_alpha=0.2)
+        stat.cross(sourceneg.data['specstd'], sourceneg.data['imkur'], size=sourceneg.data['sizes'], line_color=sourceneg.data['colors'], line_alpha=0.2)
+        norm.cross(sourceneg.data['abssnr'], sourceneg.data['zs'], size=sourceneg.data['sizes'], line_color=sourceneg.data['colors'], line_alpha=0.2)
 
     if edgeinds:
         sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
                                                    for (key, value) in data.iteritems()}))
-        dmt.circle('time', 'dm', size='sizes', source=sourceedge, line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2)
-        loc.circle('l1', 'm1', size='sizes', source=sourceedge, line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2)
-        stat.circle('specstd', 'imkur', size='sizes', source=sourceedge, line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2)
-        norm.circle('snrs', 'zs', size='sizes', source=sourceedge, line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2)
+        dmt.circle('time', 'dm', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
+        loc.circle('l1', 'm1', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
+        stat.circle('specstd', 'imkur', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
+        norm.circle('snrs', 'zs', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
 
     # define hover and url behavior
     hover = dmt.select(dict(type=HoverTool))
-    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    hover.tooltips = OrderedDict([('SNR', '@snrs'), ('time', '@time'), ('key', '@key')])
     hover = loc.select(dict(type=HoverTool))
-    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    hover.tooltips = OrderedDict([('SNR', '@snrs'), ('time', '@time'), ('key', '@key')])
     hover = stat.select(dict(type=HoverTool))
-    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    hover.tooltips = OrderedDict([('SNR', '@snrs'), ('time', '@time'), ('key', '@key')])
     hover = norm.select(dict(type=HoverTool))
-    hover.tooltips = OrderedDict([('SNR', '@snr'), ('time', '@time'), ('key', '@key')])
+    hover.tooltips = OrderedDict([('SNR', '@snrs'), ('time', '@time'), ('key', '@key')])
     if url_path and fileroot:
         url = '{}/cands_{}_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png'.format(url_path, fileroot)
         taptool = dmt.select(type=TapTool)
@@ -182,16 +182,26 @@ def readdata(mergepkl, sizerange=(2,70)):
     scancol = d['featureind'].index('scan')
 
     # define data to plot
-    snrs = [cands[k][snrcol] for k in cands.iterkeys()]
-    abssnr = [abs(cands[k][snrcol]) for k in cands.iterkeys()]
-    dm = [d['dmarr'][k[dmindcol]] for k in cands.iterkeys()]
-    l1 = [cands[k][l1col] for k in cands.iterkeys()]
-    m1 = [cands[k][m1col] for k in cands.iterkeys()]
-    time = [24*3600*d['segmenttimesdict'][k[scancol]][k[segmentcol],0] + d['inttime']*k[intcol] for k in cands.iterkeys()]
+    snrs = []
+    abssnr = []
+    dm = []
+    l1 = []
+    m1 = []
+    time = []
+    specstd = []
+    imkur = []
+    key = []
+    for k in cands.iterkeys():
+        snrs.append(cands[k][snrcol])
+        abssnr.append(abs(cands[k][snrcol]))
+        dm.append(d['dmarr'][k[dmindcol]])
+        l1.append(cands[k][l1col])
+        m1.append(cands[k][m1col])
+        time.append(24*3600*d['segmenttimesdict'][k[scancol]][k[segmentcol],0] + d['inttime']*k[intcol])
+        specstd.append(cands[k][specstdcol])
+        imkur.append(cands[k][imkurcol])
+        key.append(k)
     time = time - min(time)
-    specstd = [cands[k][specstdcol] for k in cands.iterkeys()]
-    imkur = [cands[k][imkurcol] for k in cands.iterkeys()]
-    key = [k for k in cands.iterkeys()]
     scan, seg, candint, dmind, dtind, beamnum = zip(*key)
     zs = normprob(d, snrs)
     sizes = calcsize(snrs)
@@ -308,8 +318,16 @@ def normprob(d, snrs, inds=None):
 
     # calc normal quantile
     if not inds: inds = range(len(snrs))
-    snrsortpos = sorted([snrs[i] for i in inds if snrs[i] > 0], reverse=True)
-    snrsortneg = sorted([abs(snrs[i]) for i in inds if snrs[i] < 0], reverse=True)
+    snrsortpos = []
+    snrsortneg = []
+    for i in inds:
+        if snrs[i] > 0:
+            snrsortpos.append(snrs[i])
+        elif snrs[i] < 0:
+            snrsortneg.append(abs(snrs[i]))
+
+    snrsortpos = sorted(snrsortpos, reverse=True)
+    snrsortneg = sorted(snrsortneg, reverse=True)
 
     zval = []
     for (i, snr) in enumerate(snrs):
@@ -345,13 +363,11 @@ def colorsat(l,m):
     Designed to look like a color wheel that is more saturated in middle.
     """
 
-    if l:
-        lm = n.zeros(len(l), dtype='complex')
-        lm.real = l; lm.imag = m
-        red = 0.5*(1+n.cos(n.angle(lm)))
-        green = 0.5*(1+n.cos(n.angle(lm) + 2*3.14/3))
-        blue = 0.5*(1+n.cos(n.angle(lm) - 2*3.14/3))
-        amp = 256*n.abs(lm)/n.abs(lm).max()
-        return ["#%02x%02x%02x" % (n.floor(amp[i]*red[i]), n.floor(amp[i]*green[i]), n.floor(amp[i]*blue[i])) for i in range(len(l))]
-    else:
-        return []
+    lm = n.zeros(len(l), dtype='complex')
+    lm.real = l
+    lm.imag = m
+    red = 0.5*(1+n.cos(n.angle(lm)))
+    green = 0.5*(1+n.cos(n.angle(lm) + 2*3.14/3))
+    blue = 0.5*(1+n.cos(n.angle(lm) - 2*3.14/3))
+    amp = 256*n.abs(lm)/n.abs(lm).max()
+    return ["#%02x%02x%02x" % (n.floor(amp[i]*red[i]), n.floor(amp[i]*green[i]), n.floor(amp[i]*blue[i])) for i in range(len(l))]
