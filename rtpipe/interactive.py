@@ -117,10 +117,10 @@ def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None,
     if edgeinds:
         sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
                                                    for (key, value) in data.iteritems()}))
-        dmt.circle('time', 'dm', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
-        loc.circle('l1', 'm1', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
-        stat.circle('specstd', 'imkur', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
-        norm.circle('snrs', 'zs', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
+        dmt.circle(sourceedge.data['time'], sourceedge.data['dm'], size=sourceedge.data['sizes'], line_color=sourceedge.data['colors'], fill_color=sourceedge.data['colors'], line_alpha=0.5, fill_alpha=0.2)
+        loc.circle(sourceedge.data['l1'], sourceedge.data['m1'], size=sourceedge.data['sizes'], line_color=sourceedge.data['colors'], fill_color=sourceedge.data['colors'], line_alpha=0.5, fill_alpha=0.2)
+        stat.circle(sourceedge.data['specstd'], sourceedge.data['imkur'], size=sourceedge.data['sizes'], line_color=sourceedge.data['colors'], fill_color=sourceedge.data['colors'], line_alpha=0.5, fill_alpha=0.2)
+        norm.circle(sourceedge.data['snrs'], sourceedge.data['zs'], size=sourceedge.data['sizes'], line_color=sourceedge.data['colors'], fill_color=sourceedge.data['colors'], line_alpha=0.5, fill_alpha=0.2)
 
     # define hover and url behavior
     hover = dmt.select(dict(type=HoverTool))
