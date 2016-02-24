@@ -70,6 +70,7 @@ def read_noise(noisefile):
     else:
         logger.warn('structure of noise file not understood. first entry should be length 4 of 5.')
 
+
 def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
     """ Merges cands/noise pkl files from multiple segments to single cands/noise file.
     Output single pkl per scan with root name fileroot.
@@ -152,6 +153,7 @@ def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
             for noisefile in noiselist:
                 os.remove(noisefile)
 
+
 def merge_noises(pkllist, outroot=''):
     """ Merge noise files from multiple segments.
     Output noise file has scan number at start of each entry.
@@ -185,6 +187,7 @@ def merge_noises(pkllist, outroot=''):
 
     with open(mergepkl, 'w') as pkl:
         pickle.dump(allnoise, pkl)
+
 
 def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
     """ Takes cands pkls from list and filteres to write new single "merge" pkl.
@@ -280,6 +283,39 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
     pickle.dump(d, pkl)
     pickle.dump(cands, pkl)
     pkl.close()
+
+
+def split_candidates(candsfile, featind1, featind2, candsfile1, candsfile2):
+    """ Split features from one candsfile into two new candsfiles
+
+    featind1/2 is list of indices to take from d['features'].
+    New features and updated state dict go to candsfile1/2.
+    """
+
+    with open(candsfile, 'rb') as pkl:
+        d = pickle.load(pkl)
+        cands = pickle.load(pkl)
+
+    features = d['features']
+    d1 = d.copy()
+    d2 = d.copy()
+    d1['features'] = [features[i] for i in featind1]
+    d2['features'] = [features[i] for i in featind2]
+
+    cands1 = {}
+    cands2 = {}
+    for key in cands:
+        cands1[key] = tuple([cands[key][i] for i in featind1])
+        cands2[key] = tuple([cands[key][i] for i in featind2])
+
+    with open(candsfile1, 'w') as pkl:
+        pickle.dump(d1, pkl)
+        pickle.dump(cands1, pkl)
+
+    with open(candsfile2, 'w') as pkl:
+        pickle.dump(d2, pkl)
+        pickle.dump(cands2, pkl)
+
 
 def plot_summary(fileroot, scans, remove=[], snrmin=0, snrmax=999):
     """ Take pkl list or merge file to produce comprehensive candidate screening plots.
