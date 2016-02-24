@@ -757,16 +757,17 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
             except:
                 logger.debug('Failed to autodetect CASA or telcal calibration files.')
 
-    # supported features: snr1, immax1, l1, m1
-    if d['searchtype'] == 'image1':
-        d['features'] = ['snr1', 'immax1', 'l1', 'm1']   # features returned by image1
-    elif d['searchtype'] == 'image1snip':
-        d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'im40', 'spec20']
-    elif d['searchtype'] == 'image1stats':
-        d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'specstd', 'specskew', 'speckurtosis', 'imskew', 'imkurtosis']  # note: spec statistics are all or nothing.
-    elif 'image2' in d['searchtype']:
-        d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'snr2', 'immax2', 'l2', 'm2']   # features returned by image1
+    # define features
     d['featureind'] = ['segment', 'int', 'dmind', 'dtind', 'beamnum']  # feature index. should be stable.
+    if 'features' not in d:
+        if d['searchtype'] == 'image1':
+            d['features'] = ['snr1', 'immax1', 'l1', 'm1']   # features returned by image1
+        elif d['searchtype'] == 'image1snip':
+            d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'im40', 'spec20']
+        elif d['searchtype'] == 'image1stats':
+            d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'specstd', 'specskew', 'speckurtosis', 'imskew', 'imkurtosis']  # note: spec statistics are all or nothing.
+        elif 'image2' in d['searchtype']:
+            d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'snr2', 'immax2', 'l2', 'm2']   # features returned by image1
 
     # set imaging parameters to use
     if d['uvres'] == 0:
