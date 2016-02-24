@@ -1,4 +1,6 @@
+.gitignore
 build
 dist
 rtpipe.egg-info
-rtpipe/*pyc
+*pyc
+*~
