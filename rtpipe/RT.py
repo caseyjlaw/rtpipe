@@ -104,8 +104,8 @@ def pipeline(d, segments):
                             falsecands = {}
                             rms = data[d['readints']/2].real.std()/n.sqrt(d['npol']*d['nbl']*d['nchan'])
                             dt = 1 # pulse width in integrations
-                            for i in n.random.randint(0, d['readints'], d['nmock']):  # add nmock transients at random ints
-                                (loff, moff, A, DM) = make_transient(rms, max(d['dmarr']), Amin=d['sigma_image1'])
+                            for i in n.random.randint(d['datadelay'][-1], d['readints'], d['nmock']):  # add nmock transients at random ints
+                                (loff, moff, A, DM) = make_transient(rms, max(d['dmarr']), Amin=1.2*d['sigma_image1'])
                                 logger.info('Adding mock transient at (l, m) = (%f, %f) at int %d, est SNR %.1f, DM %.1f ' % (loff, moff, i, A/rms, DM))
                                 add_transient(d, data, u, v, w, loff, moff, i, A, DM, dt)
                                 candid =  (int(segment), int(i), DM, int(0), int(0))
