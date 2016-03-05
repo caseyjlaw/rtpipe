@@ -98,18 +98,35 @@ def pipeline(d, segments):
                         logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s'
                                      % (segment, str(data_read.mean()), str(data.mean())))
 
-                        if d['nmock']:
+                        if d['mock']: # could be list or int
                             # assume that rms in the middle of the segment is
                             # characteristic of noise throughout the segment
                             falsecands = {}
                             rms = data[d['readints']/2].real.std()/n.sqrt(d['npol']*d['nbl']*d['nchan'])
                             dt = 1 # pulse width in integrations
-                            for i in n.random.randint(d['datadelay'][-1], d['readints'], d['nmock']):  # add nmock transients at random ints
-                                (loff, moff, A, DM) = make_transient(rms, max(d['dmarr']), Amin=1.2*d['sigma_image1'])
-                                logger.info('Adding mock transient at (l, m) = (%f, %f) at int %d, est SNR %.1f, DM %.1f ' % (loff, moff, i, A/rms, DM))
+
+                            if isinstance(d['mock'], int):
+                                for i in n.random.randint(d['datadelay'][-1], d['readints'], d['mock']):  # add nmock transients at random ints
+                                    (loff, moff, A, DM) = make_transient(rms, max(d['dmarr']), Amin=1.2*d['sigma_image1'])
+                                    candid =  (int(segment), int(i), DM, int(dt), int(0))
+                                    falsecands[candid] = [A/rms, A, loff, moff]
+                            elif isinstance(d['mock'], list):
+                                for mock in d['mock']:
+                                    try:
+                                        (i, DM, loff, moff, SNR) = mock
+                                        candid =  (int(segment), int(i), DM, int(dt), int(0))
+                                        falsecands[candid] = [SNR, SNR*rms, loff, moff]
+                                    except:
+                                        logger.info('Could not parse mock parameters: {}'.format(mock))
+                            else:
+                                logger.info('Not a recognized type for mock.')
+
+                            for candid in falsecands:
+                                (segment, i, DM, dt, beamnum) = candid
+                                (SNR, A, loff, moff) = falsecands[candid]
+                                logger.info('Adding mock transient at int %d, DM %.1f, (l, m) = (%f, %f) at est SNR %.1f' % (i, DM, loff, moff, SNR))
                                 add_transient(d, data, u, v, w, loff, moff, i, A, DM, dt)
-                                candid =  (int(segment), int(i), DM, int(0), int(0))
-                                falsecands[candid] = [A/rms, A, loff, moff]
+
                             if d['savecands']:
                                 savecands(d, falsecands, domock=True)
 
