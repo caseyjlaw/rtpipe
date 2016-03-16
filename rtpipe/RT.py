@@ -98,18 +98,38 @@ def pipeline(d, segments):
                         logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s'
                                      % (segment, str(data_read.mean()), str(data.mean())))
 
-                        if d['nmock']:
-                            # assume that rms in the middle of the segment is
+                        if d['mock']: # could be list or int
+                            # assume that std of vis in the middle of the segment is
                             # characteristic of noise throughout the segment
                             falsecands = {}
-                            rms = data[d['readints']/2].real.std()/n.sqrt(d['npol']*d['nbl']*d['nchan'])
+                            datamid = n.ma.masked_equal(data[d['readints']/2].real, 0, copy=True)
+                            madstd = 1.4826 * n.ma.median(n.abs(datamid - n.ma.median(datamid)))/n.sqrt(d['npol']*d['nbl']*d['nchan'])
+                            std = datamid.std()/n.sqrt(d['npol']*d['nbl']*d['nchan'])
+                            logger.debug('Noise per vix in central int: madstd {}, std {}'.format(madstd, std))
                             dt = 1 # pulse width in integrations
-                            for i in n.random.randint(0, d['readints'], d['nmock']):  # add nmock transients at random ints
-                                (loff, moff, A, DM) = make_transient(rms, max(d['dmarr']), Amin=d['sigma_image1'])
-                                logger.info('Adding mock transient at (l, m) = (%f, %f) at int %d, est SNR %.1f, DM %.1f ' % (loff, moff, i, A/rms, DM))
+
+                            if isinstance(d['mock'], int):
+                                for i in n.random.randint(d['datadelay'][-1], d['readints'], d['mock']):  # add nmock transients at random ints
+                                    (loff, moff, A, DM) = make_transient(madstd, max(d['dmarr']), Amin=1.2*d['sigma_image1'])
+                                    candid =  (int(segment), int(i), DM, int(dt), int(0))
+                                    falsecands[candid] = [A/madstd, A, loff, moff]
+                            elif isinstance(d['mock'], list):
+                                for mock in d['mock']:
+                                    try:
+                                        (i, DM, loff, moff, SNR) = mock
+                                        candid =  (int(segment), int(i), DM, int(dt), int(0))
+                                        falsecands[candid] = [SNR, SNR*madstd, loff, moff]
+                                    except:
+                                        logger.info('Could not parse mock parameters: {}'.format(mock))
+                            else:
+                                logger.info('Not a recognized type for mock.')
+
+                            for candid in falsecands:
+                                (segment, i, DM, dt, beamnum) = candid
+                                (SNR, A, loff, moff) = falsecands[candid]
+                                logger.info('Adding mock transient at int %d, DM %.1f, (l, m) = (%f, %f) at est SNR %.1f' % (i, DM, loff, moff, SNR))
                                 add_transient(d, data, u, v, w, loff, moff, i, A, DM, dt)
-                                candid =  (int(segment), int(i), DM, int(0), int(0))
-                                falsecands[candid] = [A/rms, A, loff, moff]
+
                             if d['savecands']:
                                 savecands(d, falsecands, domock=True)
 
@@ -497,7 +517,7 @@ def add_transient(d, data, u, v, w, l1, m1, i, s, dm=0, dt=1):
     for ch in range(d['nchan']):
         data[i+delay(ch):i+delay(ch)+dt, :, ch] += s * n.exp(2j*n.pi*ang(ch)[None,:,None])
 
-def make_transient(rms, DMmax, Amin=6., Amax=20., rmax=20., rmin=0., DMmin=0.):
+def make_transient(std, DMmax, Amin=6., Amax=20., rmax=20., rmin=0., DMmin=0.):
     """ Produce a mock transient pulse source for the purposes of characterizing the
     detection success of the current pipeline.
     
@@ -507,16 +527,16 @@ def make_transient(rms, DMmax, Amin=6., Amax=20., rmax=20., rmin=0., DMmin=0.):
       noise level throughout
 
     Input
-    rms   - rms noise level in visibilities(?) at mid-point of segment
+    std   - noise level in visibilities(?) at mid-point of segment
     DMmax - maximum DM at which mock transient can be inserted [pc/cm^3]
-    Amin/Amax is amplitude in units of the rms (calculated below)
+    Amin/Amax is amplitude in units of the std (calculated below)
     rmax/rmin is radius range in arcmin
     DMmin is min DM
 
     Returns
     loff - direction cosine offset of mock transient from phase center [radians]
     moff - direction cosine offset of mock transient from phase center [radians]
-    A  - amplitude of transient [rms units]
+    A  - amplitude of transient [std units]
     DM - dispersion measure of mock transient [pc/cm^3]
     """
 
@@ -524,10 +544,10 @@ def make_transient(rms, DMmax, Amin=6., Amax=20., rmax=20., rmin=0., DMmin=0.):
     phimin =  0.0
     phimax = 2*math.pi
     
-    # Amplitude of transient, done in units of the rms
-    # rms is calculated assuming that noise level in the middle of the data, 
+    # Amplitude of transient, done in units of the std
+    # std is calculated assuming that noise level in the middle of the data, 
     # at index d['readints']/2, is characteristic of that throughout the data
-    A = random.uniform(Amin, Amax) * rms
+    A = random.uniform(Amin, Amax) * std
 
     # Position of transient, in direction cosines
     r = random.uniform(rmin, rmax)
@@ -757,16 +777,17 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
             except:
                 logger.debug('Failed to autodetect CASA or telcal calibration files.')
 
-    # supported features: snr1, immax1, l1, m1
-    if d['searchtype'] == 'image1':
-        d['features'] = ['snr1', 'immax1', 'l1', 'm1']   # features returned by image1
-    elif d['searchtype'] == 'image1snip':
-        d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'im40', 'spec20']
-    elif d['searchtype'] == 'image1stats':
-        d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'specstd', 'specskew', 'speckurtosis', 'imskew', 'imkurtosis']  # note: spec statistics are all or nothing.
-    elif 'image2' in d['searchtype']:
-        d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'snr2', 'immax2', 'l2', 'm2']   # features returned by image1
+    # define features
     d['featureind'] = ['segment', 'int', 'dmind', 'dtind', 'beamnum']  # feature index. should be stable.
+    if 'features' not in d:
+        if d['searchtype'] == 'image1':
+            d['features'] = ['snr1', 'immax1', 'l1', 'm1']   # features returned by image1
+        elif d['searchtype'] == 'image1snip':
+            d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'im40', 'spec20']
+        elif d['searchtype'] == 'image1stats':
+            d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'specstd', 'specskew', 'speckurtosis', 'imskew', 'imkurtosis']  # note: spec statistics are all or nothing.
+        elif 'image2' in d['searchtype']:
+            d['features'] = ['snr1', 'immax1', 'l1', 'm1', 'snr2', 'immax2', 'l2', 'm2']   # features returned by image1
 
     # set imaging parameters to use
     if d['uvres'] == 0:

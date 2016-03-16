@@ -123,9 +123,13 @@ def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
         with open('cands_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
             pickle.dump(state, pkl)
             pickle.dump(cands, pkl)
-
+            
+        if cleanup:
+            if os.path.exists('cands_' + fileroot + '_sc' + str(scan) + '.pkl'):
+                for candsfile in candslist:
+                    os.remove(candsfile)
     else:
-        logger.warn('Merged candsfile already exists for scan %d' % scan)
+        logger.warn('Merged candsfile already exists for scan %d. Not merged.' % scan)
 
     # aggregate noise over segments
     if not os.path.exists('noise_' + fileroot + '_sc' + str(scan) + '.pkl'):
@@ -142,16 +146,14 @@ def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
         if len(noise):
             with open('noise_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
                 pickle.dump(noise, pkl)
-    else:
-        logger.warn('Merged noisefile already exists for scan %d' % scan)
 
-    if cleanup:
-        if os.path.exists('cands_' + fileroot + '_sc' + str(scan) + '.pkl'):
-            for candsfile in candslist:
-                os.remove(candsfile)
-        if os.path.exists('noise_' + fileroot + '_sc' + str(scan) + '.pkl'):
-            for noisefile in noiselist:
-                os.remove(noisefile)
+        if cleanup:
+            if os.path.exists('noise_' + fileroot + '_sc' + str(scan) + '.pkl'):
+                for noisefile in noiselist:
+                    os.remove(noisefile)
+
+    else:
+        logger.warn('Merged noisefile already exists for scan %d. Not merged.' % scan)
 
 
 def merge_noises(pkllist, outroot=''):
