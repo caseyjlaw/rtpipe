@@ -1,3 +1,4 @@
+.gitignore
 build
 dist
 rtpipe.egg-info
