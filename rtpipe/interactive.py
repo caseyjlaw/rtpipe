@@ -341,21 +341,22 @@ def normprob(d, snrs, inds=None):
     return zval
 
 
-def calcsize(snrs, sizerange=(2,70), inds=None):
-    """ Uses SNR to calculate symbol size.
+def calcsize(values, sizerange=(2,70), inds=None, plaw=3):
+    """ Use set of values to calculate symbol size.
 
-    snrs is a list of floats for candidate significance.
+    valus is a list of floats for candidate significance.
     inds is an optional list of indexes to use to calculate symbol size.
     Scaling of symbol size min max set by sizerange tuple (min, max).
+    plaw is powerlaw scaling of symbol size from values
     """
 
     if inds:
-        smax = max([abs(snrs[i]) for i in inds])
-        smin = min([abs(snrs[i]) for i in inds])
+        smax = max([abs(values[i]) for i in inds])
+        smin = min([abs(values[i]) for i in inds])
     else:
-        smax = max([abs(snr) for snr in snrs])
-        smin = min([abs(snr) for snr in snrs])
-    return [sizerange[0] + sizerange[1] * ((abs(snr) - smin)/(smax - smin))**3 for snr in snrs]
+        smax = max([abs(val) for val in values])
+        smin = min([abs(val) for val in values])
+    return [sizerange[0] + sizerange[1] * ((abs(val) - smin)/(smax - smin))**plaw for val in values]
 
     
 def colorsat(l,m):
