@@ -158,13 +158,19 @@ def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None,
         return combined
 
 
-def readdata(mergepkl, sizerange=(2,70)):
-    """ Converts candidate data from merged pkl file to dictionary for bokeh """
+def readdata(mergepkl=None, d=None, cands=None, sizerange=(2,70)):
+    """ Converts candidate data to dictionary for bokeh
+
+    Can take merged pkl file or d/cands as read separately.
+    """
 
     # get cands from pkl
-    with open(mergepkl,'r') as pkl:
-        d = pickle.load(pkl)
-        cands = pickle.load(pkl)
+    if mergepkl:
+        with open(mergepkl,'r') as pkl:
+            d = pickle.load(pkl)
+            cands = pickle.load(pkl)
+    elif d and cands:
+        print('Using provided d/cands')
 
     # define columns to extract
     if 'snr2' in d['features']:
