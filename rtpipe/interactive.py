@@ -80,12 +80,13 @@ def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None,
 
     TOOLS = "hover,tap,pan,box_select,wheel_zoom,reset"
 
-    # reset-time plot
+    # dm-time plot
     dmt = figure(plot_width=950, plot_height=500, toolbar_location="left", x_axis_label='Time (s; relative)',
                  y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), 
                  webgl=True, tools=TOOLS)
     dmt.circle(source.data['time'], source.data['dm'], size=source.data['sizes'], line_color=None, fill_color=source.data['colors'], 
                fill_alpha=0.2)
+#    plotdmt(source, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, url_path=url_path, fileroot=fileroot)
 
     # image location plot
     loc = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)',
@@ -156,6 +157,52 @@ def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None,
         save(combined)
     else:
         return combined
+
+
+def plotdmt(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None, fileroot=None, tools="hover,tap,pan,box_select,wheel_zoom,reset"):
+    """ Make a dm-time figure """
+
+    if not circleinds: circleinds = range(len(data['snrs']))
+
+    source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds])) 
+                                           for (key, value) in data.iteritems()}))
+
+    # set ranges
+    datalen = len(data['dm'])
+    inds = circleinds
+    if crossinds: inds += crossinds
+    if edgeinds: inds += edgeinds
+    dm = [data['dm'][i] for i in inds]
+    dm_min = min(min(dm), max(dm)/1.2)
+    dm_max = max(max(dm), min(dm)*1.2)
+    time = [data['time'][i] for i in inds]
+    time_min = min(time)
+    time_max = max(time)
+
+    dmt = figure(plot_width=950, plot_height=500, toolbar_location="left", x_axis_label='Time (s; relative)',
+                 y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), 
+                 webgl=True, tools=tools)
+    dmt.circle('time', 'dm', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
+
+    if crossinds:
+        sourceneg = ColumnDataSource(data = dict({(key, tuple([value[i] for i in crossinds]))
+                                                  for (key, value) in data.iteritems()}))
+        dmt.cross('time', 'dm', size='sizes', line_color='colors', line_alpha=0.2, source=sourceneg)
+
+    if edgeinds:
+        sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
+                                                   for (key, value) in data.iteritems()}))
+        dmt.circle('time', 'dm', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
+
+    hover = dmt.select(dict(type=HoverTool))
+    hover.tooltips = OrderedDict([('SNR', '@snrs'), ('time', '@time'), ('key', '@key')])
+
+    if url_path and fileroot:
+        url = '{}/cands_{}_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png'.format(url_path, fileroot)
+        taptool = dmt.select(type=TapTool)
+        taptool.callback = OpenURL(url=url)
+
+    return dmt
 
 
 def readdata(mergepkl, sizerange=(2,70)):
