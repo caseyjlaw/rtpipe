@@ -1,5 +1,5 @@
 from scipy.special import erfinv
-import numpy as n
+import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -13,40 +13,56 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 def read_candidates(candsfile, snrmin=0, snrmax=999, returnstate=False):
-    """ Reads candidate pkl file into numpy array.
-    Default is to return tuple of two numpy arrays (location, features).
-    snrmin and snrmax can trim based on absolute value of snr (pos and neg kept).
-    returnstate will instead return (loc, prop, state)
+    """ Reads candidate file and returns data as python object.
+
+    candsfile is pkl file (for now) with (1) state dict and (2) cands object.
+    cands object can either be a dictionary or tuple of two numpy arrays.
+    
+    Return tuple of two numpy arrays (location, properties).
+    returned values can be filtered by snrmin and snrmax (on absolute value).
+    returnstate will instead return (loc, prop, state).
     """
 
     # read in pickle file of candidates
-    with open(candsfile, 'rb') as pkl:
-        d = pickle.load(pkl)
-        cands = pickle.load(pkl)
-    if cands == 0:
-        logger.info('No cands found from %s.' % candsfile)
+    try:
+        with open(candsfile, 'rb') as pkl:
+            d = pickle.load(pkl)
+            cands = pickle.load(pkl)
+    except IOError:
+        logger.error('Trouble parsing candsfile')
+        loc = np.array([])
+        prop = np.array([])
         if returnstate:
-            return (n.array([]), n.array([]), d)
+            return (loc, prop, d)
         else:
-            return (n.array([]), n.array([]))
+            return (loc, prop)
 
     if 'snr2' in d['features']:
         snrcol = d['features'].index('snr2')
     elif 'snr1' in d['features']:
         snrcol = d['features'].index('snr1')
 
-    # select set of values 
-    loc = []; prop = []
-    for kk in sorted(cands.keys()):
-        if ((n.abs(cands[kk][snrcol]) > snrmin) and (n.abs(cands[kk][snrcol]) < snrmax)):
-            loc.append( list(kk) )
-            prop.append( list(cands[kk]) )    #[snrcol], cands[kk][l1col], cands[kk][m1col]) )
+    if isinstance(cands, dict):
+        loc = []; prop = []
+        for kk in sorted(cands.keys()):
+            if ((np.abs(cands[kk][snrcol]) > snrmin) and (np.abs(cands[kk][snrcol]) < snrmax)):
+                loc.append( list(kk) )
+                prop.append( list(cands[kk]) )
+        loc = np.array(loc)
+        prop = np.array(prop)
+    elif isinstance(cands, tuple):
+        loc, prop = cands
+        assert isinstance(loc, np.ndarray) and isinstance(prop, np.ndarray), 'if cands object is tuple, contents must be two ndarrays'
+    else:
+        logger.error('Cands object (in cands file) must be dict or tuple(np.array, np.array).')
 
     logger.info('Read %d candidates from %s.' % (len(loc), candsfile))
+
     if returnstate:
-        return n.array(loc), prop, d
+        return loc, prop, d
     else:
-        return n.array(loc), prop
+        return loc, prop
+
 
 def read_noise(noisefile):
     """ Function to read a noise file and parse columns.
@@ -60,20 +76,23 @@ def read_noise(noisefile):
         for noise in noises:
             seg.append(noise[0]); noiseperbl.append(noise[1])
             flagfrac.append(noise[2]); imnoise.append(noise[3])
-        return (n.array(seg), n.array(noiseperbl), n.array(flagfrac), n.array(imnoise))
+        return (np.array(seg), np.array(noiseperbl), np.array(flagfrac), np.array(imnoise))
     elif len(noises[0]) == 5:
         for noise in noises:
             scan.append(noise[0])
             seg.append(noise[1]); noiseperbl.append(noise[2])
             flagfrac.append(noise[3]); imnoise.append(noise[4])
-        return (n.array(scan), n.array(seg), n.array(noiseperbl), n.array(flagfrac), n.array(imnoise))
+        return (np.array(scan), np.array(seg), np.array(noiseperbl), np.array(flagfrac), np.array(imnoise))
     else:
         logger.warn('structure of noise file not understood. first entry should be length 4 of 5.')
 
 
 def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
     """ Merges cands/noise pkl files from multiple segments to single cands/noise file.
-    Output single pkl per scan with root name fileroot.
+
+    Expects segment cands pkls with have (1) state dict and (2) cands dict.
+    Writes tuple state dict and duple of numpy arrays
+    A single pkl written per scan using root name fileroot.
     if cleanup, it will remove segments after merging.
     if sizelimit, it will reduce the output file to be less than this many MB.
     """
@@ -121,8 +140,8 @@ def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
 
         # write cands to single file
         with open('cands_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
-            pickle.dump(state, pkl)
-            pickle.dump(cands, pkl)
+            pickle.dump(state, pkl, protocol=2)
+            pickle.dump( (np.array(cands.keys()), np.array(cands.values())), pkl, protocol=2)
             
         if cleanup:
             if os.path.exists('cands_' + fileroot + '_sc' + str(scan) + '.pkl'):
@@ -145,7 +164,7 @@ def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
         # write noise to single file
         if len(noise):
             with open('noise_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
-                pickle.dump(noise, pkl)
+                pickle.dump(noise, pkl, protocol=2)
 
         if cleanup:
             if os.path.exists('noise_' + fileroot + '_sc' + str(scan) + '.pkl'):
@@ -188,7 +207,7 @@ def merge_noises(pkllist, outroot=''):
         logger.info('Writing merged noise file %s' % mergepkl)
 
     with open(mergepkl, 'w') as pkl:
-        pickle.dump(allnoise, pkl)
+        pickle.dump(allnoise, pkl, protocol=2)
 
 
 def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
@@ -217,7 +236,7 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
     for pklfile in pkllist:
 
         # get scan number and read candidates
-        d = pickle.load(open(pklfile, 'r'))
+        locs, props, d = read_candidates(pklfile, snrmin=snrmin, snrmax=snrmax, returnstate=True)
         if 'snr2' in d['features']:
             snrcol = d['features'].index('snr2')
         elif 'snr1' in d['features']:
@@ -226,8 +245,7 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
         segmenttimesdict[scan] = d['segmenttimes']
         starttime_mjddict[scan] = d['starttime_mjd']
 
-        locs, props = read_candidates(pklfile, snrmin=snrmin, snrmax=snrmax)
-        times = int2mjd(d, n.array(locs))
+        times = int2mjd(d, locs)
 
         # build merged loc,prop lists
         for i in range(len(locs)):
@@ -238,52 +256,36 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
             mergeprop += [prop]
             mergetimes.append(times[i])
 
-    mergeloc = n.array(mergeloc)
-    mergeprop = n.array(mergeprop)
-    mergetimes = n.array(mergetimes)
+    mergeloc = np.array(mergeloc)
+    mergeprop = np.array(mergeprop)
+    mergetimes = np.array(mergetimes)
 
     # filter by remove, if needed
     if remove:
         mergetimes -= mergetimes.min()
 
-        ww = n.ones(len(mergetimes), dtype=bool)  # initialize pass filter
+        ww = np.ones(len(mergetimes), dtype=bool)  # initialize pass filter
         nranges = len(remove)
         for first in range(0,nranges,2):
             badrange0 = remove[first]
             badrange1 = remove[first+1]
 
-            ww = ww & n.where( (mergetimes < badrange0) | (mergetimes > badrange1), True, False )
+            ww = ww & np.where( (mergetimes < badrange0) | (mergetimes > badrange1), True, False )
 
         mergeloc = mergeloc[ww]
         mergeprop = mergeprop[ww]
 
-# **todo**
-    # if the scan has any candidates, add nints to count
-    # goodintcount = 0
-    # for scani in n.unique(dataloc):
-    #     if len(n.where(dataloc == scani)[0]):
-    #         goodintcount += d['nints']
-
-    # # correct int count by removed range
-    # for scan in remove.keys():
-    #     goodintcount -= remove[scan][1] - remove[scan][0]
-
     # update metadata
-#    d['goodintcount'] = goodintcount
     d['featureind'].insert(0, 'scan')
     d['remove'] = remove
     d['segmenttimesdict'] = segmenttimesdict
     d['starttime_mjddict'] = starttime_mjddict
     logger.info('Writing filtered set of %d candidates to %s' % (len(mergeloc), mergepkl))
 
-    # build and write up new dict
-    cands = {}
-    for i in range(len(mergeloc)):
-        cands[tuple(mergeloc[i])] = tuple(mergeprop[i])
-
+    # write up new pkl
     pkl = open(mergepkl, 'w')
-    pickle.dump(d, pkl)
-    pickle.dump(cands, pkl)
+    pickle.dump(d, pkl, protocol=2)
+    pickle.dump((mergeloc, mergeprop), pkl, protocol=2)
     pkl.close()
 
 
@@ -311,12 +313,12 @@ def split_candidates(candsfile, featind1, featind2, candsfile1, candsfile2):
         cands2[key] = tuple([cands[key][i] for i in featind2])
 
     with open(candsfile1, 'w') as pkl:
-        pickle.dump(d1, pkl)
-        pickle.dump(cands1, pkl)
+        pickle.dump(d1, pkl, protocol=2)
+        pickle.dump(cands1, pkl, protocol=2)
 
     with open(candsfile2, 'w') as pkl:
-        pickle.dump(d2, pkl)
-        pickle.dump(cands2, pkl)
+        pickle.dump(d2, pkl, protocol=2)
+        pickle.dump(cands2, pkl, protocol=2)
 
 
 def plot_summary(fileroot, scans, remove=[], snrmin=0, snrmax=999):
@@ -327,8 +329,7 @@ def plot_summary(fileroot, scans, remove=[], snrmin=0, snrmax=999):
 
     try:
         # see if this is a mergepkl
-        d = pickle.load(open(fileroot, 'r'))
-        locs, props = read_candidates(fileroot, snrmin=snrmin, snrmax=snrmax)
+        locs, props, d = read_candidates(fileroot, snrmin=snrmin, snrmax=snrmax, returnstate=True)
         mergepkl = fileroot
         logger.info('fileroot is a mergefile. Reading...')
     except:
@@ -340,8 +341,7 @@ def plot_summary(fileroot, scans, remove=[], snrmin=0, snrmax=999):
                 pkllist.append(pklfile)
         merge_cands(pkllist, outroot=fileroot, remove=remove, snrmin=snrmin, snrmax=snrmax)
         mergepkl = 'cands_' + fileroot + '_merge.pkl'
-        d = pickle.load(open(mergepkl, 'r'))
-        locs, props = read_candidates(mergepkl, snrmin=snrmin, snrmax=snrmax)
+        locs, props, d = read_candidates(mergepkl, snrmin=snrmin, snrmax=snrmax, returnstate=True)
 
     if not len(locs):
         logger.info('No candidates in mergepkl.')
@@ -365,10 +365,10 @@ def plot_summary(fileroot, scans, remove=[], snrmin=0, snrmax=999):
     times = int2mjd(d, locs)
     times -= times.min()
     dts = locs[:, dtindcol]
-    dms = n.array(d['dmarr'])[locs[:,dmindcol]]
-    snrs = n.array([props[i][snrcol] for i in range(len(props))])
-    l1s = n.array([props[i][l1col] for i in range(len(props))])
-    m1s = n.array([props[i][m1col] for i in range(len(props))])
+    dms = np.array(d['dmarr'])[locs[:,dmindcol]]
+    snrs = props[:, snrcol]
+    l1s = props[:, l1col]
+    m1s = props[:, m1col]
 
     # dmt plot
     logger.info('Plotting DM-time distribution...')
@@ -410,7 +410,7 @@ def plot_noise(fileroot, scans):
 
     # plot noise histogram
     outname = 'plot_' + fileroot + '_noisehist.png'
-    bins = n.linspace(minnoise, maxnoise, 50)
+    bins = np.linspace(minnoise, maxnoise, 50)
     fig = plt.Figure(figsize=(10,10))
     ax = fig.add_subplot(211, axisbg='white')
     stuff = ax.hist(noises, bins=bins, histtype='bar', lw=None, ec=None)
@@ -418,7 +418,7 @@ def plot_noise(fileroot, scans):
     ax.set_xlabel('Image RMS (Jy)')
     ax.set_ylabel('Number of noise measurements')
     ax2 = fig.add_subplot(212, axisbg='white')
-    stuff = ax2.hist(n.array([noises[i][j] for i in range(len(noises)) for j in range(len(noises[i]))]), bins=bins, cumulative=-1, normed=True, log=False, histtype='bar', lw=None, ec=None)
+    stuff = ax2.hist(np.array([noises[i][j] for i in range(len(noises)) for j in range(len(noises[i]))]), bins=bins, cumulative=-1, normed=True, log=False, histtype='bar', lw=None, ec=None)
     ax2.set_xlabel('Image RMS (Jy)')
     ax2.set_ylabel('Number with noise > image RMS')
 
@@ -430,8 +430,7 @@ def plot_noise(fileroot, scans):
 def postcands(mergepkl, url='http://localhost:9200/realfast/cands/_bulk?', snrmin=0, snrmax=999):
     """ Posts candidate info to elasticsearch index """
 
-    d = pickle.load(open(mergepkl, 'rb'))
-    loc, prop = read_candidates(mergepkl, snrmin=snrmin, snrmax=snrmax)
+    loc, prop, d = read_candidates(mergepkl, snrmin=snrmin, snrmax=snrmax, returnstate=True)
     times = int2mjd(d, loc)
 
     alldata = []
@@ -442,7 +441,7 @@ def postcands(mergepkl, url='http://localhost:9200/realfast/cands/_bulk?', snrmi
         for featureind in d['featureind']:
             data[featureind] = loc[i][d['featureind'].index(featureind)]
         for feature in d['features']:
-            data[feature] = prop[i][d['features'].index(feature)]
+            data[feature] = prop[i, d['features'].index(feature)]
 
         idobj = {}
         idobj['_id'] = '{:.7f}_{}_{}'.format(data['@timestamp'], data['dmind'], data['dtind'])
@@ -467,32 +466,13 @@ def int2mjd(d, loc):
         segmentcol = d['featureind'].index('segment')
         if d.has_key('segmenttimesdict'):  # using merged pkl
             scancol = d['featureind'].index('scan')
-            t0 = n.array([d['segmenttimesdict'][loc[i,scancol]][loc[i,segmentcol],0] for i in range(len(loc))])
+            t0 = np.array([d['segmenttimesdict'][loc[i,scancol]][loc[i,segmentcol],0] for i in range(len(loc))])
         else:
             t0 = d['segmenttimes'][loc[:,segmentcol]][:,0]
         return (t0 + (d['inttime']/(24*3600.))*loc[:,intcol]) * 24*3600
     else:
-        return n.array([])
+        return np.array([])
 
-def find_island(candsfile, candnum):
-    """ Given list of cands and the location of one of them, find neighbors in dm-int space.
-    """
-
-    d = pickle.load(open(candsfile, 'r'))
-    loc, prop = read_candidates(mergepkl)
-    loc = list(loc)
-
-    scancol = d['featureind'].index('scan')
-    segmentcol = d['featureind'].index('segment')
-    intcol = d['featureind'].index('int')
-    dtindcol = d['featureind'].index('dtind')
-    dmindcol = d['featureind'].index('dmind')
-
-    islands = []
-    while len(loc):
-        scan,segment,intind,dtind,dmind = loc.pop()
-#        if ..
-        islands.append((intind,dmind))
 
 def plot_dmt(d, times, dms, dts, snrs, l1s, m1s, outroot):
     """ Plots DM versus time for each dt value.
@@ -501,10 +481,10 @@ def plot_dmt(d, times, dms, dts, snrs, l1s, m1s, outroot):
     outname = os.path.join(d['workdir'], 'plot_' + outroot + '_dmt.png')
 
     # encode location (position angle) as color in scatter plot
-    color = lambda l1,m1: [plt.cm.jet(X=(n.angle(n.complex(l1[i], m1[i])) + n.pi) / (2*n.pi), alpha=0.5) for i in range(len(l1))]
+    color = lambda l1,m1: [plt.cm.jet(X=(np.angle(np.complex(l1[i], m1[i])) + np.pi) / (2*np.pi), alpha=0.5) for i in range(len(l1))]
 
     mint = times.min(); maxt = times.max()
-    dtsunique = n.unique(dts)
+    dtsunique = np.unique(dts)
     mindm = min(d['dmarr']); maxdm = max(d['dmarr'])
     snrmin = 0.8*min(d['sigma_image1'], d['sigma_image2'])
 
@@ -513,12 +493,12 @@ def plot_dmt(d, times, dms, dts, snrs, l1s, m1s, outroot):
     for dtind in range(len(dtsunique)):
         ax[dtind] = fig.add_subplot(str(len(dtsunique)) + '1' + str(dtind+1))
         # plot positive cands
-        good = n.where( (dts == dtind) & (snrs > 0))[0]
+        good = np.where( (dts == dtind) & (snrs > 0))[0]
         sizes = (snrs[good]-snrmin)**5   # set scaling to give nice visual sense of SNR
         ax[dtind].scatter(times[good], dms[good], s=sizes, marker='o', c=color(l1s[good], m1s[good]), alpha=0.2, clip_on=False)
         # plot negative cands
-        good = n.where( (dts == dtind) & (snrs < 0))[0]
-        sizes = (n.abs(snrs[good])-snrmin)**5   # set scaling to give nice visual sense of SNR
+        good = np.where( (dts == dtind) & (snrs < 0))[0]
+        sizes = (np.abs(snrs[good])-snrmin)**5   # set scaling to give nice visual sense of SNR
         ax[dtind].scatter(times[good], dms[good], s=sizes, marker='x', edgecolors='k', alpha=0.2, clip_on=False)
 
         ax[dtind].axis( (mint, maxt, mindm, maxdm) )
@@ -547,28 +527,28 @@ def plot_dmcount(d, times, dts, outroot):
 
     outname = os.path.join(d['workdir'], 'plot_' + outroot + '_dmcount.png')
 
-    uniquedts = n.unique(dts)
+    uniquedts = np.unique(dts)
     mint = times.min(); maxt = times.max()
 
     fig2 = plt.Figure(figsize=(15,10))
     ax2 = {}
     for dtind in range(len(uniquedts)):
-        good = n.where(dts == dtind)[0]
+        good = np.where(dts == dtind)[0]
         ax2[dtind] = fig2.add_subplot(str(len(uniquedts)) + '1' + str(dtind+1))
         if len(good):
-            bins = n.round(times[good]).astype('int')
-            counts = n.bincount(bins)
+            bins = np.round(times[good]).astype('int')
+            counts = np.bincount(bins)
 
-            ax2[dtind].scatter(n.arange(n.amax(bins)+1), counts, facecolor=None, alpha=0.5, clip_on=False)
+            ax2[dtind].scatter(np.arange(np.amax(bins)+1), counts, facecolor=None, alpha=0.5, clip_on=False)
             ax2[dtind].axis( (mint, maxt, 0, 1.1*counts.max()) )
 
             # label high points
-            high = n.where(counts > n.median(counts) + 20*counts.std())[0]
+            high = np.where(counts > np.median(counts) + 20*counts.std())[0]
             logger.info('Candidate clusters for dt=%d:' % (d['dtarr'][dtind]))
             logger.info('\t(Counts, Times)')
             for ii in high:
 #                logger.info('For dt=%d, %d candidates at %d s' % (d['dtarr'][dtind], counts[ii], ii))
-                ww = n.where(bins == ii)[0]
+                ww = np.where(bins == ii)[0]
                 logger.info('%s %s' % (str(counts[ii]), str(times[good][ww][0])))
 
             if dtind == uniquedts[-1]:
@@ -595,7 +575,7 @@ def plot_normprob(d, snrs, outroot):
     outname = os.path.join(d['workdir'], 'plot_' + outroot + '_normprob.png')
 
     # define norm quantile functions
-    Z = lambda quan: n.sqrt(2)*erfinv( 2*quan - 1) 
+    Z = lambda quan: np.sqrt(2)*erfinv( 2*quan - 1) 
     quan = lambda ntrials, i: (ntrials + 1/2. - i)/ntrials
 
     # calc number of trials
@@ -605,38 +585,38 @@ def plot_normprob(d, snrs, outroot):
     else:
         nints = d['nints']
     ndms = len(d['dmarr'])
-    dtfactor = n.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
+    dtfactor = np.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
     ntrials = npix*nints*ndms*dtfactor
     logger.info('Calculating normal probability distribution for npix*nints*ndms*dtfactor = %d' % (ntrials))
 
     # calc normal quantile
-    if len(n.where(snrs > 0)[0]):
-        snrsortpos = n.array(sorted(snrs[n.where(snrs > 0)], reverse=True))     # high-res snr
-        Zsortpos = n.array([Z(quan(ntrials, j+1)) for j in range(len(snrsortpos))])
+    if len(np.where(snrs > 0)[0]):
+        snrsortpos = np.array(sorted(snrs[np.where(snrs > 0)], reverse=True))     # high-res snr
+        Zsortpos = np.array([Z(quan(ntrials, j+1)) for j in range(len(snrsortpos))])
         logger.info('SNR positive range = (%.1f, %.1f)' % (snrsortpos[-1], snrsortpos[0]))
         logger.info('Norm quantile positive range = (%.1f, %.1f)' % (Zsortpos[-1], Zsortpos[0]))
 
-    if len(n.where(snrs < 0)[0]):
-        snrsortneg = n.array(sorted(n.abs(snrs[n.where(snrs < 0)]), reverse=True))     # high-res snr
-        Zsortneg = n.array([Z(quan(ntrials, j+1)) for j in range(len(snrsortneg))])
+    if len(np.where(snrs < 0)[0]):
+        snrsortneg = np.array(sorted(np.abs(snrs[np.where(snrs < 0)]), reverse=True))     # high-res snr
+        Zsortneg = np.array([Z(quan(ntrials, j+1)) for j in range(len(snrsortneg))])
         logger.info('SNR negative range = (%.1f, %.1f)' % (snrsortneg[-1], snrsortneg[0]))
         logger.info('Norm quantile negative range = (%.1f, %.1f)' % (Zsortneg[-1], Zsortneg[0]))
 
     # plot
     fig3 = plt.Figure(figsize=(10,10))
     ax3 = fig3.add_subplot(111)
-    if len(n.where(snrs < 0)[0]) and len(n.where(snrs > 0)[0]):
+    if len(np.where(snrs < 0)[0]) and len(np.where(snrs > 0)[0]):
         logger.info('Plotting positive and negative cands')
         ax3.plot(snrsortpos, Zsortpos, 'k.')
         ax3.plot(snrsortneg, Zsortneg, 'kx')
-        refl = n.linspace(min(snrsortpos.min(), Zsortpos.min(), snrsortneg.min(), Zsortneg.min()), max(snrsortpos.max(), Zsortpos.max(), snrsortneg.max(), Zsortneg.max()), 2)
-    elif len(n.where(snrs > 0)[0]):
+        refl = np.linspace(min(snrsortpos.min(), Zsortpos.min(), snrsortneg.min(), Zsortneg.min()), max(snrsortpos.max(), Zsortpos.max(), snrsortneg.max(), Zsortneg.max()), 2)
+    elif len(np.where(snrs > 0)[0]):
         logger.info('Plotting positive cands')
-        refl = n.linspace(min(snrsortpos.min(), Zsortpos.min()), max(snrsortpos.max(), Zsortpos.max()), 2)
+        refl = np.linspace(min(snrsortpos.min(), Zsortpos.min()), max(snrsortpos.max(), Zsortpos.max()), 2)
         ax3.plot(snrsortpos, Zsortpos, 'k.')
-    elif len(n.where(snrs < 0)[0]):
+    elif len(np.where(snrs < 0)[0]):
         logger.info('Plotting negative cands')
-        refl = n.linspace(min(snrsortneg.min(), Zsortneg.min()), max(snrsortneg.max(), Zsortneg.max()), 2)
+        refl = np.linspace(min(snrsortneg.min(), Zsortneg.min()), max(snrsortneg.max(), Zsortneg.max()), 2)
         ax3.plot(snrsortneg, Zsortneg, 'kx')
     ax3.plot(refl, refl, 'k--')
     ax3.set_xlabel('SNR')
@@ -655,30 +635,30 @@ def plot_lm(d, snrs, l1s, m1s, outroot):
     ax4 = fig4.add_subplot(111)
 
     # plot positive
-    good = n.where(snrs > 0)
+    good = np.where(snrs > 0)
     sizes = (snrs[good]-snrmin)**5   # set scaling to give nice visual sense of SNR
-    xarr = 60*n.degrees(l1s[good]); yarr = 60*n.degrees(m1s[good])
+    xarr = 60*np.degrees(l1s[good]); yarr = 60*np.degrees(m1s[good])
     ax4.scatter(xarr, yarr, s=sizes, facecolor=None, alpha=0.5, clip_on=False)
     # plot negative
-    good = n.where(snrs < 0)
-    sizes = (n.abs(snrs[good])-snrmin)**5   # set scaling to give nice visual sense of SNR
-    xarr = 60*n.degrees(l1s[good]); yarr = 60*n.degrees(m1s[good])
+    good = np.where(snrs < 0)
+    sizes = (np.abs(snrs[good])-snrmin)**5   # set scaling to give nice visual sense of SNR
+    xarr = 60*np.degrees(l1s[good]); yarr = 60*np.degrees(m1s[good])
     ax4.scatter(xarr, yarr, s=sizes, marker='x', edgecolors='k', alpha=0.5, clip_on=False)
 
     ax4.set_xlabel('Dec Offset (amin)')
     ax4.set_ylabel('RA Offset (amin)')
-    fov = n.degrees(1./d['uvres'])*60.
+    fov = np.degrees(1./d['uvres'])*60.
     ax4.set_xlim(fov/2, -fov/2)
     ax4.set_ylim(-fov/2, fov/2)
     canvas4 = FigureCanvasAgg(fig4)
     canvas4.print_figure(outname)
 
+
 def plot_full(candsfile, cands, mode='im'):
     """ Plot 'full' features, such as cutout image and spectrum.
     """
 
-    d = pickle.load(open(candsfile, 'r'))
-    loc, prop = read_candidates(candsfile)
+    loc, prop, d = read_candidates(candsfile, returnstate=True)
     npixx, npixy = prop[0][4].shape
     nints, nchan, npol = prop[0][5].shape
 
@@ -686,15 +666,16 @@ def plot_full(candsfile, cands, mode='im'):
     plt.figure(1)
     for i in cands:
         if mode == 'spec':
-            rr = n.array([n.abs(prop[i][5][:,i0:i0+bin,0].mean(axis=1)) for i0 in range(0,nchan,bin)])
-            ll = n.array([n.abs(prop[i][5][:,i0:i0+bin,1].mean(axis=1)) for i0 in range(0,nchan,bin)])
+            rr = np.array([np.abs(prop[i][5][:,i0:i0+bin,0].mean(axis=1)) for i0 in range(0,nchan,bin)])
+            ll = np.array([np.abs(prop[i][5][:,i0:i0+bin,1].mean(axis=1)) for i0 in range(0,nchan,bin)])
             sh = ll.shape
-            data = n.concatenate( (rr, n.zeros(shape=(sh[0], sh[1]/2)), ll), axis=1)
+            data = np.concatenate( (rr, np.zeros(shape=(sh[0], sh[1]/2)), ll), axis=1)
         elif mode == 'im':
             data = prop[i][4]
-        plt.subplot(n.sqrt(len(cands)), n.sqrt(len(cands)), cands.index(i))
+        plt.subplot(np.sqrt(len(cands)), np.sqrt(len(cands)), cands.index(i))
         plt.imshow(data, interpolation='nearest')
     plt.show()
+
 
 def make_psrrates(pkllist, nbins=60, period=0.156):
     """ Visualize cands in set of pkl files from pulsar observations.
@@ -723,9 +704,9 @@ def make_psrrates(pkllist, nbins=60, period=0.156):
         if (loc):
             times = int2mjd(state, loc)
 
-            for (mint,maxt) in zip(n.arange(times.min()-period/2,times.max()+period/2,period), n.arange(times.min()+period/2,times.max()+3*period/2,period)):
-                ff = n.array([prop[i][immaxcol] for i in range(len(prop))])
-                mm = ff[n.where( (times >= mint) & (times < maxt) )]
+            for (mint,maxt) in zip(np.arange(times.min()-period/2,times.max()+period/2,period), np.arange(times.min()+period/2,times.max()+3*period/2,period)):
+                ff = np.array([prop[i][immaxcol] for i in range(len(prop))])
+                mm = ff[np.where( (times >= mint) & (times < maxt) )]
                 if mm:
                     ffm.append(mm.max())
             ffm.sort()
@@ -736,7 +717,7 @@ def make_psrrates(pkllist, nbins=60, period=0.156):
             duration0 = times.max() - times.min()
             ratemin = 1/duration0
             ratemax = len(ffm)/duration0
-            rates = n.linspace(ratemin, ratemax, nbins)
+            rates = np.linspace(ratemin, ratemax, nbins)
             f0m = ffm
         elif pkllist.index(pklfile) == 1:
             duration1 = times.max() - times.min()
@@ -749,8 +730,8 @@ def make_psrrates(pkllist, nbins=60, period=0.156):
     # calc rates
     f0 = []; f1 = []; f2 = []; f3 = []
     for rr in rates:
-        num0 = (n.round(rr*duration0)).astype(int)
-        num1 = (n.round(rr*duration1)).astype(int)
+        num0 = (np.round(rr*duration0)).astype(int)
+        num1 = (np.round(rr*duration1)).astype(int)
         
         if (num0 > 0) and (num0 <= len(f0m)):
             f0.append((rr,f0m[-num0]))
@@ -767,9 +748,9 @@ def make_psrrates(pkllist, nbins=60, period=0.156):
                     f3.append((rr,f3m[-num1]))
 
     if f3:
-        return {0: n.array(f0).transpose(), 1: n.array(f1).transpose(), 2: n.array(f2).transpose(), 3: n.array(f3).transpose()}
+        return {0: np.array(f0).transpose(), 1: np.array(f1).transpose(), 2: np.array(f2).transpose(), 3: np.array(f3).transpose()}
     else:
-        return {0: n.array(f0).transpose(), 1: n.array(f1).transpose(), 2: n.array(f2).transpose()}
+        return {0: np.array(f0).transpose(), 1: np.array(f1).transpose(), 2: np.array(f2).transpose()}
 
 def plot_psrrates(pkllist, outname=''):
     """ Plot cumulative rate histograms. List of pkl files in order, as for make_psrrates.
@@ -800,13 +781,13 @@ def plot_psrrates(pkllist, outname=''):
     for kk in rates.keys():
         flux, rate = rates[kk]
         if kk == 1:
-            r10 = [rate[i]/rate0[n.where(flux0 == flux[i])[0][0]] for i in range(len(rate))]
+            r10 = [rate[i]/rate0[np.where(flux0 == flux[i])[0][0]] for i in range(len(rate))]
             plt.plot(flux, r10, colors[kk], label=labelsr[kk])
         elif kk == 2:
-            r20 = [rate[i]/rate0[n.where(flux0 == flux[i])[0][0]] for i in range(len(rate))]
+            r20 = [rate[i]/rate0[np.where(flux0 == flux[i])[0][0]] for i in range(len(rate))]
             plt.plot(flux, r20, colors[kk], label=labelsr[kk])
         elif kk == 3:
-            r30 = [rate[i]/rate0[n.where(flux0 == flux[i])[0][0]] for i in range(len(rate))]
+            r30 = [rate[i]/rate0[np.where(flux0 == flux[i])[0][0]] for i in range(len(rate))]
             plt.plot(flux, r30, colors[kk], label=labelsr[kk])
 
     plt.xlabel('Rate (1/s)', fontsize='20')
@@ -833,16 +814,16 @@ def mock_fluxratio(candsfile, mockcandsfile, dmbin=0):
     loc, prop = read_candidates(candsfile)
     loc2, prop2 = read_candidates(mockcandsfile)
 
-    dmselect = n.where(loc[:,2] == dmbin)[0]
+    dmselect = np.where(loc[:,2] == dmbin)[0]
     mocki = [i for i in loc2[:,1].astype(int)]  # known transients
     rat = []; newloc = []; newprop = []
     for i in mocki:
         try:
             detind = list(loc[dmselect,1]).index(i)   # try to find detection
-            rat.append(n.array(prop)[dmselect][detind][1]/prop2[mocki.index(i)][1])
+            rat.append(prop[dmselect][detind][1]/prop2[mocki.index(i)][1])
             newloc.append(list(loc2[mocki.index(i)]))
             newprop.append(list(prop2[mocki.index(i)]))
         except ValueError:
             pass
 
-    return rat, n.array(newloc), newprop
+    return rat, np.array(newloc), newprop
