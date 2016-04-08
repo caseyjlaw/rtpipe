@@ -7,10 +7,6 @@ from bokeh.plotting import ColumnDataSource, figure, save, output_file, vplot, h
 from bokeh.models import HoverTool, TapTool, OpenURL
 from collections import OrderedDict 
 from rtpipe.parsecands import read_noise, read_candidates
-try:
-    from pandas import DataFrame
-except ImportError:
-    logger.warn('pandas not available. Cannot use data shader.')
 
 def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignoret=None, savehtml=True, url_path='plots'):
     """ Backwards compatible function for making interactive candidate summary plot """
@@ -324,17 +320,20 @@ def plotnorm(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None
 
     norm = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed',
                   y_axis_label='SNR expected', tools=tools, webgl=True)
-    norm.circle('snrs', 'zs', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
+#    norm.circle('snrs', 'zs', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
+    norm.circle(source['snrs'], sourcea['zs'], line_color=None, fill_alpha=0.2)
 
     if crossinds:
         sourceneg = ColumnDataSource(data = dict({(key, tuple([value[i] for i in crossinds]))
                                                   for (key, value) in data.iteritems()}))
-        norm.cross('snrs', 'zs', size='sizes', line_color='colors', line_alpha=0.2, source=sourceneg)
+#        norm.cross('snrs', 'zs', size='sizes', line_color='colors', line_alpha=0.2, source=sourceneg)
+        norm.cross(sourceneg['snrs'], sourceneg['zs'], line_alpha=0.2)
 
     if edgeinds:
         sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
                                                    for (key, value) in data.iteritems()}))
-        norm.circle('snrs', 'zs', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
+#        norm.circle('snrs', 'zs', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
+        norm.circle(sourceedge['snrs'], sourceedge['zs'], line_alpha=0.5, fill_alpha=0.2)
 
     hover = norm.select(dict(type=HoverTool))
     hover.tooltips = OrderedDict([('SNR', '@snrs'), ('time', '@time'), ('key', '@key')])
@@ -402,18 +401,14 @@ def readdata(mergepkl=None, d=None, cands=None, sizerange=(2,70)):
     sizes = calcsize(snrs)
     colors = colorsat(l1, m1)
 
-    try:
-        # if pandas is available use dataframe to allow datashader feature
-        data = DataFrame(data={'snrs': snrs, 'dm': dm, 'l1': l1, 'm1': m1, 'time': time, 'specstd': specstd,
-                               'imkur': imkur, 'scan': scan, 'seg': seg, 'candint': candint, 'dmind': dmind,
-                               'dtind': dtind, 'sizes': sizes, 'colors': colors, 'key': key, 'zs': zs, 'abssnr': abssnr})
-        logger.info('Returning a pandas dataframe')
-    except: # NameError:
-        # else use dict for basic bokeh
-        data = dict(snrs=snrs, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd,
-                    imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind,
-                    dtind=dtind, sizes=sizes, colors=colors, key=key, zs=zs, abssnr=abssnr)
-        logger.info('Returning a dict')
+    # if pandas is available use dataframe to allow datashader feature
+#    data = DataFrame(data={'snrs': snrs, 'dm': dm, 'l1': l1, 'm1': m1, 'time': time, 'specstd': specstd,
+#                           'imkur': imkur, 'scan': scan, 'seg': seg, 'candint': candint, 'dmind': dmind,
+#                           'dtind': dtind, 'sizes': sizes, 'colors': colors, 'key': key, 'zs': zs, 'abssnr': abssnr})
+#    logger.info('Returning a pandas dataframe')
+    data = dict(snrs=snrs, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd,
+                imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind,
+                dtind=dtind, sizes=sizes, colors=colors, key=key, zs=zs, abssnr=abssnr)
 
     return data
 
