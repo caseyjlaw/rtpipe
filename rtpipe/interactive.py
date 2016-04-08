@@ -1,5 +1,5 @@
 from scipy.special import erfinv
-import numpy as n
+import numpy as np
 import logging, pickle, os
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -7,7 +7,10 @@ from bokeh.plotting import ColumnDataSource, figure, save, output_file, vplot, h
 from bokeh.models import HoverTool, TapTool, OpenURL
 from collections import OrderedDict 
 from rtpipe.parsecands import read_noise, read_candidates
-
+try:
+    from pandas import DataFrame
+except ImportError:
+    logger.warn('pandas not available. Cannot use data shader.')
 
 def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignoret=None, savehtml=True, url_path='plots'):
     """ Backwards compatible function for making interactive candidate summary plot """
@@ -352,11 +355,11 @@ def readdata(mergepkl=None, d=None, cands=None, sizerange=(2,70)):
 
     # get cands from pkl
     if mergepkl:
-        with open(mergepkl,'r') as pkl:
-            d = pickle.load(pkl)
-            cands = pickle.load(pkl)
+        logger.info('Reading {0}'.format(mergepkl))
+        loc, prop, d = read_candidates(mergepkl, returnstate=True)
     elif d and cands:
-        print('Using provided d/cands')
+        logger.info('Using provided d/cands')
+        loc, prop = cands
 
     # define columns to extract
     if 'snr2' in d['features']:
@@ -374,34 +377,44 @@ def readdata(mergepkl=None, d=None, cands=None, sizerange=(2,70)):
     scancol = d['featureind'].index('scan')
 
     # define data to plot
-    snrs = []
-    abssnr = []
-    dm = []
-    l1 = []
-    m1 = []
-    time = []
-    specstd = []
-    imkur = []
-    key = []
-    for k in cands.iterkeys():
-        snrs.append(cands[k][snrcol])
-        abssnr.append(abs(cands[k][snrcol]))
-        dm.append(d['dmarr'][k[dmindcol]])
-        l1.append(cands[k][l1col])
-        m1.append(cands[k][m1col])
-        time.append(24*3600*d['segmenttimesdict'][k[scancol]][k[segmentcol],0] + d['inttime']*k[intcol])
-        specstd.append(cands[k][specstdcol])
-        imkur.append(cands[k][imkurcol])
-        key.append(k)
+    key = [tuple(ll) for ll in loc]
+    scan = loc[:, scancol]
+    seg = loc[:, segmentcol]
+    candint = loc[:, 2]
+    dmind = loc[:, 3]
+    dtind = loc[:, 4]
+    beamnum = loc[:, 5]
+
+    logger.info('Setting columns...')
+    snrs = prop[:, snrcol]
+    abssnr = abs(prop[:, snrcol])
+    dm = np.array(d['dmarr'])[loc[:, dmindcol]]
+    l1 = prop[:, l1col]
+    m1 = prop[:, m1col]
+    time = np.array([24*3600*d['segmenttimesdict'][scan[i]][seg[i], 0] + d['inttime']*candint[i] for i in range(len(loc))])
+#    time.append(24*3600*d['segmenttimesdict'][k[scancol]][k[segmentcol],0] + d['inttime']*k[intcol])
+    specstd = prop[:, specstdcol]
+    imkur = prop[:, imkurcol]
+
+    logger.info('Calculating sizes, colors, normprob...')
     time = time - min(time)
-    scan, seg, candint, dmind, dtind, beamnum = zip(*key)
-    zs = normprob(d, snrs)
+    zs = normprob(d, snrs)   # very slow!
     sizes = calcsize(snrs)
     colors = colorsat(l1, m1)
 
-    data = dict(snrs=snrs, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd,
-                imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind,
-                dtind=dtind, sizes=sizes, colors=colors, key=key, zs=zs, abssnr=abssnr)
+    try:
+        # if pandas is available use dataframe to allow datashader feature
+        data = DataFrame(data={'snrs': snrs, 'dm': dm, 'l1': l1, 'm1': m1, 'time': time, 'specstd': specstd,
+                               'imkur': imkur, 'scan': scan, 'seg': seg, 'candint': candint, 'dmind': dmind,
+                               'dtind': dtind, 'sizes': sizes, 'colors': colors, 'key': key, 'zs': zs, 'abssnr': abssnr})
+        logger.info('Returning a pandas dataframe')
+    except: # NameError:
+        # else use dict for basic bokeh
+        data = dict(snrs=snrs, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd,
+                    imkur=imkur, scan=scan, seg=seg, candint=candint, dmind=dmind,
+                    dtind=dtind, sizes=sizes, colors=colors, key=key, zs=zs, abssnr=abssnr)
+        logger.info('Returning a dict')
+
     return data
 
 
@@ -413,16 +426,16 @@ def findhight(data, ignoret=None, threshold=20):
     Returns the time (in seconds) and counts for bins above threshold.
     """
 
-    time = n.sort(data['time'])
+    time = np.sort(data['time'])
 
-    ww = n.ones(len(time), dtype=bool)  # initialize pass filter
+    ww = np.ones(len(time), dtype=bool)  # initialize pass filter
     if ignoret:
         for (t0, t1) in ignoret:
-            ww = ww & n.where( (time < t0) | (time > t1), True, False )
+            ww = ww & np.where( (time < t0) | (time > t1), True, False )
 
-    bins = n.round(time[ww]).astype('int')
-    counts = n.bincount(bins)
-    high = n.where(counts > n.median(counts) + threshold*counts.std())[0]
+    bins = np.round(time[ww]).astype('int')
+    counts = np.bincount(bins)
+    high = np.where(counts > np.median(counts) + threshold*counts.std())[0]
 
     return high, counts[high]
 
@@ -438,8 +451,8 @@ def calcinds(data, threshold, ignoret=None):
         time = data['time'][i]
         if (threshold >= 0 and snr > threshold) or (threshold < 0 and snr < threshold):
             if ignoret:
-                incl = [t0 for (t0, t1) in ignoret if n.round(time).astype(int) in range(t0,t1)]
-                logger.debug('{} {} {} {}'.format(n.round(time).astype(int), t0, t1, incl))
+                incl = [t0 for (t0, t1) in ignoret if np.round(time).astype(int) in range(t0,t1)]
+                logger.debug('{} {} {} {}'.format(np.round(time).astype(int), t0, t1, incl))
                 if not incl:
                     inds.append(i)
             else:
@@ -469,7 +482,7 @@ def plotnoise(noisepkl):
 
     # noise histogram
     noises = read_noise(noisepkl)
-    imnoise = n.sort(noises[4])
+    imnoise = np.sort(noises[4])
     frac = [float(count)/len(imnoise) for count in reversed(range(1, len(imnoise)+1))]
     noiseplot = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Noise image std',
                        y_axis_label='Cumulative fraction', tools='pan, wheel_zoom, reset')
@@ -487,7 +500,7 @@ def normprob(d, snrs, inds=None):
     """
 
     # define norm quantile functions
-    Z = lambda quan: n.sqrt(2)*erfinv( 2*quan - 1) 
+    Z = lambda quan: np.sqrt(2)*erfinv( 2*quan - 1) 
     quan = lambda ntrials, i: (ntrials + 1/2. - i)/ntrials
 
     # calc number of trials
@@ -497,7 +510,7 @@ def normprob(d, snrs, inds=None):
     else:
         nints = d['nints']
     ndms = len(d['dmarr'])
-    dtfactor = n.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
+    dtfactor = np.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
     ntrials = npix*nints*ndms*dtfactor
     logger.info('Calculating normal probability distribution for npix*nints*ndms*dtfactor = %d' % (ntrials))
 
@@ -549,11 +562,11 @@ def colorsat(l,m):
     Designed to look like a color wheel that is more saturated in middle.
     """
 
-    lm = n.zeros(len(l), dtype='complex')
+    lm = np.zeros(len(l), dtype='complex')
     lm.real = l
     lm.imag = m
-    red = 0.5*(1+n.cos(n.angle(lm)))
-    green = 0.5*(1+n.cos(n.angle(lm) + 2*3.14/3))
-    blue = 0.5*(1+n.cos(n.angle(lm) - 2*3.14/3))
-    amp = 256*n.abs(lm)/n.abs(lm).max()
-    return ["#%02x%02x%02x" % (n.floor(amp[i]*red[i]), n.floor(amp[i]*green[i]), n.floor(amp[i]*blue[i])) for i in range(len(l))]
+    red = 0.5*(1+np.cos(np.angle(lm)))
+    green = 0.5*(1+np.cos(np.angle(lm) + 2*3.14/3))
+    blue = 0.5*(1+np.cos(np.angle(lm) - 2*3.14/3))
+    amp = 256*np.abs(lm)/np.abs(lm).max()
+    return ["#%02x%02x%02x" % (np.floor(amp[i]*red[i]), np.floor(amp[i]*green[i]), np.floor(amp[i]*blue[i])) for i in range(len(l))]

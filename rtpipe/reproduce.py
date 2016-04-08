@@ -56,10 +56,10 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
     dmindcol = d0['featureind'].index('dmind')
 
     # sort and prep candidate list
-    snrs = np.array([prop[i][snrcol] for i in range(len(prop))])
+    snrs = prop[:, snrcol]
     select = np.where(np.abs(snrs) > threshold)[0]
     loc = loc[select]
-    prop = [prop[i] for i in select]
+    prop = prop[select]
     times = pc.int2mjd(d0, loc)
     times = times - times[0]
 
@@ -68,7 +68,7 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
         logger.info('Getting candidates...')
         logger.info('candnum: loc, SNR, DM (pc/cm3), time (s; rel)')
         for i in range(len(loc)):
-            logger.info("%d: %s, %.1f, %.1f, %.1f" % (i, str(loc[i]), prop[i][snrcol], d0['dmarr'][loc[i,dmindcol]], times[i]))
+            logger.info("%d: %s, %.1f, %.1f, %.1f" % (i, str(loc[i]), prop[i, snrcol], np.array(d0['dmarr'])[loc[i,dmindcol]], times[i]))
     else:  # if candnum or candloc provided, try to reproduce
         if (candnum >= 0) and not len(candloc):
             logger.info('Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum]))

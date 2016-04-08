@@ -1,16 +1,16 @@
 from scipy.special import erfinv
+import glob, os, logging, sys
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
-import types, glob, os, logging, sys
 import cPickle as pickle
-import json
-import requests
+import json, requests
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 def read_candidates(candsfile, snrmin=0, snrmax=999, returnstate=False):
     """ Reads candidate file and returns data as python object.
