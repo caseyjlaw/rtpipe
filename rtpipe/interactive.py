@@ -34,7 +34,7 @@ def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignor
         return combined
 
 
-def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None, noiseplot=None, url_path='../plots', fileroot=None):
+def plotall(data, circleinds=[], crossinds=[], edgeinds=[], htmlname=None, noiseplot=None, url_path='plots', fileroot=None):
     """ Create interactive plot from data dictionary
 
     data has keys of snr, time, dm, sizes, key and more.
@@ -46,18 +46,10 @@ def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None,
 
     # set up data dictionary
     if not circleinds: circleinds = range(len(data['snrs']))
-    if edgeinds:  # to remove double refs
-        logger.info('{} circles (positive, not linked) and {} edges (positive, linked)'.format(len(circleinds), len(edgeinds)))
-        circleinds = list(set(circleinds) - set(edgeinds))
-
-    source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds])) 
-                                           for (key, value) in data.iteritems()}))
 
     # set ranges
     datalen = len(data['dm'])
-    inds = circleinds
-    if crossinds: inds += crossinds
-    if edgeinds: inds += edgeinds
+    inds = circleinds + crossinds + edgeinds
     dm = [data['dm'][i] for i in inds]
     dm_min = min(min(dm), max(dm)/1.2)
     dm_max = max(max(dm), min(dm)*1.2)
@@ -80,70 +72,16 @@ def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None,
     TOOLS = "hover,tap,pan,box_select,wheel_zoom,reset"
 
     # dm-time plot
-#    dmt = figure(plot_width=950, plot_height=500, toolbar_location="left", x_axis_label='Time (s; relative)',
-#                 y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), 
-#                 webgl=True, tools=TOOLS)
-#    dmt.circle(source.data['time'], source.data['dm'], size=source.data['sizes'], line_color=None, fill_color=source.data['colors'], 
-#               fill_alpha=0.2)
     dmt = plotdmt(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, url_path=url_path, fileroot=fileroot, tools=TOOLS) # maybe add size?
 
     # image location plot
-#    loc = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)',
-#                 x_range=(l1_min, l1_max), y_range=(m1_min,m1_max), tools=TOOLS, webgl=True)
-#    loc.circle(source.data['l1'], source.data['m1'], size=source.data['sizes'], line_color=None, fill_color=source.data['colors'],
-#               fill_alpha=0.2)
     loc = plotloc(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, url_path=url_path, fileroot=fileroot, tools=TOOLS)
 
     # cand spectrum/image statistics plot
-#    stat = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Spectral std',
-#                  y_axis_label='Image kurtosis', x_range=(specstd_min, specstd_max), 
-#                  y_range=(imkur_min, imkur_max), tools=TOOLS, webgl=True)
-#    stat.circle(source.data['specstd'], source.data['imkur'], size=source.data['sizes'], line_color=None, fill_color=source.data['colors'],
-#                fill_alpha=0.2)
     stat = plotstat(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, url_path=url_path, fileroot=fileroot, tools=TOOLS)
 
     # norm prob plot
-#    norm = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed',
-#                  y_axis_label='SNR expected', tools=TOOLS, webgl=True)
-#    norm.circle(source.data['snrs'], source.data['zs'], size=source.data['sizes'], line_color=None, fill_color=source.data['colors'], fill_alpha=0.2)
     norm = plotnorm(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, url_path=url_path, fileroot=fileroot, tools=TOOLS)
-
-    # set up negative symbols, if indexes in place
-#    if crossinds:
-#        sourceneg = ColumnDataSource(data = dict({(key, tuple([value[i] for i in crossinds]))
-#                                                  for (key, value) in data.iteritems()}))
-#        dmt.cross(sourceneg.data['time'], sourceneg.data['dm'], size=sourceneg.data['sizes'], line_color=sourceneg.data['colors'], line_alpha=0.2)
-#        loc.cross(sourceneg.data['l1'], sourceneg.data['m1'], size=sourceneg.data['sizes'], line_color=sourceneg.data['colors'], line_alpha=0.2)
-#        stat.cross(sourceneg.data['specstd'], sourceneg.data['imkur'], size=sourceneg.data['sizes'], line_color=sourceneg.data['colors'], line_alpha=0.2)
-#        norm.cross(sourceneg.data['abssnr'], sourceneg.data['zs'], size=sourceneg.data['sizes'], line_color=sourceneg.data['colors'], line_alpha=0.2)
-
-#    if edgeinds:
-#        sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
-#                                                   for (key, value) in data.iteritems()}))
-#        dmt.circle('time', 'dm', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
-#        loc.circle('l1', 'm1', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
-#        stat.circle('specstd', 'imkur', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
-#        norm.circle('snrs', 'zs', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
-
-    # define hover and url behavior
-#    hover = dmt.select(dict(type=HoverTool))
-#    hover.tooltips = OrderedDict([('SNR', '@snrs'), ('time', '@time'), ('key', '@key')])
-#    hover = loc.select(dict(type=HoverTool))
-#    hover.tooltips = OrderedDict([('SNR', '@snrs'), ('time', '@time'), ('key', '@key')])
-#    hover = stat.select(dict(type=HoverTool))
-#    hover.tooltips = OrderedDict([('SNR', '@snrs'), ('time', '@time'), ('key', '@key')])
-#    hover = norm.select(dict(type=HoverTool))
-#    hover.tooltips = OrderedDict([('SNR', '@snrs'), ('time', '@time'), ('key', '@key')])
-#    if url_path and fileroot:
-#        url = '{}/cands_{}_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png'.format(url_path, fileroot)
-#        taptool = dmt.select(type=TapTool)
-#        taptool.callback = OpenURL(url=url)
-#        taptool = loc.select(type=TapTool)
-#        taptool.callback = OpenURL(url=url)    
-#        taptool = stat.select(type=TapTool)
-#        taptool.callback = OpenURL(url=url)    
-#        taptool = norm.select(type=TapTool)
-#        taptool.callback = OpenURL(url=url)
 
     # arrange plots
     top = hplot(vplot(dmt), width=950)
@@ -161,19 +99,14 @@ def plotall(data, circleinds=None, crossinds=None, edgeinds=None, htmlname=None,
         return combined
 
 
-def plotdmt(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None, fileroot=None, tools="hover,tap,pan,box_select,wheel_zoom,reset"):
+def plotdmt(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, fileroot=None, tools="hover,tap,pan,box_select,wheel_zoom,reset"):
     """ Make a dm-time figure """
 
     if not circleinds: circleinds = range(len(data['snrs']))
 
-    source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds])) 
-                                           for (key, value) in data.iteritems()}))
-
     # set ranges
     datalen = len(data['dm'])
-    inds = circleinds
-    if crossinds: inds += crossinds
-    if edgeinds: inds += edgeinds
+    inds = circleinds + crossinds + edgeinds
     dm = [data['dm'][i] for i in inds]
     dm_min = min(min(dm), max(dm)/1.2)
     dm_max = max(max(dm), min(dm)*1.2)
@@ -181,21 +114,25 @@ def plotdmt(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None,
     time_min = min(time)
     time_max = max(time)
 
+    source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds if i not in edgeinds])) 
+                                           for (key, value) in data.iteritems()}))
     dmt = figure(plot_width=950, plot_height=500, toolbar_location="left", x_axis_label='Time (s; relative)',
                  y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), 
                  webgl=True, tools=tools)
-    dmt.circle('time', 'dm', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
+    dmt.circle('time', 'dm', size='sizes', fill_color='colors', line_color=None, fill_alpha=0.2, source=source)
+#    dmt.circle(source.data['time'], source.data['dm'], size=source.data['sizes'], fill_color=source.data['colors'], line_color=None, fill_alpha=0.2)
 
     if crossinds:
         sourceneg = ColumnDataSource(data = dict({(key, tuple([value[i] for i in crossinds]))
                                                   for (key, value) in data.iteritems()}))
-        dmt.cross('time', 'dm', size='sizes', line_color='colors', line_alpha=0.2, source=sourceneg)
+        dmt.cross('time', 'dm', size='sizes', fill_color='colors', line_alpha=0.2, source=sourceneg)
+#        dmt.cross(sourceneg.data['time'], sourceneg.data['dm'], size=sourceneg.data['sizes'], fill_color=sourceneg.data['colors'], line_alpha=0.2)
 
     if edgeinds:
         sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
                                                    for (key, value) in data.iteritems()}))
-        dmt.circle('time', 'dm', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
-
+        dmt.circle('time', 'dm', size='sizes', line_color='colors', fill_color='colors', line_alpha=0.7, fill_alpha=0.2, source=sourceedge)
+#        dmt.circle(sourceedge.data['time'], sourceedge.data['dm'], size=sourceedge.data['sizes'], line_color=sourceedge.data['colors'], fill_color=sourceedge.data['colors'], line_alpha=0.7, fill_alpha=0.2)
     hover = dmt.select(dict(type=HoverTool))
     hover.tooltips = OrderedDict([('SNR', '@snrs'), ('time', '@time'), ('key', '@key')])
 
@@ -207,19 +144,14 @@ def plotdmt(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None,
     return dmt
 
 
-def plotloc(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None, fileroot=None, tools="hover,tap,pan,box_select,wheel_zoom,reset"):
-    """ Make a dm-time figure """
+def plotloc(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, fileroot=None, tools="hover,tap,pan,box_select,wheel_zoom,reset"):
+    """ Make a loc figure """
 
     if not circleinds: circleinds = range(len(data['snrs']))
 
-    source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds])) 
-                                           for (key, value) in data.iteritems()}))
-
     # set ranges
     datalen = len(data['dm'])
-    inds = circleinds
-    if crossinds: inds += crossinds
-    if edgeinds: inds += edgeinds
+    inds = circleinds + crossinds + edgeinds
     l1 = [data['l1'][i] for i in inds]
     l1_min = min(l1)
     l1_max = max(l1)
@@ -227,6 +159,8 @@ def plotloc(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None,
     m1_min = min(m1)
     m1_max = max(m1)
 
+    source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds if i not in edgeinds])) 
+                                           for (key, value) in data.iteritems()}))
     loc = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)',
                  x_range=(l1_min, l1_max), y_range=(m1_min,m1_max), tools=tools, webgl=True)
     loc.circle('l1', 'm1', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
@@ -253,18 +187,13 @@ def plotloc(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None,
 
 
 def plotstat(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None, fileroot=None, tools="hover,tap,pan,box_select,wheel_zoom,reset"):
-    """ Make a dm-time figure """
+    """ Make a stat figure """
 
     if not circleinds: circleinds = range(len(data['snrs']))
 
-    source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds])) 
-                                           for (key, value) in data.iteritems()}))
-
     # set ranges
     datalen = len(data['dm'])
-    inds = circleinds
-    if crossinds: inds += crossinds
-    if edgeinds: inds += edgeinds
+    inds = circleinds + crossinds + edgeinds
     specstd = [data['specstd'][i] for i in inds]
     specstd_min = min(specstd)
     specstd_max = max(specstd)
@@ -272,6 +201,8 @@ def plotstat(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None
     imkur_min = min(imkur)
     imkur_max = max(imkur)
 
+    source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds if i not in edgeinds])) 
+                                           for (key, value) in data.iteritems()}))
     stat = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Spectral std',
                   y_axis_label='Image kurtosis', x_range=(specstd_min, specstd_max), 
                   y_range=(imkur_min, imkur_max), tools=tools, webgl=True)
@@ -298,19 +229,14 @@ def plotstat(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None
     return stat
 
 
-def plotnorm(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None, fileroot=None, tools="hover,tap,pan,box_select,wheel_zoom,reset"):
-    """ Make a dm-time figure """
+def plotnorm(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, fileroot=None, tools="hover,tap,pan,box_select,wheel_zoom,reset"):
+    """ Make a norm figure """
 
     if not circleinds: circleinds = range(len(data['snrs']))
 
-    source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds])) 
-                                           for (key, value) in data.iteritems()}))
-
     # set ranges
     datalen = len(data['dm'])
-    inds = circleinds
-    if crossinds: inds += crossinds
-    if edgeinds: inds += edgeinds
+    inds = circleinds + crossinds + edgeinds
     specstd = [data['specstd'][i] for i in inds]
     specstd_min = min(specstd)
     specstd_max = max(specstd)
@@ -318,22 +244,24 @@ def plotnorm(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None
     imkur_min = min(imkur)
     imkur_max = max(imkur)
 
+    source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds if i not in edgeinds])) 
+                                           for (key, value) in data.iteritems()}))
     norm = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed',
                   y_axis_label='SNR expected', tools=tools, webgl=True)
-#    norm.circle('snrs', 'zs', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
-    norm.circle(source['snrs'], sourcea['zs'], line_color=None, fill_alpha=0.2)
+    norm.circle('snrs', 'zs', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
+#    norm.circle(source.data['snrs'], source.data['zs'], line_color=None, fill_alpha=0.2)
 
     if crossinds:
         sourceneg = ColumnDataSource(data = dict({(key, tuple([value[i] for i in crossinds]))
                                                   for (key, value) in data.iteritems()}))
-#        norm.cross('snrs', 'zs', size='sizes', line_color='colors', line_alpha=0.2, source=sourceneg)
-        norm.cross(sourceneg['snrs'], sourceneg['zs'], line_alpha=0.2)
+        norm.cross('snrs', 'zs', size='sizes', line_color='colors', line_alpha=0.2, source=sourceneg)
+#        norm.cross(sourceneg.data['snrs'], sourceneg.data['zs'], line_alpha=0.2)
 
     if edgeinds:
         sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
                                                    for (key, value) in data.iteritems()}))
-#        norm.circle('snrs', 'zs', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
-        norm.circle(sourceedge['snrs'], sourceedge['zs'], line_alpha=0.5, fill_alpha=0.2)
+        norm.circle('snrs', 'zs', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
+#        norm.circle(sourceedge.data['snrs'], sourceedge.data['zs'], line_alpha=0.5, fill_alpha=0.2)
 
     hover = norm.select(dict(type=HoverTool))
     hover.tooltips = OrderedDict([('SNR', '@snrs'), ('time', '@time'), ('key', '@key')])
@@ -444,7 +372,15 @@ def calcinds(data, threshold, ignoret=None):
     for i in range(len(data['time'])):
         snr = data['snrs'][i]
         time = data['time'][i]
-        if (threshold >= 0 and snr > threshold) or (threshold < 0 and snr < threshold):
+        if (threshold >= 0 and snr > threshold):
+            if ignoret:
+                incl = [t0 for (t0, t1) in ignoret if np.round(time).astype(int) in range(t0,t1)]
+                logger.debug('{} {} {} {}'.format(np.round(time).astype(int), t0, t1, incl))
+                if not incl:
+                    inds.append(i)
+            else:
+                inds.append(i)
+        elif threshold < 0 and snr < threshold:
             if ignoret:
                 incl = [t0 for (t0, t1) in ignoret if np.round(time).astype(int) in range(t0,t1)]
                 logger.debug('{} {} {} {}'.format(np.round(time).astype(int), t0, t1, incl))
