@@ -3,7 +3,7 @@ import numpy as np
 import logging, pickle, os
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-from bokeh.plotting import ColumnDataSource, figure, save, output_file, vplot, hplot
+from bokeh.plotting import ColumnDataSource, Figure, save, output_file, vplot, hplot
 from bokeh.models import HoverTool, TapTool, OpenURL
 from collections import OrderedDict 
 from rtpipe.parsecands import read_noise, read_candidates
@@ -13,8 +13,10 @@ def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignor
 
     data = readdata(mergepkl)
     circleinds = calcinds(data, thresh, ignoret)
-    crossinds = calcinds(data, -1*thresh, ignoret)
-    edgeinds = calcinds(data, thresh_link, ignoret)
+    crossinds = []
+    edgeinds = []
+#    crossinds = calcinds(data, -1*thresh, ignoret)
+#    edgeinds = calcinds(data, thresh_link, ignoret)
 
     fileroot = mergepkl.rstrip('_merge.pkl').lstrip('cands_')
 
@@ -116,7 +118,7 @@ def plotdmt(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, filer
 
     source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds if i not in edgeinds])) 
                                            for (key, value) in data.iteritems()}))
-    dmt = figure(plot_width=950, plot_height=500, toolbar_location="left", x_axis_label='Time (s; relative)',
+    dmt = Figure(plot_width=950, plot_height=500, toolbar_location="left", x_axis_label='Time (s; relative)',
                  y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), 
                  webgl=True, tools=tools)
     dmt.circle('time', 'dm', size='sizes', fill_color='colors', line_color=None, fill_alpha=0.2, source=source)
@@ -161,7 +163,7 @@ def plotloc(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, filer
 
     source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds if i not in edgeinds])) 
                                            for (key, value) in data.iteritems()}))
-    loc = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)',
+    loc = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)',
                  x_range=(l1_min, l1_max), y_range=(m1_min,m1_max), tools=tools, webgl=True)
     loc.circle('l1', 'm1', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
 
@@ -203,7 +205,7 @@ def plotstat(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None
 
     source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds if i not in edgeinds])) 
                                            for (key, value) in data.iteritems()}))
-    stat = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Spectral std',
+    stat = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Spectral std',
                   y_axis_label='Image kurtosis', x_range=(specstd_min, specstd_max), 
                   y_range=(imkur_min, imkur_max), tools=tools, webgl=True)
     stat.circle('specstd', 'imkur', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
@@ -246,7 +248,7 @@ def plotnorm(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, file
 
     source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds if i not in edgeinds])) 
                                            for (key, value) in data.iteritems()}))
-    norm = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed',
+    norm = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed',
                   y_axis_label='SNR expected', tools=tools, webgl=True)
     norm.circle('snrs', 'zs', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
 #    norm.circle(source.data['snrs'], source.data['zs'], line_color=None, fill_alpha=0.2)
@@ -415,7 +417,7 @@ def plotnoise(noisepkl):
     noises = read_noise(noisepkl)
     imnoise = np.sort(noises[4])
     frac = [float(count)/len(imnoise) for count in reversed(range(1, len(imnoise)+1))]
-    noiseplot = figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Noise image std',
+    noiseplot = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Noise image std',
                        y_axis_label='Cumulative fraction', tools='pan, wheel_zoom, reset')
     noiseplot.line(imnoise, frac)
 
@@ -447,16 +449,21 @@ def normprob(d, snrs, inds=None):
 
     # calc normal quantile
     if not inds: inds = range(len(snrs))
-    snrsortpos = []
-    snrsortneg = []
-    for i in inds:
-        if snrs[i] > 0:
-            snrsortpos.append(snrs[i])
-        elif snrs[i] < 0:
-            snrsortneg.append(abs(snrs[i]))
+    snrpos = snrs[inds][np.where(snrs[inds] > 0)]
+    snrneg = snrs[inds][np.where(snrs[inds] < 0)]
+    snrsortpos = snrpos.sort(reverse=True)
+    snrsortneg = np.abs(snrneg.sort(reverse=True))
 
-    snrsortpos = sorted(snrsortpos, reverse=True)
-    snrsortneg = sorted(snrsortneg, reverse=True)
+#    snrsortpos = []
+#    snrsortneg = []
+#    for i in inds:
+#        if snrs[i] > 0:
+#            snrsortpos.append(snrs[i])
+#        elif snrs[i] < 0:
+#            snrsortneg.append(abs(snrs[i]))
+
+#    snrsortpos = sorted(snrsortpos, reverse=True)
+#    snrsortneg = sorted(snrsortneg, reverse=True)
 
     zval = []
     for (i, snr) in enumerate(snrs):
