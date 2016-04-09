@@ -312,7 +312,7 @@ def readdata(mergepkl=None, d=None, cands=None, sizerange=(2,70)):
 #                           'imkur': imkur, 'scan': scan, 'seg': seg, 'candint': candint, 'dmind': dmind,
 #                           'dtind': dtind, 'sizes': sizes, 'colors': colors, 'key': key, 'zs': zs, 'abssnr': abssnr})
 #    logger.info('Returning a pandas dataframe')
-    data = dict(snrs=snrs, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd,
+    data = dict(snrs=snrs, dm=dm, l1=l1, m1=m1, time=time, specstd=specstd, scan=scan,
                 imkur=imkur, sizes=sizes, colors=colors, key=key, zs=zs, abssnr=abssnr)
 #                dtind=dtind, scan=scan, seg=seg, candint=candint, dmind=dmind,
 
