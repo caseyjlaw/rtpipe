@@ -398,7 +398,7 @@ def plotnoise(noisepkl):
     return noiseplot
 
 
-def normprob(d, snrs, inds=None, new=True):
+def normprob(d, snrs, inds=None, new=0):
     """ Uses observed SNR distribution to calculate normal probability SNR
 
     Uses state dict to calculate number of trials.
@@ -424,7 +424,16 @@ def normprob(d, snrs, inds=None, new=True):
     logger.info('Calculating normal probability distribution for npix*nints*ndms*dtfactor = %d' % (ntrials))
 
     # calc normal quantile
-    if new: # numpy array based
+    if new == 2:
+        # broken
+        lenpos = len(np.where(snrs[inds] >= 0)[0])
+        lenneg = len(np.where(snrs[inds] < 0)[0])
+        possortind = np.argsort(np.where(snrs[inds] >= 0))
+        negsortind = np.argsort(np.where(snrs[inds] < 0))
+        inds = np.where(snrs[inds] >= 0, np.arange(lenpos)[possortind], np.arange(lenneg)[negsortind])
+        zval = Z(quan(ntrials, inds+1))
+
+    if new == 1: # numpy array based
         snrpos = snrs[inds][np.where(snrs[inds] > 0)]
         snrneg = snrs[inds][np.where(snrs[inds] < 0)]
         snrsortpos = np.sort(snrpos)[::-1]
@@ -439,7 +448,7 @@ def normprob(d, snrs, inds=None, new=True):
                     zval.append(Z(quan(ntrials, np.where(snr == snrsortpos)[0][0]+1)))
                 elif snr in snrsortneg:
                     zval.append(Z(quan(ntrials, np.where(snr == snrsortneg)[0][0]+1)))
-    else:
+    elif new == 0:
         snrsortpos = []
         snrsortneg = []
         for i in inds:
