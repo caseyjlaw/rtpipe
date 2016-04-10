@@ -302,9 +302,9 @@ def readdata(mergepkl=None, d=None, cands=None, sizerange=(2,70)):
 
     logger.info('Calculating sizes, colors, normprob...')
     time = time - min(time)
-    zs = normprob(d, snrs)
     sizes = calcsize(snrs)
     colors = colorsat(l1, m1)
+    zs = normprob(d, snrs)
 
     # if pandas is available use dataframe to allow datashader feature
 #    data = DataFrame(data={'snrs': snrs, 'dm': dm, 'l1': l1, 'm1': m1, 'time': time, 'specstd': specstd,
@@ -432,10 +432,10 @@ def normprob(d, snrs, inds=None, version=2):
         unsortinds = np.zeros(len(sortinds), dtype=int)
         unsortinds[sortinds] = np.arange(len(sortinds))
         rank = np.concatenate( (np.arange(1, lenneg+1), np.arange(1, lenpos+1)[::-1]) )
-        logger.info('{} {}'.format(rank, sortinds))
+        logger.debug('{} {}'.format(rank, sortinds))
         zval = Z(quan(ntrials, rank[unsortinds]))
 
-    if version == 1:
+    elif version == 1:
         # numpy array based
         snrpos = snrs[inds][np.where(snrs[inds] > 0)]
         snrneg = snrs[inds][np.where(snrs[inds] < 0)]
@@ -451,6 +451,7 @@ def normprob(d, snrs, inds=None, version=2):
                     zval.append(Z(quan(ntrials, np.where(snr == snrsortpos)[0][0]+1)))
                 elif snr in snrsortneg:
                     zval.append(Z(quan(ntrials, np.where(snr == snrsortneg)[0][0]+1)))
+
     elif version == 0:
         # list based
         snrsortpos = []
