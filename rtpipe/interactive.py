@@ -302,8 +302,7 @@ def readdata(mergepkl=None, d=None, cands=None, sizerange=(2,70)):
 
     logger.info('Calculating sizes, colors, normprob...')
     time = time - min(time)
-#    zs = normprob(d, snrs)   # very slow!
-    zs = np.arange(len(time))
+    zs = normprob(d, snrs)
     sizes = calcsize(snrs)
     colors = colorsat(l1, m1)
 
@@ -398,11 +397,12 @@ def plotnoise(noisepkl):
     return noiseplot
 
 
-def normprob(d, snrs, inds=None, new=0):
+def normprob(d, snrs, inds=None, version=2):
     """ Uses observed SNR distribution to calculate normal probability SNR
 
     Uses state dict to calculate number of trials.
     snrs is list of all snrs in distribution.
+    version used to toggle for tests. version 2 is fastest.
     Returns list of expected snr given each input value's frequency of occurrence via the normal probability assumption
     """
 
@@ -424,16 +424,19 @@ def normprob(d, snrs, inds=None, new=0):
     logger.info('Calculating normal probability distribution for npix*nints*ndms*dtfactor = %d' % (ntrials))
 
     # calc normal quantile
-    if new == 2:
-        # broken
+    if version == 2:
+        # purely sort and numpy-based
+        sortinds = np.argsort(snrs[inds])
         lenpos = len(np.where(snrs[inds] >= 0)[0])
         lenneg = len(np.where(snrs[inds] < 0)[0])
-        possortind = np.argsort(np.where(snrs[inds] >= 0))
-        negsortind = np.argsort(np.where(snrs[inds] < 0))
-        inds = np.where(snrs[inds] >= 0, np.arange(lenpos)[possortind], np.arange(lenneg)[negsortind])
-        zval = Z(quan(ntrials, inds+1))
+        unsortinds = np.zeros(len(sortinds), dtype=int)
+        unsortinds[sortinds] = np.arange(len(sortinds))
+        rank = np.concatenate( (np.arange(1, lenneg+1), np.arange(1, lenpos+1)[::-1]) )
+        logger.info('{} {}'.format(rank, sortinds))
+        zval = Z(quan(ntrials, rank[unsortinds]))
 
-    if new == 1: # numpy array based
+    if version == 1:
+        # numpy array based
         snrpos = snrs[inds][np.where(snrs[inds] > 0)]
         snrneg = snrs[inds][np.where(snrs[inds] < 0)]
         snrsortpos = np.sort(snrpos)[::-1]
@@ -448,7 +451,8 @@ def normprob(d, snrs, inds=None, new=0):
                     zval.append(Z(quan(ntrials, np.where(snr == snrsortpos)[0][0]+1)))
                 elif snr in snrsortneg:
                     zval.append(Z(quan(ntrials, np.where(snr == snrsortneg)[0][0]+1)))
-    elif new == 0:
+    elif version == 0:
+        # list based
         snrsortpos = []
         snrsortneg = []
         for i in inds:
