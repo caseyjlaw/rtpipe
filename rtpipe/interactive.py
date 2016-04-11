@@ -16,7 +16,8 @@ def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignor
     crossinds = calcinds(data, -1*thresh, ignoret)
     edgeinds = calcinds(data, thresh_link, ignoret)
 
-    fileroot = mergepkl.rstrip('_merge.pkl').lstrip('cands_')
+    workdir = os.path.dirname(mergepkl)
+    fileroot = os.path.basename(mergepkl).rstrip('_merge.pkl').lstrip('cands_')
 
     logger.info('Total on target time: {} s'.format(calcontime(data, inds=circleinds+crossinds+edgeinds)))
 
@@ -99,17 +100,17 @@ def plotdmt(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, filer
     if crossinds:
         sourceneg = ColumnDataSource(data = dict({(key, tuple([value[i] for i in crossinds]))
                                                   for (key, value) in data.iteritems() if key in fields}))
-        dmt.cross('time', 'dm', size='sizes', fill_color='colors', line_alpha=0.5, source=sourceneg)
+        dmt.cross('time', 'dm', size='sizes', fill_color='colors', line_alpha=0.3, source=sourceneg)
 
     if edgeinds:
         sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
                                                    for (key, value) in data.iteritems() if key in fields}))
-        dmt.circle('time', 'dm', size='sizes', line_color='colors', fill_color='colors', line_alpha=0.7, fill_alpha=0.2, source=sourceedge)
+        dmt.circle('time', 'dm', size='sizes', line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2, source=sourceedge)
     hover = dmt.select(dict(type=HoverTool))
     hover.tooltips = OrderedDict([('SNR', '@snrs'), ('key', '@key')])
 
     if url_path and fileroot:
-#            url = '{}/cands_{}_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png'.format(url_path, fileroot)
+#        url = '{}/cands_{}_sc@scan-seg@seg-i@candint-dm@dmind-dt@dtind.png'.format(url_path, fileroot)
         url = '{}/cands_{}_@key.png'.format(url_path, fileroot)
         taptool = dmt.select(type=TapTool)
         taptool.callback = OpenURL(url=url)
@@ -143,7 +144,7 @@ def plotloc(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, filer
     if crossinds:
         sourceneg = ColumnDataSource(data = dict({(key, tuple([value[i] for i in crossinds]))
                                                   for (key, value) in data.iteritems() if key in fields}))
-        loc.cross('l1', 'm1', size='sizes', line_color='colors', line_alpha=0.5, source=sourceneg)
+        loc.cross('l1', 'm1', size='sizes', line_color='colors', line_alpha=0.3, source=sourceneg)
 
     if edgeinds:
         sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
@@ -188,7 +189,7 @@ def plotstat(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None
     if crossinds:
         sourceneg = ColumnDataSource(data = dict({(key, tuple([value[i] for i in crossinds]))
                                                   for (key, value) in data.iteritems() if key in fields}))
-        stat.cross('specstd', 'imkur', size='sizes', line_color='colors', line_alpha=0.5, source=sourceneg)
+        stat.cross('specstd', 'imkur', size='sizes', line_color='colors', line_alpha=0.3, source=sourceneg)
 
     if edgeinds:
         sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
@@ -209,7 +210,7 @@ def plotstat(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None
 def plotnorm(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, fileroot=None, tools="hover,tap,pan,box_select,wheel_zoom,reset"):
     """ Make a norm figure """
 
-    fields = ['zs', 'sizes', 'colors', 'snrs', 'key']
+    fields = ['zs', 'sizes', 'colors', 'abssnr', 'key', 'snrs']
 
     if not circleinds: circleinds = range(len(data['snrs']))
 
@@ -227,17 +228,17 @@ def plotnorm(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, file
                                            for (key, value) in data.iteritems() if key in fields}))
     norm = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed',
                   y_axis_label='SNR expected', tools=tools, webgl=True)
-    norm.circle('snrs', 'zs', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
+    norm.circle('abssnr', 'zs', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
 
     if crossinds:
         sourceneg = ColumnDataSource(data = dict({(key, tuple([value[i] for i in crossinds]))
                                                   for (key, value) in data.iteritems() if key in fields}))
-        norm.cross('snrs', 'zs', size='sizes', line_color='colors', line_alpha=0.5, source=sourceneg)
+        norm.cross('abssnr', 'zs', size='sizes', line_color='colors', line_alpha=0.3, source=sourceneg)
 
     if edgeinds:
         sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
                                                    for (key, value) in data.iteritems() if key in fields}))
-        norm.circle('snrs', 'zs', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
+        norm.circle('abssnr', 'zs', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
 
     hover = norm.select(dict(type=HoverTool))
     hover.tooltips = OrderedDict([('SNR', '@snrs'), ('key', '@key')])
