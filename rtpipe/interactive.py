@@ -73,7 +73,8 @@ def plotall(data, circleinds=[], crossinds=[], edgeinds=[], htmlname=None, noise
         return combined
 
 
-def plotdmt(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, fileroot=None, tools="hover,tap,pan,box_select,wheel_zoom,reset"):
+def plotdmt(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, fileroot=None,
+            tools="hover,tap,pan,box_select,wheel_zoom,reset", plot_width=950, plot_height=500):
     """ Make a dm-time figure """
 
     fields = ['dm', 'time', 'sizes', 'colors', 'snrs', 'key']
@@ -92,7 +93,7 @@ def plotdmt(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, filer
 
     source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds if i not in edgeinds])) 
                                            for (key, value) in data.iteritems() if key in fields}))
-    dmt = Figure(plot_width=950, plot_height=500, toolbar_location="left", x_axis_label='Time (s; relative)',
+    dmt = Figure(plot_width=plot_width, plot_height=plot_height, toolbar_location="left", x_axis_label='Time (s; relative)',
                  y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), 
                  webgl=True, tools=tools)
     dmt.circle('time', 'dm', size='sizes', fill_color='colors', line_color=None, fill_alpha=0.2, source=source)
@@ -118,7 +119,8 @@ def plotdmt(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, filer
     return dmt
 
 
-def plotloc(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, fileroot=None, tools="hover,tap,pan,box_select,wheel_zoom,reset"):
+def plotloc(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, fileroot=None,
+            tools="hover,tap,pan,box_select,wheel_zoom,reset", plot_width=450, plot_height=400):
     """ Make a loc figure """
 
     fields = ['l1', 'm1', 'sizes', 'colors', 'snrs', 'key']
@@ -137,7 +139,7 @@ def plotloc(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, filer
 
     source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds if i not in edgeinds])) 
                                            for (key, value) in data.iteritems() if key in fields}))
-    loc = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)',
+    loc = Figure(plot_width=plot_width, plot_height=plot_height, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)',
                  x_range=(l1_min, l1_max), y_range=(m1_min,m1_max), tools=tools, webgl=True)
     loc.circle('l1', 'm1', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
 
@@ -162,7 +164,9 @@ def plotloc(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, filer
     return loc
 
 
-def plotstat(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None, fileroot=None, tools="hover,tap,pan,box_select,wheel_zoom,reset"):
+def plotstat(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None, fileroot=None, 
+             tools="hover,tap,pan,box_select,wheel_zoom,reset", plot_width=450, plot_height=400):
+    
     """ Make a stat figure """
 
     fields = ['imkur', 'specstd', 'sizes', 'colors', 'snrs', 'key']
@@ -181,7 +185,7 @@ def plotstat(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None
 
     source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds if i not in edgeinds])) 
                                            for (key, value) in data.iteritems() if key in fields}))
-    stat = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Spectral std',
+    stat = Figure(plot_width=plot_width, plot_height=plot_height, toolbar_location="left", x_axis_label='Spectral std',
                   y_axis_label='Image kurtosis', x_range=(specstd_min, specstd_max), 
                   y_range=(imkur_min, imkur_max), tools=tools, webgl=True)
     stat.circle('specstd', 'imkur', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
@@ -207,7 +211,8 @@ def plotstat(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None
     return stat
 
 
-def plotnorm(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, fileroot=None, tools="hover,tap,pan,box_select,wheel_zoom,reset"):
+def plotnorm(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, fileroot=None,
+             tools="hover,tap,pan,box_select,wheel_zoom,reset", plot_width=450, plot_height=400):
     """ Make a norm figure """
 
     fields = ['zs', 'sizes', 'colors', 'abssnr', 'key', 'snrs']
@@ -226,7 +231,7 @@ def plotnorm(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, file
 
     source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds if i not in edgeinds])) 
                                            for (key, value) in data.iteritems() if key in fields}))
-    norm = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed',
+    norm = Figure(plot_width=plot_width, plot_height=plot_height, toolbar_location="left", x_axis_label='SNR observed',
                   y_axis_label='SNR expected', tools=tools, webgl=True)
     norm.circle('abssnr', 'zs', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
 
@@ -249,6 +254,20 @@ def plotnorm(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, file
         taptool.callback = OpenURL(url=url)
 
     return norm
+
+
+def plotnoise(noisepkl, plot_width=450, plot_height=400):
+    """ Merged noise pkl converted to interactive cumulative histogram """
+
+    # noise histogram
+    noises = read_noise(noisepkl)
+    imnoise = np.sort(noises[4])
+    frac = [float(count)/len(imnoise) for count in reversed(range(1, len(imnoise)+1))]
+    noiseplot = Figure(plot_width=plot_width, plot_height=plot_height, toolbar_location="left", x_axis_label='Noise image std',
+                       y_axis_label='Cumulative fraction', tools='pan, wheel_zoom, reset')
+    noiseplot.line(imnoise, frac)
+
+    return noiseplot
 
 
 def readdata(mergepkl=None, d=None, cands=None, sizerange=(2,70)):
@@ -382,20 +401,6 @@ def calcontime(data, inds=None):
         total += max(time) - min(time)
 
     return total
-
-
-def plotnoise(noisepkl):
-    """ Merged noise pkl converted to interactive cumulative histogram """
-
-    # noise histogram
-    noises = read_noise(noisepkl)
-    imnoise = np.sort(noises[4])
-    frac = [float(count)/len(imnoise) for count in reversed(range(1, len(imnoise)+1))]
-    noiseplot = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Noise image std',
-                       y_axis_label='Cumulative fraction', tools='pan, wheel_zoom, reset')
-    noiseplot.line(imnoise, frac)
-
-    return noiseplot
 
 
 def normprob(d, snrs, inds=None, version=2):
