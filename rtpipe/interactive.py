@@ -274,6 +274,7 @@ def readdata(mergepkl=None, d=None, cands=None, sizerange=(2,70)):
     """ Converts candidate data to dictionary for bokeh
 
     Can take merged pkl file or d/cands as read separately.
+    cands is an optional (loc, prop) tuple of numpy arrays.
     """
 
     # get cands from pkl
@@ -408,7 +409,7 @@ def normprob(d, snrs, inds=None, version=2):
 
     Uses state dict to calculate number of trials.
     snrs is list of all snrs in distribution.
-    version used to toggle for tests. version 2 is fastest.
+    version used to toggle for tests. version 2 is fastest and returns zeros for filtered snr values.
     Returns list of expected snr given each input value's frequency of occurrence via the normal probability assumption
     """
 
@@ -440,6 +441,8 @@ def normprob(d, snrs, inds=None, version=2):
         rank = np.concatenate( (np.arange(1, lenneg+1), np.arange(1, lenpos+1)[::-1]) )
         logger.debug('{} {}'.format(rank, sortinds))
         zval = Z(quan(ntrials, rank[unsortinds]))
+        if inds != range(len(snrs)):  # add zeros for filtered data to match length to original snr array
+            zval = np.array([zval[inds.index(i)] if i in inds else 0 for i in range(len(snrs))])
 
     elif version == 1:
         # numpy array based
@@ -487,7 +490,7 @@ def normprob(d, snrs, inds=None, version=2):
 def calcsize(values, sizerange=(2,70), inds=None, plaw=3):
     """ Use set of values to calculate symbol size.
 
-    valus is a list of floats for candidate significance.
+    values is a list of floats for candidate significance.
     inds is an optional list of indexes to use to calculate symbol size.
     Scaling of symbol size min max set by sizerange tuple (min, max).
     plaw is powerlaw scaling of symbol size from values
