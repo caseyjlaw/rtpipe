@@ -43,7 +43,7 @@ class Params(object):
         with open(paramfile, 'r') as f:
             for line in f.readlines():
                 line_clean = line.rstrip('\n').split('#')[0]   # trim out comments and trailing cr
-                if '=' in line:   # use valid lines only
+                if line_clean and '=' in line:   # use valid lines only
                     attribute, value = line_clean.split('=')
                     try:
                         value_eval = eval(value.strip())
