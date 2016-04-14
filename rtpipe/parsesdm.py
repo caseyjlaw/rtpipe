@@ -134,7 +134,7 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
     i0 = 0
     for nch in d['spw_nchan_select']:
         spw_chanr_select.append((i0, i0+nch))
-        i0 = nch
+        i0 += nch
     d['spw_chanr_select'] = spw_chanr_select
 
     # define image params
