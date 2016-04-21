@@ -3,7 +3,7 @@ import numpy as np
 import logging, pickle, os
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-from bokeh.plotting import ColumnDataSource, Figure, save, output_file, vplot, hplot
+from bokeh.plotting import ColumnDataSource, Figure, save, output_file, vplot, hplot, reset_output
 from bokeh.models import HoverTool, TapTool, OpenURL
 from collections import OrderedDict 
 from rtpipe.parsecands import read_noise, read_candidates
@@ -11,6 +11,7 @@ from rtpipe.parsecands import read_noise, read_candidates
 def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignoret=None, savehtml=True, url_path='plots'):
     """ Backwards compatible function for making interactive candidate summary plot """
 
+    reset_output() # start with clean bokeh state
     data = readdata(mergepkl)
     circleinds = calcinds(data, thresh, ignoret)
     crossinds = calcinds(data, -1*thresh, ignoret)
@@ -36,7 +37,7 @@ def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignor
 
 
 def plotall(data, circleinds=[], crossinds=[], edgeinds=[], htmlname=None, noiseplot=None, url_path='plots', fileroot=None):
-    """ Create interactive plot from data dictionary
+    """ Create interactive plot (preserving links between panels) from data dictionary
 
     data has keys of snr, time, dm, sizes, key and more.
     Optional index arguments are used to filter full data set.
@@ -51,11 +52,91 @@ def plotall(data, circleinds=[], crossinds=[], edgeinds=[], htmlname=None, noise
 
     TOOLS = "hover,tap,pan,box_select,wheel_zoom,reset"
 
+    # set ranges
+    datalen = len(data['dm'])
+    inds = circleinds + crossinds + edgeinds
+    dm = [data['dm'][i] for i in inds]
+    dm_min = min(min(dm), max(dm)/1.2)
+    dm_max = max(max(dm), min(dm)*1.2)
+    time = [data['time'][i] for i in inds]
+    time_min = min(time)
+    time_max = max(time)
+    l1 = [data['l1'][i] for i in inds]
+    l1_min = min(l1)
+    l1_max = max(l1)
+    m1 = [data['m1'][i] for i in inds]
+    m1_min = min(m1)
+    m1_max = max(m1)
+    specstd = [data['specstd'][i] for i in inds]
+    specstd_min = min(specstd)
+    specstd_max = max(specstd)
+    imkur = [data['imkur'][i] for i in inds]
+    imkur_min = min(imkur)
+    imkur_max = max(imkur)
+
     # create figures
-    dmt = plotdmt(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, url_path=url_path, fileroot=fileroot, tools=TOOLS) # maybe add size?
-    loc = plotloc(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, url_path=url_path, fileroot=fileroot, tools=TOOLS)
-    stat = plotstat(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, url_path=url_path, fileroot=fileroot, tools=TOOLS)
-    norm = plotnorm(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, url_path=url_path, fileroot=fileroot, tools=TOOLS)
+    dmt = Figure(plot_width=950, plot_height=500, toolbar_location="left", x_axis_label='Time (s; relative)',
+                 y_axis_label='DM (pc/cm3)', x_range=(time_min, time_max), y_range=(dm_min, dm_max), 
+                 webgl=True, tools=TOOLS)
+    loc = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='l1 (rad)', y_axis_label='m1 (rad)',
+                 x_range=(l1_min, l1_max), y_range=(m1_min,m1_max), tools=TOOLS, webgl=True)
+    stat = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='Spectral std',
+                  y_axis_label='Image kurtosis', x_range=(specstd_min, specstd_max), 
+                  y_range=(imkur_min, imkur_max), tools=TOOLS, webgl=True)
+    norm = Figure(plot_width=450, plot_height=400, toolbar_location="left", x_axis_label='SNR observed',
+                  y_axis_label='SNR expected', tools=TOOLS, webgl=True)
+
+    # create positive symbol source and add glyphs
+    source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds if i not in edgeinds])) 
+                                           for (key, value) in data.iteritems()}))
+    dmt.circle('time', 'dm', size='sizes', fill_color='colors', line_color=None, fill_alpha=0.2, source=source)
+    loc.circle('l1', 'm1', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
+    stat.circle('specstd', 'imkur', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
+    norm.circle('abssnr', 'zs', size='sizes', line_color=None, fill_color='colors', fill_alpha=0.2, source=source)
+
+    # create negative symbol source and add glyphs
+    if crossinds:
+        sourceneg = ColumnDataSource(data = dict({(key, tuple([value[i] for i in crossinds]))
+                                                  for (key, value) in data.iteritems()}))
+        dmt.cross('time', 'dm', size='sizes', fill_color='colors', line_alpha=0.3, source=sourceneg)
+        loc.cross('l1', 'm1', size='sizes', line_color='colors', line_alpha=0.3, source=sourceneg)
+        stat.cross('specstd', 'imkur', size='sizes', line_color='colors', line_alpha=0.3, source=sourceneg)
+        norm.cross('abssnr', 'zs', size='sizes', line_color='colors', line_alpha=0.3, source=sourceneg)
+
+    # create linked symbol source and add glyphs
+    if edgeinds:
+        sourceedge = ColumnDataSource(data = dict({(key, tuple([value[i] for i in edgeinds]))
+                                                   for (key, value) in data.iteritems()}))
+        dmt.circle('time', 'dm', size='sizes', line_color='colors', fill_color='colors', line_alpha=0.5, fill_alpha=0.2, source=sourceedge)
+        loc.circle('l1', 'm1', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
+        stat.circle('specstd', 'imkur', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
+        norm.circle('abssnr', 'zs', size='sizes', line_color='colors', fill_color='colors', source=sourceedge, line_alpha=0.5, fill_alpha=0.2)
+
+    hover = dmt.select(dict(type=HoverTool))
+    hover.tooltips = OrderedDict([('SNR', '@snrs'), ('key', '@key')])
+    hover = loc.select(dict(type=HoverTool))
+    hover.tooltips = OrderedDict([('SNR', '@snrs'), ('key', '@key')])
+    hover = stat.select(dict(type=HoverTool))
+    hover.tooltips = OrderedDict([('SNR', '@snrs'), ('key', '@key')])
+    hover = norm.select(dict(type=HoverTool))
+    hover.tooltips = OrderedDict([('SNR', '@snrs'), ('key', '@key')])
+
+    if url_path and fileroot:
+        url = '{}/cands_{}_@key.png'.format(url_path, fileroot)
+        taptool = dmt.select(type=TapTool)
+        taptool.callback = OpenURL(url=url)
+        taptool = loc.select(type=TapTool)
+        taptool.callback = OpenURL(url=url)
+        taptool = stat.select(type=TapTool)
+        taptool.callback = OpenURL(url=url)
+        taptool = norm.select(type=TapTool)
+        taptool.callback = OpenURL(url=url)
+
+# this approach does not preserve links between panels
+#    dmt = plotdmt(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, url_path=url_path, fileroot=fileroot, tools=TOOLS) # maybe add size?
+#    loc = plotloc(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, url_path=url_path, fileroot=fileroot, tools=TOOLS)
+#    stat = plotstat(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, url_path=url_path, fileroot=fileroot, tools=TOOLS)
+#    norm = plotnorm(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, url_path=url_path, fileroot=fileroot, tools=TOOLS)
 
     # arrange figures
     top = hplot(vplot(dmt), width=950)
@@ -75,7 +156,7 @@ def plotall(data, circleinds=[], crossinds=[], edgeinds=[], htmlname=None, noise
 
 def plotdmt(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, fileroot=None,
             tools="hover,tap,pan,box_select,wheel_zoom,reset", plot_width=950, plot_height=500):
-    """ Make a dm-time figure """
+    """ Make a light-weight dm-time figure """
 
     fields = ['dm', 'time', 'sizes', 'colors', 'snrs', 'key']
 
@@ -121,7 +202,7 @@ def plotdmt(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, filer
 
 def plotloc(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, fileroot=None,
             tools="hover,tap,pan,box_select,wheel_zoom,reset", plot_width=450, plot_height=400):
-    """ Make a loc figure """
+    """ Make a light-weight loc figure """
 
     fields = ['l1', 'm1', 'sizes', 'colors', 'snrs', 'key']
 
@@ -166,8 +247,7 @@ def plotloc(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, filer
 
 def plotstat(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None, fileroot=None, 
              tools="hover,tap,pan,box_select,wheel_zoom,reset", plot_width=450, plot_height=400):
-    
-    """ Make a stat figure """
+    """ Make a light-weight stat figure """
 
     fields = ['imkur', 'specstd', 'sizes', 'colors', 'snrs', 'key']
 
@@ -213,21 +293,11 @@ def plotstat(data, circleinds=None, crossinds=None, edgeinds=None, url_path=None
 
 def plotnorm(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, fileroot=None,
              tools="hover,tap,pan,box_select,wheel_zoom,reset", plot_width=450, plot_height=400):
-    """ Make a norm figure """
+    """ Make a light-weight norm figure """
 
     fields = ['zs', 'sizes', 'colors', 'abssnr', 'key', 'snrs']
 
     if not circleinds: circleinds = range(len(data['snrs']))
-
-    # set ranges
-    datalen = len(data['dm'])
-    inds = circleinds + crossinds + edgeinds
-    specstd = [data['specstd'][i] for i in inds]
-    specstd_min = min(specstd)
-    specstd_max = max(specstd)
-    imkur = [data['imkur'][i] for i in inds]
-    imkur_min = min(imkur)
-    imkur_max = max(imkur)
 
     source = ColumnDataSource(data = dict({(key, tuple([value[i] for i in circleinds if i not in edgeinds])) 
                                            for (key, value) in data.iteritems() if key in fields}))
