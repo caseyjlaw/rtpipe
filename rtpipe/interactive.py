@@ -22,7 +22,7 @@ def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignor
     logger.info('Total on target time: {} s'.format(calcontime(data, inds=circleinds+crossinds+edgeinds)))
 
     if noisepkl:
-        noiseplot = plotnoise(noisepkl)
+        noiseplot = plotnoisecum(noisepkl)
     else:
         noiseplot = None
 
@@ -256,18 +256,94 @@ def plotnorm(data, circleinds=[], crossinds=[], edgeinds=[], url_path=None, file
     return norm
 
 
-def plotnoise(noisepkl, plot_width=450, plot_height=400):
-    """ Merged noise pkl converted to interactive cumulative histogram """
+def plotnoise(noisepkl, mergepkl, plot_width=950, plot_height=400):
+    """ Make two panel plot to summary noise analysis with estimated flux scale """
+
+    d = pickle.load(open(mergepkl))
+    ndist, imstd, flagfrac = plotnoisedist(noisepkl, plot_width=plot_width/2, plot_height=plot_height)
+    fluxscale = calcfluxscale(d, imstd, flagfrac)
+    logger.info('Median image noise is {0:.3} Jy.'.format(fluxscale*imstd))
+    ncum = plotnoisecum(noisepkl, fluxscale=fluxscale, plot_width=plot_width/2, plot_height=plot_height)
+
+    return hplot(vplot(ndist), vplot(ncum), width=plot_width)
+
+
+def plotnoisecum(noisepkl, fluxscale=1, plot_width=450, plot_height=400):
+    """ Merged noise pkl converted to interactive cumulative histogram 
+
+    noisepkl is standard noise pickle file.
+    fluxscale is scaling applied by gain calibrator. telcal solutions have fluxscale=1.
+    """
 
     # noise histogram
     noises = read_noise(noisepkl)
-    imnoise = np.sort(noises[4])
+    imnoise = np.sort(fluxscale*noises[4])
     frac = [float(count)/len(imnoise) for count in reversed(range(1, len(imnoise)+1))]
-    noiseplot = Figure(plot_width=plot_width, plot_height=plot_height, toolbar_location="left", x_axis_label='Noise image std',
+    noiseplot = Figure(plot_width=plot_width, plot_height=plot_height, toolbar_location="above",
+                       x_axis_label='Image noise (Jy; cal scaling {0:.3})'.format(fluxscale),
                        y_axis_label='Cumulative fraction', tools='pan, wheel_zoom, reset')
     noiseplot.line(imnoise, frac)
 
     return noiseplot
+
+
+def plotnoisedist(noisepkl, plot_width=450, plot_height=400):
+    """ """
+
+    # plot noise and flag distributions
+    scans, segments, noiseperbl, flagfrac, imstd = read_noise(noisepkl)
+    pl = Figure(plot_width=plot_width, plot_height=plot_height, toolbar_location="above",
+                x_axis_label='Flag fraction', y_axis_label='Image noise (sys)', tools='pan, wheel_zoom, reset')
+    pl.cross(flagfrac, imstd, line_alpha=0.2, color='blue')
+
+    # find medians
+    flagfrac_med = np.median(flagfrac)
+    imstd_med = np.median(imstd)
+    logger.info('Median image noise (sys) = {0}'.format(imstd_med))
+    logger.info('Median flag fraction = {0}'.format(flagfrac_med))
+    pl.cross(flagfrac_med, imstd_med, line_alpha=1, size=40, color='red')
+
+    # estimate number of zero noise images
+    zeronoisefrac = float(len(np.where(imstd == 0.)[0]))/len(imstd)
+    logger.info('{0:.0%} of noise images are zeros'.format(zeronoisefrac))
+    
+    return pl, imstd_med, flagfrac_med
+
+
+def calcfluxscale(d, imstd_med, flagfrac_med):
+    """ Given state dict and noise properties, estimate flux scale at the VLA 
+
+    imstd and flagfrac are expected to be median (typical) values from sample in merged noise pkl.
+    """
+
+    # useful functions and VLA parameters
+    sensitivity = lambda sefd, dt, bw, eta, nbl, npol: sefd/(eta*np.sqrt(nbl*2 * dt * bw * npol))
+    nbl = lambda nant: nant*(nant-1)/2
+    eta = {'L': 0.92, 'S': 0.92, 'C': 0.8, 'X': 0.8}   # correlator efficiency
+    sefd = {'L': 420, 'S': 370, 'C': 310, 'X': 250}    # fixed to match exposure calculator int time to 100 microJy.
+
+    bw = sum([d['spw_nchan_select'][i]*d['spw_chansize'][i] for i in range(len(d['spw_chansize']))])
+    dt = d['inttime']
+    npol = d['npol']
+    nant = d['nants']
+    freq = d['freq'][0]
+    if (freq >= 1 and freq < 2):
+        band = 'L'
+    elif (freq >= 2 and freq < 4):
+        band = 'S'
+    elif (freq >= 4 and freq < 8):
+        band = 'C'
+    elif (freq >= 8 and freq < 12):
+        band = 'X'
+    else:
+        logger.warn('first channel freq ({0}) not in bands L, S, C, or X. Assuming L band.'.format(freq))
+        band = 'L'
+
+    goodfrac = 1 - flagfrac_med # correct for flagged data
+    slim_theory = sensitivity(sefd[band], dt, bw, eta[band], goodfrac*nbl(nant), npol)
+    fluxscale = slim_theory/imstd_med
+
+    return fluxscale
 
 
 def readdata(mergepkl=None, d=None, cands=None, sizerange=(2,70)):
