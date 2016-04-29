@@ -3,15 +3,15 @@ import numpy as np
 import logging, pickle, os
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-from bokeh.plotting import ColumnDataSource, Figure, save, output_file, vplot, hplot, reset_output
+from bokeh.plotting import ColumnDataSource, Figure, save, output_file
 from bokeh.models import HoverTool, TapTool, OpenURL
+from bokeh.models.layouts import HBox, VBox
 from collections import OrderedDict 
 from rtpipe.parsecands import read_noise, read_candidates
 
 def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignoret=None, savehtml=True, url_path='plots'):
     """ Backwards compatible function for making interactive candidate summary plot """
 
-    reset_output() # start with clean bokeh state
     data = readdata(mergepkl)
     circleinds = calcinds(data, thresh, ignoret)
     crossinds = calcinds(data, -1*thresh, ignoret)
@@ -139,13 +139,13 @@ def plotall(data, circleinds=[], crossinds=[], edgeinds=[], htmlname=None, noise
 #    norm = plotnorm(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, url_path=url_path, fileroot=fileroot, tools=TOOLS)
 
     # arrange figures
-    top = hplot(vplot(dmt), width=950)
-    middle = hplot(vplot(loc), vplot(stat), width=950)
+    top = HBox(dmt, width=950)
+    middle = HBox(loc, stat, width=950)
     if noiseplot:
-        bottom = hplot(vplot(norm), vplot(noiseplot), width=950)
+        bottom = HBox(norm, noiseplot, width=950)
     else:
-        bottom = hplot(vplot(norm), width=950)
-    combined = vplot(top, middle, bottom, width=950)
+        bottom = HBox(norm, width=950)
+    combined = VBox(top, middle, bottom, width=950)
 
     if htmlname:
         output_file(htmlname)
@@ -335,7 +335,7 @@ def plotnoise(noisepkl, mergepkl, plot_width=950, plot_height=400):
     logger.info('Median image noise is {0:.3} Jy.'.format(fluxscale*imstd))
     ncum = plotnoisecum(noisepkl, fluxscale=fluxscale, plot_width=plot_width/2, plot_height=plot_height)
 
-    return hplot(vplot(ndist), vplot(ncum), width=plot_width)
+    return HBox(ndist, ncum, width=plot_width)
 
 
 def plotnoisecum(noisepkl, fluxscale=1, plot_width=450, plot_height=400):
