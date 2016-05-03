@@ -428,7 +428,8 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
 
                     # imaging in shared memory, mapped over ints
                     image1part = partial(image1, d, u, v, w, dmind, dtind, beamnum)
-                    irange = [(nskip_dm + searchints*chunk/d['nchunk'], nskip_dm + searchints*(chunk+1)/d['nchunk']) for chunk in range(d['nchunk'])]
+                    nchunkdt = max(d['nthread'], d['nchunk']/dt)
+                    irange = [(nskip_dm + searchints*chunk/nchunkdt, nskip_dm + searchints*(chunk+1)/nchunkdt) for chunk in range(nchunkdt)]
                     imageresults = resamppool.map(image1part, irange)
 
                     # COLLECTING THE RESULTS per dm/dt. Clears the way for overwriting data_resamp
@@ -852,18 +853,53 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
         # if auto nsegment definition makes segment too large, try to scale it down to fit in memory_limit (if provided)
         if d.has_key('memory_limit'):
-            while calc_memory_footprint(d, visonly=True) > d['memory_limit']:
-                logger.info("For nsegments=%d, pipeline would read %d GB of visibilities and exceed limit of %d. Iterating to better memory fit." % (d['nsegments'], calc_memory_footprint(d, visonly=True), d['memory_limit']))
-                d['scale_nsegments'] = d['scale_nsegments'] * (calc_memory_footprint(d, visonly=True)/float(d['memory_limit']))
-                d['nsegments'] = max(1, min(d['nints'], int(d['scale_nsegments']*d['inttime']*d['nints']/(fringetime-d['t_overlap']))))  # at least 1, at most nints
+            (vismem, immem) = calc_memory_footprint(d)
+            while vismem+immem > d['memory_limit']:
+                (vismem, immem) = calc_memory_footprint(d)
+                logger.info('Over memory limit of {4} if reading {0} segments with {1} chunks requires {2}/{3} GB for visibilities/imaging.'.format(d['nsegments'], d['nchunk'], vismem, immem, d['memory_limit']))
 
+                d['scale_nsegments'] = d['scale_nsegments'] * vismem/float(d['memory_limit'])
+                d['nsegments'] = max(1, min(d['nints'], int(d['scale_nsegments']*d['inttime']*d['nints']/(fringetime-d['t_overlap']))))  # at least 1, at most nints
                 calc_segment_times(d)
+
+                (vismem, immem) = calc_memory_footprint(d)
+                while vismem+immem > d['memory_limit']:
+                    logger.debug('Doubling nchunk from %d to fit in %d GB memory limit.' % (d['nchunk'], d['memory_limit']))
+                    d['nchunk'] = 2*d['nchunk']
+                    (vismem, immem) = calc_memory_footprint(d)
+                    if d['nchunk'] == 2*max(d['dtarr'])*d['nthread']: # limit nchunk to at most twice number of threads at largest dt
+                        d['nchunk'] = d['nthread']
+                        break
+
+                (vismem, immem) = calc_memory_footprint(d)
+
     else:
-        # if nsegments defined manually, then calc times
-        calc_segment_times(d)
+        (vismem, immem) = calc_memory_footprint(d)
+        assert vismem+immem < d['memory_limit'], 'Visibility reading requires %d GB and images require %d GB, but memory limit is %d GB. Try forcing nsegments to value larger than %d.' % (vismem, immem, d['memory_limit'], d['nsegments'])
+
+    #         while calc_memory_footprint(d, visonly=True) > d['memory_limit']:
+    #             logger.info("For nsegments=%d, pipeline would read %d GB of visibilities and exceed limit of %d. Iterating to better memory fit." % (d['nsegments'], calc_memory_footprint(d, visonly=True), d['memory_limit']))
+    #             d['scale_nsegments'] = d['scale_nsegments'] * (calc_memory_footprint(d, visonly=True)/float(d['memory_limit']))
+    #             d['nsegments'] = max(1, min(d['nints'], int(d['scale_nsegments']*d['inttime']*d['nints']/(fringetime-d['t_overlap']))))  # at least 1, at most nints
+
+    #             calc_segment_times(d)
+    # else:
+    #     # if nsegments defined manually, then calc times
+    #     calc_segment_times(d)
+
+    # (vismem, immem) = calc_memory_footprint(d)
+    # if d.has_key('memory_limit'):    # if preference given, then test
+    #     assert vismem < d['memory_limit'], 'Visibility reading requires %d GB, but memory limit is %d GB. Try forcing nsegments to value larger than %d.' % (vismem, d['memory_limit'], d['nsegments'])
+
+    #     if vismem+immem > d['memory_limit']:
+    #         logger.info('')
+    #         while vismem+immem > d['memory_limit']:
+    #             logger.info('Doubling nchunk from %d to fit in %d GB memory limit.' % (d['nchunk'], d['memory_limit']))
+    #             d['nchunk'] = 2*d['nchunk']
+    #             (vismem, immem) = calc_memory_footprint(d)
 
     # scaling of number of integrations beyond dt=1
-    assert all(d['dtarr']), 'dtarr must be larger than 0'
+    assert all(d['dtarr']) and (d['dtarr'] == sorted(d['dtarr'])), 'dtarr must be larger than 0 and in increasing order'
 
     # calculate number of thermal noise candidates per segment
     nfalse = calc_nfalse(d)
@@ -886,17 +922,6 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     logger.info('\t Using %d DMs from %.1f to %.1f and dts %s.' % (len(d['dmarr']), min(d['dmarr']), max(d['dmarr']), d['dtarr']))
     logger.info('\t Using uvgrid npix=(%d,%d) and res=%d.' % (d['npixx'], d['npixy'], d['uvres']))
     logger.info('\t Expect %d thermal false positives per segment.' % nfalse)
-
-    (vismem, immem) = calc_memory_footprint(d)
-    if d.has_key('memory_limit'):    # if preference given, then test
-        assert vismem < d['memory_limit'], 'Visibility reading requires %d GB, but memory limit is %d GB. Try forcing nsegments to value larger than %d.' % (vismem, d['memory_limit'], d['nsegments'])
-
-        if vismem+immem > d['memory_limit']:
-            logger.info('')
-            while vismem+immem > d['memory_limit']:
-                logger.info('Doubling nchunk from %d to fit in %d GB memory limit.' % (d['nchunk'], d['memory_limit']))
-                d['nchunk'] = 2*d['nchunk']
-                (vismem, immem) = calc_memory_footprint(d)
 
     logger.info('')
     logger.info('\t Visibility memory usage is %.1f GB/segment' % vismem)
