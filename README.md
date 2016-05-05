@@ -8,7 +8,7 @@ Requirements
 
 * Python 2.7
 * Standard scientific Python stuff: numpy, scipy, matplotlib, multiprocessing, bokeh
-* [pwkit](http://github.com/pkgw/pwkit) (for access to CASA libraries)
+* [pwkit](http://github.com/pkgw/pwkit) (for access to CASA libraries; best with anaconda installer)
 * Cython (tested with 0.19.1)
 * [sdmreader](http://github.com/caseyjlaw/sdmreader) (for reading SDM format data)
 * [sdmpy](http://github.com/demorest/sdmreader) (for reading SDM format data)

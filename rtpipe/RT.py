@@ -1,5 +1,3 @@
-from scipy.special import erf
-import scipy.stats.mstats as mstats
 import rtpipe.parsems as pm
 import rtpipe.parsecal as pc
 import rtpipe.parsesdm as ps
@@ -8,6 +6,8 @@ import multiprocessing as mp
 import multiprocessing.sharedctypes as mps
 from contextlib import closing
 import numpy as n
+from scipy.special import erf
+import scipy.stats.mstats as mstats
 try:
     import casautil 
 except ImportError:
