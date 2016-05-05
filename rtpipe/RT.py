@@ -852,13 +852,19 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         calc_segment_times(d)
 
         # if auto nsegment definition makes segment too large, try to scale it down to fit in memory_limit (if provided)
+        # limit defined for dm sweep time and max nchunk/nthread ratio
         if d.has_key('memory_limit'):
+            (vismem0, immem0) = calc_memory_footprint(d, limit=True)
+            assert vismem0+immem0 < d['memory_limit'], 'memory_limit of {0} is smaller than best solution of {1}. Try forcing nsegments/nchunk larger than {2}/{3} or reducing maxdm/npix'.format(d['memory_limit'], vismem0+immem0, d['nsegments'], max(d['dtarr'])/min(d['dtarr']))
+
             (vismem, immem) = calc_memory_footprint(d)
+            if vismem+immem > d['memory_limit']:
+                logger.info('Over memory limit of {4} when reading {0} segments with {1} chunks ({2}/{3} GB for visibilities/imaging). Searching for solution down to {5}/{6} GB...'.format(d['nsegments'], d['nchunk'], vismem, immem, d['memory_limit'], vismem0, immem0))
+
             while vismem+immem > d['memory_limit']:
                 (vismem, immem) = calc_memory_footprint(d)
-                logger.info('Over memory limit of {4} if reading {0} segments with {1} chunks requires {2}/{3} GB for visibilities/imaging.'.format(d['nsegments'], d['nchunk'], vismem, immem, d['memory_limit']))
-
-                d['scale_nsegments'] = d['scale_nsegments'] * vismem/float(d['memory_limit'])
+                logger.debug('Using {0} segments with {1} chunks ({2}/{3} GB for visibilities/imaging). Searching for better solution...'.format(d['nchunk'], vismem, immem, d['memory_limit']))
+                d['scale_nsegments'] = d['scale_nsegments'] * (vismem+immem)/float(d['memory_limit'])
                 d['nsegments'] = max(1, min(d['nints'], int(d['scale_nsegments']*d['inttime']*d['nints']/(fringetime-d['t_overlap']))))  # at least 1, at most nints
                 calc_segment_times(d)
 
@@ -867,36 +873,16 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
                     logger.debug('Doubling nchunk from %d to fit in %d GB memory limit.' % (d['nchunk'], d['memory_limit']))
                     d['nchunk'] = 2*d['nchunk']
                     (vismem, immem) = calc_memory_footprint(d)
-                    if d['nchunk'] == 2*max(d['dtarr'])*d['nthread']: # limit nchunk to at most twice number of threads at largest dt
+                    if d['nchunk'] == max(d['dtarr'])/min(d['dtarr'])*d['nthread']: # limit nchunk/nthread to at most the range in dt
                         d['nchunk'] = d['nthread']
                         break
 
                 (vismem, immem) = calc_memory_footprint(d)
 
     else:
+        calc_segment_times(d)
         (vismem, immem) = calc_memory_footprint(d)
-        assert vismem+immem < d['memory_limit'], 'Visibility reading requires %d GB and images require %d GB, but memory limit is %d GB. Try forcing nsegments to value larger than %d.' % (vismem, immem, d['memory_limit'], d['nsegments'])
-
-    #         while calc_memory_footprint(d, visonly=True) > d['memory_limit']:
-    #             logger.info("For nsegments=%d, pipeline would read %d GB of visibilities and exceed limit of %d. Iterating to better memory fit." % (d['nsegments'], calc_memory_footprint(d, visonly=True), d['memory_limit']))
-    #             d['scale_nsegments'] = d['scale_nsegments'] * (calc_memory_footprint(d, visonly=True)/float(d['memory_limit']))
-    #             d['nsegments'] = max(1, min(d['nints'], int(d['scale_nsegments']*d['inttime']*d['nints']/(fringetime-d['t_overlap']))))  # at least 1, at most nints
-
-    #             calc_segment_times(d)
-    # else:
-    #     # if nsegments defined manually, then calc times
-    #     calc_segment_times(d)
-
-    # (vismem, immem) = calc_memory_footprint(d)
-    # if d.has_key('memory_limit'):    # if preference given, then test
-    #     assert vismem < d['memory_limit'], 'Visibility reading requires %d GB, but memory limit is %d GB. Try forcing nsegments to value larger than %d.' % (vismem, d['memory_limit'], d['nsegments'])
-
-    #     if vismem+immem > d['memory_limit']:
-    #         logger.info('')
-    #         while vismem+immem > d['memory_limit']:
-    #             logger.info('Doubling nchunk from %d to fit in %d GB memory limit.' % (d['nchunk'], d['memory_limit']))
-    #             d['nchunk'] = 2*d['nchunk']
-    #             (vismem, immem) = calc_memory_footprint(d)
+        assert vismem+immem < d['memory_limit'], 'Visibility reading requires %.1f GB and images require %.1f GB, but memory limit is %.1f GB. Try forcing nsegments to value larger than %d.' % (vismem, immem, d['memory_limit'], d['nsegments'])
 
     # scaling of number of integrations beyond dt=1
     assert all(d['dtarr']) and (d['dtarr'] == sorted(d['dtarr'])), 'dtarr must be larger than 0 and in increasing order'
@@ -926,7 +912,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     logger.info('')
     logger.info('\t Visibility memory usage is %.1f GB/segment' % vismem)
     logger.info('\t Imaging in %d chunk%s using max of %.1f GB/segment' % (d['nchunk'], "s"[not d['nsegments']-1:], immem))
-    logger.info('\t Grand total memory usage: %d GB/segment' % (vismem + immem))
+    logger.info('\t Grand total memory usage: %.1f GB/segment' % (vismem + immem))
 
     return d
 
@@ -984,21 +970,29 @@ def calc_segment_times(d):
     d['readints'] = n.round(totaltimeread / (d['inttime']*d['nsegments']*d['read_tdownsample'])).astype(int)
     d['t_segment'] = totaltimeread/d['nsegments']
 
-def calc_memory_footprint(d, headroom=4., visonly=False):
+def calc_memory_footprint(d, headroom=4., visonly=False, limit=False):
     """ Given pipeline state dict, this function calculates the memory required
     to store visibilities and make images.
     headroom scales visibility memory size from single data object to all copies (and potential file read needs)
+    limit=True returns a the minimum memory configuration
     Returns tuple of (vismem, immem) in units of GB.
     """
 
     toGB = 8/1024.**3   # number of complex64s to GB
+    d0 = d.copy()
 
-    vismem = headroom * datasize(d) * toGB
+    # limit defined for dm sweep time and max nchunk/nthread ratio
+    if limit:
+        d0['readints'] = d['t_overlap']/d['inttime']
+        d0['nchunk'] = max(d['dtarr'])/min(d['dtarr']) * d['nthread']
+
+    vismem = headroom * datasize(d0) * toGB
     if visonly:
         return vismem
     else:
-        immem = d['nthread'] * (d['readints']/d['nchunk'] * d['npixx'] * d['npixy']) * toGB
+        immem = d0['nthread'] * (d0['readints']/d0['nchunk'] * d0['npixx'] * d0['npixy']) * toGB
         return (vismem, immem)
+
 
 def calc_fringetime(d):
     """ Estimate largest time span of a "segment".
