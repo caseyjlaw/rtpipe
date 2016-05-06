@@ -1,7 +1,0 @@
-mode='unflag'
-mode='shadow'
-mode='clip' clipzeros=True
-mode='rflag' freqdevscale=4 timedevscale=5
-mode='extend' growaround=True growtime=60 growfreq=40 extendpols=True
-mode='quack' quackinterval=20
-mode='summary'

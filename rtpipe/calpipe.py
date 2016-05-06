@@ -107,15 +107,18 @@ class pipe(object):
             flagfile = os.path.join(self.workdir, 'flags.txt')
             print 'Writing flaglist to %s.' % flagfile
 
-            if len(flaglist):
-                flfile = open(flagfile, 'w')
+            if not flaglist:
+                flaglist = ["mode='unflag'", "mode='shadow'", "mode='clip' clipzeros=True",
+                            "mode='rflag' freqdevscale=4 timedevscale=5",
+                            "mode='extend' growaround=True growtime=60 growfreq=40 extendpols=True",
+                            "mode='quack' quackinterval=20", "mode='summary'"]
+
+            with open(flagfile, 'w') as flfile:
                 for flag in flags:
                     flfile.write(flag + '\n')
-                flfile.close()
-            else:
-                print 'No flagfile or flaglist provided. No flagging will be done.'
+
         else:
-            print 'Reading flags from %s.' % flagfile
+            print 'Using flags in %s.' % flagfile
 
         print 'Flagging with these commands:'
         for ff in enumerate(open(flagfile)): print ff[1].rstrip()
