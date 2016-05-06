@@ -27,7 +27,8 @@ def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignor
     else:
         noiseplot = None
 
-    combined = plotall(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds, htmlname=None, noiseplot=noiseplot, url_path=url_path, fileroot=fileroot)
+    combined = plotall(data, circleinds=circleinds, crossinds=crossinds, edgeinds=edgeinds,
+                       htmlname=None, noiseplot=noiseplot, url_path=url_path, fileroot=fileroot)
 
     if savehtml:
         output_file(mergepkl.rstrip('.pkl') + '.html')
@@ -664,3 +665,71 @@ def colorsat(l,m):
     blue = 0.5*(1+np.cos(np.angle(lm) - 2*3.14/3))
     amp = 256*np.abs(lm)/np.abs(lm).max()
     return ["#%02x%02x%02x" % (np.floor(amp[i]*red[i]), np.floor(amp[i]*green[i]), np.floor(amp[i]*blue[i])) for i in range(len(l))]
+
+def filterdata(data, plinds, threshold, ignorestr, thresh0=6., thresh1=7.):
+    """ Iteratively filter bad times and set indices for later plotting """
+
+    ignoret = parseignoret(ignorestr)
+    plinds['cir'] = calcinds(data, thresh0, ignoret=ignoret) # positive cands
+    plinds['cro'] = calcinds(data, -1*thresh0, ignoret=ignoret) # negative cands
+    plinds['edg'] = calcinds(data, thresh1, ignoret=ignoret) # cands with png plots
+    sortinds = sorted(set(plinds['cir'] + plinds['cro'] + plinds['edg']))
+    print('Selected {} ({} linked) points.'.format(len(sortinds), len(plinds['edg'])))
+    
+    print('Estimated total on target time: {} s\n'.format(calcontime(
+        data, inds=plinds['cir']+plinds['cro']+plinds['edg'])))
+    
+    # these must get get rescaled when cands are ignored
+    data['zs'] = normprob(d, data['snrs'], inds=sortinds)   
+
+    # print high 1s bin counts
+    hight, highcount = findhight(data, ignoret=ignoret, threshold=threshold)
+    if len(hight):
+        print('High times \t High counts:')
+        for i in range(len(hight)):
+              print('{0}\t{1}'.format(hight[i], highcount[i]))
+    else:
+        print('No high 1s bin counts.')
+    print('\n')
+
+    # print high cands and their times
+    biginds = np.argsort(data['abssnr'][sortinds])[-5:]    
+    print('Top 5 abs(snr) candidates and times:')
+    for ind in biginds[::-1]:
+        print(data['snrs'][sortinds][ind], data['time'][sortinds][ind])
+    print('\n')
+
+
+def parseignoret(ignorestr):
+    if ',' in ignorestr:
+        ignorelist = ignorestr.split(',')
+        assert (len(ignorelist)/2.).is_integer(), 'ignorestr be pairs of comma-delimited values.'
+        ignoret = [(int(ignorelist[i]), int(ignorelist[i+1])) for i in range(0, len(ignorelist), 2)]
+    else:
+        ignoret = []
+    return ignoret        
+
+
+def displayplot(plottype, sizespec, url_path='http://www.aoc.nrao.edu/~claw/plots'):
+    """ Generate interactive plot """
+
+    plotdict = {'dmt': plotdmt, 'norm': plotnorm,
+               'loc': plotloc, 'stat': plotstat,
+               'all': plotall}
+    sizedict = {'dmt': [900,500], 'norm': [700, 700], 'loc': [700,700],
+                'stat': [700,700]}
+
+    sortinds = sorted(set(plinds['cir'] + plinds['cro'] + plinds['edg']))
+    sizesrc, plaw = sizespec.split('_')
+    data['sizes'] = calcsize(data[sizesrc], inds=sortinds, plaw=int(plaw))
+
+    if plottype != 'all':
+        wid, hei = sizedict[plottype]
+        pl = plotdict[plottype](data, circleinds=plinds['cir'], crossinds=plinds['cro'],
+                                edgeinds=plinds['edg'], url_path=url_path,
+                                fileroot=fileroot, plot_width=wid, plot_height=hei)
+    else:
+        pl = plotall(data, circleinds=plinds['cir'], crossinds=plinds['cro'],
+                                 edgeinds=plinds['edg'], url_path=url_path,
+                                 fileroot=fileroot)
+    hdl = show(pl)
