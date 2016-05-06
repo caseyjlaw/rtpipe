@@ -574,25 +574,27 @@ def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[])
     assert len(candloc) == 6, 'candloc should be (scan, segment, candint, dmind, dtind, beamnum).'
     scan, segment, candint, dmind, dtind, beamnum = candloc
 
+    d1 = d0.copy() # dont mess with original (mutable!)
+
     # if file not at stated full path, assume it is local
-    if not os.path.exists(d0['filename']):
+    if not os.path.exists(d1['filename']):
         workdir = os.getcwd()
-        filename = os.path.join(workdir, os.path.basename(d0['filename']))
+        filename = os.path.join(workdir, os.path.basename(d1['filename']))
     else:
-        filename = d0['filename']
+        filename = d1['filename']
 
-    # clean up d0 of superfluous keys
+    # clean up d1 of superfluous keys
     params = pp.Params()  # will be used as input to rt.set_pipeline
-    for key in d0.keys():
+    for key in d1.keys():
         if not hasattr(params, key):
-            junk = d0.pop(key)
+            _ = d1.pop(key)
 
-    d0['npix'] = 0; d0['uvres'] = 0
-    d0['savecands'] = False
-    d0['savenoise'] = False
+    d1['npix'] = 0; d1['uvres'] = 0
+    d1['savecands'] = False
+    d1['savenoise'] = False
 
     # redefine d. many parameters modified after this to keep from messing up time boundaries/cand location
-    d = set_pipeline(filename, scan, **d0)
+    d = set_pipeline(filename, scan, **d1)
     if chans:
         d['chans'] = chans
 
@@ -614,15 +616,17 @@ def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[])
 
     # refine parameters
     dmcand = d['dmarr'][dmind]
-    try:
-        dmdelta = d['dmarr'][dmind+1] - d['dmarr'][dmind]
-    except IndexError:
+    if scaledm > 1.:
         try:
-            dmdelta = d['dmarr'][dmind] - d['dmarr'][dmind-1]
+            dmdelta = d['dmarr'][dmind+1] - d['dmarr'][dmind]
         except IndexError:
-            dmdelta = 0.1*dmcand
-
-    d['dmarr'] = list(n.arange(dmcand-dmdelta, dmcand+dmdelta, dmdelta/scaledm))
+            try:
+                dmdelta = d['dmarr'][dmind] - d['dmarr'][dmind-1]
+            except IndexError:
+                dmdelta = 0.1*dmcand
+        d['dmarr'] = list(n.arange(dmcand-dmdelta, dmcand+dmdelta, dmdelta/scaledm))
+    else:
+        d['dmarr'] = [dmcand]
     d['dtarr'] = [d['dtarr'][dtind]]
     d['npixx'] = scalepix*d['npixx']
     d['npixy'] = scalepix*d['npixy']

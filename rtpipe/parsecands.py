@@ -90,7 +90,7 @@ def read_noise(noisefile):
         logger.warn('structure of noise file not understood. first entry should be length 4 of 5.')
 
 
-def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
+def merge_segments(filename, scan, cleanup=True, sizelimit=0):
     """ Merges cands/noise pkl files from multiple segments to single cands/noise file.
 
     Expects segment cands pkls with have (1) state dict and (2) cands dict.
@@ -100,8 +100,10 @@ def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
     if sizelimit, it will reduce the output file to be less than this many MB.
     """
 
-    candslist = glob.glob('cands_' + fileroot + '_sc' + str(scan) + 'seg*.pkl')
-    noiselist = glob.glob('noise_' + fileroot + '_sc' + str(scan) + 'seg*.pkl')
+    workdir = os.path.dirname(filename)
+    fileroot = os.path.basename(filename)
+    candslist = glob.glob(os.path.join(workdir, 'cands_' + fileroot + '_sc' + str(scan) + 'seg*.pkl'))
+    noiselist = glob.glob(os.path.join(workdir, 'noise_' + fileroot + '_sc' + str(scan) + 'seg*.pkl'))
     candssegs = sorted([candsfile.rstrip('.pkl').split('seg')[1] for candsfile in candslist])
     noisesegs = sorted([noisefile.rstrip('.pkl').split('seg')[1] for noisefile in noiselist])
 
@@ -111,7 +113,7 @@ def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
         return
 
     # aggregate cands over segments
-    if not os.path.exists('cands_' + fileroot + '_sc' + str(scan) + '.pkl'):
+    if not os.path.exists(os.path.join(workdir, 'cands_' + fileroot + '_sc' + str(scan) + '.pkl')):
         logger.info('Aggregating cands over segments %s for fileroot %s, scan %d' % (str(candssegs), fileroot, scan))
         logger.debug('%s' % candslist)
 
@@ -142,19 +144,19 @@ def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
                 cands = {k: v for k,v in cands.items() if abs(v[snrcol]) > snrmax} # new cands dict
 
         # write cands to single file
-        with open('cands_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
+        with open(os.path.join(workdir, 'cands_' + fileroot + '_sc' + str(scan) + '.pkl', 'w')) as pkl:
             pickle.dump(state, pkl, protocol=2)
             pickle.dump( (np.array(cands.keys()), np.array(cands.values())), pkl, protocol=2)
             
         if cleanup:
-            if os.path.exists('cands_' + fileroot + '_sc' + str(scan) + '.pkl'):
+            if os.path.exists(os.path.join(workdir, 'cands_' + fileroot + '_sc' + str(scan) + '.pkl')):
                 for candsfile in candslist:
                     os.remove(candsfile)
     else:
         logger.warn('Merged candsfile already exists for scan %d. Not merged.' % scan)
 
     # aggregate noise over segments
-    if not os.path.exists('noise_' + fileroot + '_sc' + str(scan) + '.pkl'):
+    if not os.path.exists(os.path.join(workdir, 'noise_' + fileroot + '_sc' + str(scan) + '.pkl')):
         logger.info('Aggregating noise over segments %s for fileroot %s, scan %d' % (str(noisesegs), fileroot, scan))
         logger.debug('%s' % noiselist)
 
@@ -166,16 +168,28 @@ def merge_segments(fileroot, scan, cleanup=True, sizelimit=0):
 
         # write noise to single file
         if len(noise):
-            with open('noise_' + fileroot + '_sc' + str(scan) + '.pkl', 'w') as pkl:
+            with open(os.path.join(workdir, 'noise_' + fileroot + '_sc' + str(scan) + '.pkl', 'w')) as pkl:
                 pickle.dump(noise, pkl, protocol=2)
 
         if cleanup:
-            if os.path.exists('noise_' + fileroot + '_sc' + str(scan) + '.pkl'):
+            if os.path.exists(os.path.join(workdir, 'noise_' + fileroot + '_sc' + str(scan) + '.pkl')):
                 for noisefile in noiselist:
                     os.remove(noisefile)
 
     else:
         logger.warn('Merged noisefile already exists for scan %d. Not merged.' % scan)
+
+
+def cleanup(workdir, fileroot, scans=[]):
+    """ Cleanup up noise and cands files.
+    Finds all segments in each scan and merges them into single cand/noise file per scan.
+    """
+
+    os.chdir(workdir)
+
+    # merge cands/noise files per scan
+    for scan in scans:
+        pc.merge_segments(fileroot, scan, cleanup=True, sizelimit=2.)
 
 
 def merge_noises(pkllist, outroot=''):
@@ -292,6 +306,21 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
     pkl.close()
 
 
+def merge_scans(workdir, fileroot, scans, snrmin=0, snrmax=999):
+    """ Merge cands/noise files over all scans """
+
+
+    pkllist = [ff for ff in
+               [os.path.join(workdir, 'cands_{0}_sc{1}.pkl'.format(fileroot, scan))
+                for scan in scans] if os.path.exists(ff)]
+    merge_cands(pkllist, outroot=fileroot, snrmin=snrmin, snrmax=snrmax)
+
+    pkllist = [ff for ff in
+               [os.path.join(workdir, 'noise_{0}_sc{1}.pkl'.format(fileroot, scan))
+                for scan in scans] if os.path.exists(ff)]
+    merge_noises(pkllist, fileroot)
+
+
 def split_candidates(candsfile, featind1, featind2, candsfile1, candsfile2):
     """ Split features from one candsfile into two new candsfiles
 
@@ -324,110 +353,67 @@ def split_candidates(candsfile, featind1, featind2, candsfile1, candsfile2):
         pickle.dump(cands2, pkl, protocol=2)
 
 
-def plot_summary(fileroot, scans, remove=[], snrmin=0, snrmax=999):
-    """ Take pkl list or merge file to produce comprehensive candidate screening plots.
-    Starts as dm-t plots, includes dt and peak pixel location.
-    snrmin, snrmax define how to filter cands read and written by abs(snr)
+def nbcompile(workdir, fileroot, html=True):
+    """ Run analysis pipeline from jupyter base notebook and save as notebook and html. """
+
+    os.chdir(workdir)
+
+    os.environ['fileroot'] = fileroot
+    cmd = 'jupyter nbconvert baseinteract.ipynb --output {0}.ipynb --to notebook --execute --allow-errors --ExecutePreprocessor.timeout=3600'.format(fileroot).split(
+' ')
+    status = subprocess.call(cmd)
+
+    cmd = 'jupyter trust {0}.ipynb'.format(fileroot).split(' ')
+    status = subprocess.call(cmd)
+
+    if html:
+        cmd = 'jupyter nbconvert {0}.ipynb --to html --output {0}.html'.format(fileroot).split(' ')
+        status = subprocess.call(cmd)
+
+
+def thresholdcands(candsfile, threshold, numberperscan=1):
+    """ Returns list of significant candidate loc in candsfile.
+    Can define threshold and maximum number of locs per scan.
+    Works on merge or per-scan cands pkls.
     """
 
+    # read metadata and define columns of interest
+    d = pickle.load(open(candsfile, 'r'))
     try:
-        # see if this is a mergepkl
-        locs, props, d = read_candidates(fileroot, snrmin=snrmin, snrmax=snrmax, returnstate=True)
-        mergepkl = fileroot
-        logger.info('fileroot is a mergefile. Reading...')
-    except:
-        logger.info('Looking for candsfiles for %s' % fileroot)
-        pkllist = []
-        for scan in scans:
-            pklfile = 'cands_' + fileroot + '_sc' + str(scan) + '.pkl'
-            if os.path.exists(pklfile):
-                pkllist.append(pklfile)
-        merge_cands(pkllist, outroot=fileroot, remove=remove, snrmin=snrmin, snrmax=snrmax)
-        mergepkl = 'cands_' + fileroot + '_merge.pkl'
-        locs, props, d = read_candidates(mergepkl, snrmin=snrmin, snrmax=snrmax, returnstate=True)
-
-    if not len(locs):
-        logger.info('No candidates in mergepkl.')
-        return
-
-    # feature columns
+        scancol = d['featureind'].index('scan')
+    except ValueError:
+        scancol = -1
     if 'snr2' in d['features']:
         snrcol = d['features'].index('snr2')
     elif 'snr1' in d['features']:
         snrcol = d['features'].index('snr1')
-    if 'l1' in d['features']:
-        l1col = d['features'].index('l1')
-    if 'm1' in d['features']:
-        m1col = d['features'].index('m1')
-        
-    dtindcol = d['featureind'].index('dtind')
-    dmindcol = d['featureind'].index('dmind')
 
-    # compile candidates over all pkls
-    # extract values for plotting
-    times = int2mjd(d, locs)
-    times -= times.min()
-    dts = locs[:, dtindcol]
-    dms = np.array(d['dmarr'])[locs[:,dmindcol]]
-    snrs = props[:, snrcol]
-    l1s = props[:, l1col]
-    m1s = props[:, m1col]
+    # read data and define snrs
+    loc, prop = pc.read_candidates(candsfile)
+    snrs = [prop[i][snrcol] for i in range(len(prop)) if prop[i][snrcol] > threshold]
 
-    # dmt plot
-    logger.info('Plotting DM-time distribution...')
-    plot_dmt(d, times, dms, dts, snrs, l1s, m1s, fileroot)
+    # calculate unique list of locs of interest
+    siglocs = [list(loc[i]) for i in range(len(prop)) if prop[i][snrcol] > threshold]
+    siglocssort = sorted(zip([list(ll) for ll in siglocs], snrs), key=lambda stuff: stuff[1], reverse=True)
 
-    # dmcount plot
-    logger.info('Plotting DM count distribution...')
-    plot_dmcount(d, times, dts, fileroot)
+    if scancol >= 0:
+        scanset = list(set([siglocs[i][scancol] for i in range(len(siglocs))]))
+        candlist= []
+        for scan in scanset:
+            logger.debug('looking in scan %d' % scan)
+            count = 0
+            for sigloc in siglocssort:
+                if sigloc[0][scancol] == scan:
+                    logger.debug('adding sigloc %s' % str(sigloc))
+                    candlist.append(sigloc)
+                    count += 1
+                if count >= numberperscan:
+                    break
+    else:
+        candlist = siglocssort[:numberperscan]
 
-    # norm prob plot
-    logger.info('Plotting normal probability distribution...')
-    plot_normprob(d, snrs, fileroot)
-
-    # source location plot
-    logger.info('Plotting (l,m) distribution...')
-    plot_lm(d, snrs, l1s, m1s, fileroot)
-
-def plot_noise(fileroot, scans):
-    """ Takes noise pkls and visualizes it as hist of image noise values.
-    """
-
-    pkllist = []
-    for scan in scans:
-        pklfile = 'noise_' + fileroot + '_sc' + str(scan) + '.pkl'
-        if os.path.exists(pklfile):
-            pkllist.append(pklfile)
-
-    assert len(pkllist) > 0
-
-    # merge noise files
-    mergepkl = 'noise_' + fileroot + '_merge.pkl'
-    merge_noises(pkllist, fileroot)
-
-    logger.info('Reading noise file %s' % mergepkl)
-#    scan, seg, noiseperbl, flagfrac, imnoise = read_noise(mergepkl)
-    noises = read_noise(mergepkl)
-    minnoise = noises[4].min()
-    maxnoise = noises[4].max()
-
-    # plot noise histogram
-    outname = 'plot_' + fileroot + '_noisehist.png'
-    bins = np.linspace(minnoise, maxnoise, 50)
-    fig = plt.Figure(figsize=(10,10))
-    ax = fig.add_subplot(211, axisbg='white')
-    stuff = ax.hist(noises, bins=bins, histtype='bar', lw=None, ec=None)
-    ax.set_title('Histograms of noise samples')
-    ax.set_xlabel('Image RMS (Jy)')
-    ax.set_ylabel('Number of noise measurements')
-    ax2 = fig.add_subplot(212, axisbg='white')
-    stuff = ax2.hist(np.array([noises[i][j] for i in range(len(noises)) for j in range(len(noises[i]))]), bins=bins, cumulative=-1, normed=True, log=False, histtype='bar', lw=None, ec=None)
-    ax2.set_xlabel('Image RMS (Jy)')
-    ax2.set_ylabel('Number with noise > image RMS')
-
-    canvas = FigureCanvasAgg(fig)
-    canvas.print_figure(outname)
-    logger.info('Saved noise hist to %s' % outname)
+    logger.debug('Returning %d cands above threshold %.1f' % (len(candlist), threshold))
+    return [loc for loc,snr in candlist]
 
 
 def postcands(mergepkl, url='http://localhost:9200/realfast/cands/_bulk?', snrmin=0, snrmax=999):
@@ -475,186 +461,6 @@ def int2mjd(d, loc):
         return (t0 + (d['inttime']/(24*3600.))*loc[:,intcol]) * 24*3600
     else:
         return np.array([])
-
-
-def plot_dmt(d, times, dms, dts, snrs, l1s, m1s, outroot):
-    """ Plots DM versus time for each dt value.
-    """
-
-    outname = os.path.join(d['workdir'], 'plot_' + outroot + '_dmt.png')
-
-    # encode location (position angle) as color in scatter plot
-    color = lambda l1,m1: [plt.cm.jet(X=(np.angle(np.complex(l1[i], m1[i])) + np.pi) / (2*np.pi), alpha=0.5) for i in range(len(l1))]
-
-    mint = times.min(); maxt = times.max()
-    dtsunique = np.unique(dts)
-    mindm = min(d['dmarr']); maxdm = max(d['dmarr'])
-    snrmin = 0.8*min(d['sigma_image1'], d['sigma_image2'])
-
-    fig = plt.Figure(figsize=(15,10))
-    ax = {}
-    for dtind in range(len(dtsunique)):
-        ax[dtind] = fig.add_subplot(str(len(dtsunique)) + '1' + str(dtind+1))
-        # plot positive cands
-        good = np.where( (dts == dtind) & (snrs > 0))[0]
-        sizes = (snrs[good]-snrmin)**5   # set scaling to give nice visual sense of SNR
-        ax[dtind].scatter(times[good], dms[good], s=sizes, marker='o', c=color(l1s[good], m1s[good]), alpha=0.2, clip_on=False)
-        # plot negative cands
-        good = np.where( (dts == dtind) & (snrs < 0))[0]
-        sizes = (np.abs(snrs[good])-snrmin)**5   # set scaling to give nice visual sense of SNR
-        ax[dtind].scatter(times[good], dms[good], s=sizes, marker='x', edgecolors='k', alpha=0.2, clip_on=False)
-
-        ax[dtind].axis( (mint, maxt, mindm, maxdm) )
-        ax[dtind].set_ylabel('DM (pc/cm3)')
-        ax[dtind].text(0.9*maxt, 0.9*maxdm, 'dt='+str(dtsunique[dtind]))
-        if dtind == dtsunique[-1]:
-            plt.setp(ax[dtind].get_xticklabels(), visible=True)
-        elif dtind == dtsunique[0]:
-            ax[dtind].xaxis.set_label_position('top')
-            ax[dtind].xaxis.set_ticks_position('top')
-#            ax[dtind].set_xticks(changepoints[::2]*d['inttime']*d['nints'])
-#            ax[dtind].set_xticklabels(changepoints[::2])
-            plt.setp( ax[dtind].xaxis.get_majorticklabels(), rotation=90)
-        else:
-            plt.setp( ax[dtind].get_xticklabels(), visible=False)
-
-    ax[dtind].set_xlabel('Time (s)', fontsize=20)
-#    ax[dtind].set_xlabel('Scan number', fontsize=20)
-    ax[dtind].set_ylabel('DM (pc/cm3)', fontsize=20) 
-    canvas = FigureCanvasAgg(fig)
-    canvas.print_figure(outname)
-
-def plot_dmcount(d, times, dts, outroot):
-    """ Count number of candidates per dm and dt. Big clusters often trace RFI.
-    """
-
-    outname = os.path.join(d['workdir'], 'plot_' + outroot + '_dmcount.png')
-
-    uniquedts = np.unique(dts)
-    mint = times.min(); maxt = times.max()
-
-    fig2 = plt.Figure(figsize=(15,10))
-    ax2 = {}
-    for dtind in range(len(uniquedts)):
-        good = np.where(dts == dtind)[0]
-        ax2[dtind] = fig2.add_subplot(str(len(uniquedts)) + '1' + str(dtind+1))
-        if len(good):
-            bins = np.round(times[good]).astype('int')
-            counts = np.bincount(bins)
-
-            ax2[dtind].scatter(np.arange(np.amax(bins)+1), counts, facecolor=None, alpha=0.5, clip_on=False)
-            ax2[dtind].axis( (mint, maxt, 0, 1.1*counts.max()) )
-
-            # label high points
-            high = np.where(counts > np.median(counts) + 20*counts.std())[0]
-            logger.info('Candidate clusters for dt=%d:' % (d['dtarr'][dtind]))
-            logger.info('\t(Counts, Times)')
-            for ii in high:
-#                logger.info('For dt=%d, %d candidates at %d s' % (d['dtarr'][dtind], counts[ii], ii))
-                ww = np.where(bins == ii)[0]
-                logger.info('%s %s' % (str(counts[ii]), str(times[good][ww][0])))
-
-            if dtind == uniquedts[-1]:
-                plt.setp(ax2[dtind].get_xticklabels(), visible=True)
-            elif (dtind == uniquedts[0]) or (dtind == len(uniquedts)/2):
-                ax2[dtind].xaxis.set_label_position('top')
-                ax2[dtind].xaxis.set_ticks_position('top')
-#            ax2[dtind].set_xticks(changepoints[::2]*d['nints']*d['inttime'])
-#            ax2[dtind].set_xticklabels(changepoints[::2])
-                plt.setp( ax2[dtind].xaxis.get_majorticklabels(), rotation=90, size='small')
-            else:
-                plt.setp( ax2[dtind].get_xticklabels(), visible=False)
-
-    ax2[dtind].set_xlabel('Time (s)')
-    ax2[dtind].set_ylabel('Count') 
-    canvas2 = FigureCanvasAgg(fig2)
-    canvas2.print_figure(outname)
-
-def plot_normprob(d, snrs, outroot):
-    """ Normal quantile plot compares observed SNR to expectation given frequency of occurrence.
-    Includes negative SNRs, too.
-    """
-
-    outname = os.path.join(d['workdir'], 'plot_' + outroot + '_normprob.png')
-
-    # define norm quantile functions
-    Z = lambda quan: np.sqrt(2)*erfinv( 2*quan - 1) 
-    quan = lambda ntrials, i: (ntrials + 1/2. - i)/ntrials
-
-    # calc number of trials
-    npix = d['npixx']*d['npixy']
-    if d.has_key('goodintcount'):
-        nints = d['goodintcount']
-    else:
-        nints = d['nints']
-    ndms = len(d['dmarr'])
-    dtfactor = np.sum([1./i for i in d['dtarr']])    # assumes dedisperse-all algorithm
-    ntrials = npix*nints*ndms*dtfactor
-    logger.info('Calculating normal probability distribution for npix*nints*ndms*dtfactor = %d' % (ntrials))
-
-    # calc normal quantile
-    if len(np.where(snrs > 0)[0]):
-        snrsortpos = np.array(sorted(snrs[np.where(snrs > 0)], reverse=True))     # high-res snr
-        Zsortpos = np.array([Z(quan(ntrials, j+1)) for j in range(len(snrsortpos))])
-        logger.info('SNR positive range = (%.1f, %.1f)' % (snrsortpos[-1], snrsortpos[0]))
-        logger.info('Norm quantile positive range = (%.1f, %.1f)' % (Zsortpos[-1], Zsortpos[0]))
-
-    if len(np.where(snrs < 0)[0]):
-        snrsortneg = np.array(sorted(np.abs(snrs[np.where(snrs < 0)]), reverse=True))     # high-res snr
-        Zsortneg = np.array([Z(quan(ntrials, j+1)) for j in range(len(snrsortneg))])
-        logger.info('SNR negative range = (%.1f, %.1f)' % (snrsortneg[-1], snrsortneg[0]))
-        logger.info('Norm quantile negative range = (%.1f, %.1f)' % (Zsortneg[-1], Zsortneg[0]))
-
-    # plot
-    fig3 = plt.Figure(figsize=(10,10))
-    ax3 = fig3.add_subplot(111)
-    if len(np.where(snrs < 0)[0]) and len(np.where(snrs > 0)[0]):
-        logger.info('Plotting positive and negative cands')
-        ax3.plot(snrsortpos, Zsortpos, 'k.')
-        ax3.plot(snrsortneg, Zsortneg, 'kx')
-        refl = np.linspace(min(snrsortpos.min(), Zsortpos.min(), snrsortneg.min(), Zsortneg.min()), max(snrsortpos.max(), Zsortpos.max(), snrsortneg.max(), Zsortneg.max()), 2)
-    elif len(np.where(snrs > 0)[0]):
-        logger.info('Plotting positive cands')
-        refl = np.linspace(min(snrsortpos.min(), Zsortpos.min()), max(snrsortpos.max(), Zsortpos.max()), 2)
-        ax3.plot(snrsortpos, Zsortpos, 'k.')
-    elif len(np.where(snrs < 0)[0]):
-        logger.info('Plotting negative cands')
-        refl = np.linspace(min(snrsortneg.min(), Zsortneg.min()), max(snrsortneg.max(), Zsortneg.max()), 2)
-        ax3.plot(snrsortneg, Zsortneg, 'kx')
-    ax3.plot(refl, refl, 'k--')
-    ax3.set_xlabel('SNR')
-    ax3.set_ylabel('Normal quantile SNR')
-    canvas = FigureCanvasAgg(fig3)
-    canvas.print_figure(outname)
-
-def plot_lm(d, snrs, l1s, m1s, outroot):
-    """ Plot the lm coordinates (relative to phase center) for all candidates.
-    """
-
-    outname = os.path.join(d['workdir'], 'plot_' + outroot + '_impeak.png')
-
-    snrmin = 0.8*min(d['sigma_image1'], d['sigma_image2'])
-    fig4 = plt.Figure(figsize=(10,10))
-    ax4 = fig4.add_subplot(111)
-
-    # plot positive
-    good = np.where(snrs > 0)
-    sizes = (snrs[good]-snrmin)**5   # set scaling to give nice visual sense of SNR
-    xarr = 60*np.degrees(l1s[good]); yarr = 60*np.degrees(m1s[good])
-    ax4.scatter(xarr, yarr, s=sizes, facecolor=None, alpha=0.5, clip_on=False)
-    # plot negative
-    good = np.where(snrs < 0)
-    sizes = (np.abs(snrs[good])-snrmin)**5   # set scaling to give nice visual sense of SNR
-    xarr = 60*np.degrees(l1s[good]); yarr = 60*np.degrees(m1s[good])
-    ax4.scatter(xarr, yarr, s=sizes, marker='x', edgecolors='k', alpha=0.5, clip_on=False)
-
-    ax4.set_xlabel('Dec Offset (amin)')
-    ax4.set_ylabel('RA Offset (amin)')
-    fov = np.degrees(1./d['uvres'])*60.
-    ax4.set_xlim(fov/2, -fov/2)
-    ax4.set_ylim(-fov/2, fov/2)
-    canvas4 = FigureCanvasAgg(fig4)
-    canvas4.print_figure(outname)
 
 
 def plot_full(candsfile, cands, mode='im'):
@@ -754,6 +560,7 @@ def make_psrrates(pkllist, nbins=60, period=0.156):
         return {0: np.array(f0).transpose(), 1: np.array(f1).transpose(), 2: np.array(f2).transpose(), 3: np.array(f3).transpose()}
     else:
         return {0: np.array(f0).transpose(), 1: np.array(f1).transpose(), 2: np.array(f2).transpose()}
+
 
 def plot_psrrates(pkllist, outname=''):
     """ Plot cumulative rate histograms. List of pkl files in order, as for make_psrrates.
