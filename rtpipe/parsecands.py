@@ -353,22 +353,36 @@ def split_candidates(candsfile, featind1, featind2, candsfile1, candsfile2):
         pickle.dump(cands2, pkl, protocol=2)
 
 
-def nbcompile(workdir, fileroot, html=True):
-    """ Run analysis pipeline from jupyter base notebook and save as notebook and html. """
+def nbcompile(workdir, fileroot, html=True, basenb='', agdir=''):
+    """ Run analysis pipeline from jupyter base notebook and save as notebook and html.
 
-    os.chdir(workdir)
+    html will also compile static html version
+    basenb can be provided, else will get distributed version.
+    agdir is the activegit repo (optional)
+    """
+
+    import inspect, rtpipe, shutil
+    from subprocess import call
 
     os.environ['fileroot'] = fileroot
-    cmd = 'jupyter nbconvert baseinteract.ipynb --output {0}.ipynb --to notebook --execute --allow-errors --ExecutePreprocessor.timeout=3600'.format(fileroot).split(
-' ')
-    status = subprocess.call(cmd)
+    os.environ['agdir'] = agdir
+
+    if not basenb:
+        basenb = os.path.join(os.path.dirname(os.path.dirname(inspect.getfile(rtpipe))), 'notebooks/baseinteract.ipynb')
+
+    logger.info('Moving to {0} and building notebook for {1}'.format(workdir, fileroot))
+    os.chdir(workdir)
+    shutil.copy(basenb, '{0}/{1}.ipynb'.format(workdir, fileroot))
+
+    cmd = 'jupyter nbconvert {0}.ipynb --inplace --execute --to notebook --allow-errors --ExecutePreprocessor.timeout=3600'.format(fileroot).split(' ')
+    status = call(cmd)
 
     cmd = 'jupyter trust {0}.ipynb'.format(fileroot).split(' ')
-    status = subprocess.call(cmd)
+    status = call(cmd)
 
     if html:
         cmd = 'jupyter nbconvert {0}.ipynb --to html --output {0}.html'.format(fileroot).split(' ')
-        status = subprocess.call(cmd)
+        status = call(cmd)
 
 
 def thresholdcands(candsfile, threshold, numberperscan=1):

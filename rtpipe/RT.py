@@ -883,10 +883,9 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
                 (vismem, immem) = calc_memory_footprint(d)
 
-    else:
-        calc_segment_times(d)
-        (vismem, immem) = calc_memory_footprint(d)
-        assert vismem+immem < d['memory_limit'], 'Visibility reading requires %.1f GB and images require %.1f GB, but memory limit is %.1f GB. Try forcing nsegments to value larger than %d.' % (vismem, immem, d['memory_limit'], d['nsegments'])
+    # final set up of memory
+    calc_segment_times(d)
+    (vismem, immem) = calc_memory_footprint(d)
 
     # scaling of number of integrations beyond dt=1
     assert all(d['dtarr']) and (d['dtarr'] == sorted(d['dtarr'])), 'dtarr must be larger than 0 and in increasing order'
