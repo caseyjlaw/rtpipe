@@ -1,6 +1,7 @@
-from ipywidgets import interact, FloatSlider, Text, Dropdown, fixed
+from ipywidgets import interact, FloatSlider, Text, Dropdown, Button, fixed
 import pickle, os
 from rtpipe import interactive
+from IPython.display import display
 
 
 def save(obj, label):
@@ -48,27 +49,41 @@ def setText(label, default='', description='Set Text'):
     """ Set text in a notebook pipeline (via interaction or with nbconvert) """
 
     obj = read(label)
-    if not obj: obj=default
+    if obj == None:
+        obj=default
+        save(obj, label)  # initialize with default
 
     textw = Text(value=obj, description=description)
-    hndl = interact(save, obj=textw, label=fixed(label), __manual=True)
+    hndl = interact(save, obj=textw, label=fixed(label))
 
 
 def setFloat(label, default=0, min=-20, max=20, description='Set Float'):
     """ Set float in a notebook pipeline (via interaction or with nbconvert) """
 
     obj = read(label)
-    if not obj: obj=default
+    if obj == None:
+        obj=default
+        save(obj, label)  # initialize with default
 
     floatw = FloatSlider(value=obj, min=min, max=max, description=description)
-    hndl = interact(save, obj=floatw, label=fixed(label), __manual=True)    
+    hndl = interact(save, obj=floatw, label=fixed(label))
 
 
 def setDropdown(label, default=None, options=[], description='Set Dropdown'):
     """ Set float in a notebook pipeline (via interaction or with nbconvert) """
 
     obj = read(label)
-    if not obj: obj=default
+    if obj == None:
+        obj=default
+        save(obj, label)  # initialize with default
 
     dropdownw = Dropdown(value=obj, options=options, description=description)
-    hndl = interact(save, obj=dropdownw, label=fixed(label), __manual=True)    
+    hndl = interact(save, obj=dropdownw, label=fixed(label))
+
+
+def setButton(function, description=''):
+    """ Create button for clicking to run function """
+
+    button = Button(description=description, value=False)
+    display(button)
+    button.on_click(function)
