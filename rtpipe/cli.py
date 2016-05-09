@@ -16,7 +16,8 @@ def cli():
 @click.argument('filename')
 @click.option('--paramfile', default='')
 @click.option('--bdfdir', default='')
-def read(filename, paramfile, bdfdir):
+@click.option('--scan', default=1)
+def read(filename, paramfile, bdfdir, scan):
     """ Simple parse and return metadata for pipeline for first scan """
 
     filename = os.path.abspath(filename)
@@ -25,7 +26,7 @@ def read(filename, paramfile, bdfdir):
     logger.info('Scans, Target names:')
     logger.info('%s' % str([(ss, sc[ss]['source']) for ss in sc]))
     logger.info('Example pipeline:')
-    state = rt.set_pipeline(filename, sc.popitem()[0], paramfile=paramfile, nologfile=True)
+    state = rt.set_pipeline(filename, scan, paramfile=paramfile, nologfile=True)
 
 
 @cli.command()
