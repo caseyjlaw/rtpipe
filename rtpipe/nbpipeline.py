@@ -83,6 +83,21 @@ def setDropdown(label, default=None, options=[], description='Set Dropdown', for
     hndl = interact(save, obj=dropdownw, label=fixed(label), format=fixed(format), statedir=fixed(statedir))
 
 
+def setButton(description=''):
+    """ Not working... Not clear how onclick function is called... """
+
+    button=Button(description=description)
+    out=Output()
+    vbox=VBox(children=(button, out))
+    display(vbox)
+
+    def onclick(b):
+        interactive.filterdata(data=data, plinds=plinds, d=d, threshold=nbpipeline.read('threshold'),
+                           ignorestr=nbpipeline.read('ignorestr'), thresh0=6., thresh1=7.)
+
+    button.on_click(onclick)
+
+
 def getnbname():
     """ Runs javascript to get name of notebook. Saved as python obj 'nbname' """
 
