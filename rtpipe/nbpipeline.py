@@ -1,4 +1,4 @@
-from ipywidgets import interact, FloatSlider, Text, Dropdown, Button, fixed
+from ipywidgets import interact, FloatSlider, Text, Dropdown, Button, Output, VBox, fixed
 import pickle, os
 from IPython.display import display, Javascript
 
@@ -83,16 +83,24 @@ def setDropdown(label, default=None, options=[], description='Set Dropdown', for
     hndl = interact(save, obj=dropdownw, label=fixed(label), format=fixed(format), statedir=fixed(statedir))
 
 
-def setButton(function, description=''):
-    """ Create button for clicking to run function """
+def setButton(description=''):
+    """ Not working... Not clear how onclick function is called... """
 
-    def function2(b):
-        function()
+    button=Button(description=description)
+    out=Output()
+    vbox=VBox(children=(button, out))
+    display(vbox)
 
-    button = Button(description=description, value=False)
-    display(button)
-    button.on_click(function2)
+    def onclick(b):
+        interactive.filterdata(data=data, plinds=plinds, d=d, threshold=nbpipeline.read('threshold'),
+                           ignorestr=nbpipeline.read('ignorestr'), thresh0=6., thresh1=7.)
 
-def setnbname():
+    button.on_click(onclick)
+
+
+def getnbname():
     """ Runs javascript to get name of notebook. Saved as python obj 'nbname' """
-    display(Javascript("""IPython.notebook.kernel.execute("nbname = " + "\'"+IPython.notebook.notebook_name+"\'");"""))
+
+    # can this be wrapped to return nbname after js call?
+
+    display(Javascript("""IPython.notebook.kernel.execute("nbname = " + "\'"+IPython.notebook.notebook_name+"\'");"""))    
