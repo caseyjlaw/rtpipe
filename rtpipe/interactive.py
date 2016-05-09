@@ -3,7 +3,7 @@ import numpy as np
 import logging, pickle, os
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-from bokeh.plotting import ColumnDataSource, Figure, save, output_file
+from bokeh.plotting import ColumnDataSource, Figure, save, output_file, show
 from bokeh.models import HoverTool, TapTool, OpenURL
 from bokeh.models.layouts import HBox, VBox
 from collections import OrderedDict 
@@ -666,7 +666,8 @@ def colorsat(l,m):
     amp = 256*np.abs(lm)/np.abs(lm).max()
     return ["#%02x%02x%02x" % (np.floor(amp[i]*red[i]), np.floor(amp[i]*green[i]), np.floor(amp[i]*blue[i])) for i in range(len(l))]
 
-def filterdata(data, plinds, threshold, ignorestr, thresh0=6., thresh1=7.):
+
+def filterdata(data, plinds, d, threshold, ignorestr, thresh0=6., thresh1=7.):
     """ Iteratively filter bad times and set indices for later plotting """
 
     ignoret = parseignoret(ignorestr)
@@ -710,7 +711,7 @@ def parseignoret(ignorestr):
     return ignoret        
 
 
-def displayplot(plottype, sizespec, url_path='http://www.aoc.nrao.edu/~claw/plots'):
+def displayplot(data, plinds, plottype, scaling, fileroot, url_path='http://www.aoc.nrao.edu/~claw/plots'):
     """ Generate interactive plot """
 
     plotdict = {'dmt': plotdmt, 'norm': plotnorm,
@@ -720,7 +721,7 @@ def displayplot(plottype, sizespec, url_path='http://www.aoc.nrao.edu/~claw/plot
                 'stat': [700,700]}
 
     sortinds = sorted(set(plinds['cir'] + plinds['cro'] + plinds['edg']))
-    sizesrc, plaw = sizespec.split('_')
+    sizesrc, plaw = scaling.split('_')
     data['sizes'] = calcsize(data[sizesrc], inds=sortinds, plaw=int(plaw))
 
     if plottype != 'all':
