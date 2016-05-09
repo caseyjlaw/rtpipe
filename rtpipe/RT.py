@@ -1072,7 +1072,7 @@ def correct_dt(d, dt, blrange):
     rtlib.resample_par(data_resamp, d['freq'], d['inttime'], dt, blrange, verbose=0)        # dedisperses data.
 
 
-def calc_lm(d, im, pix=(), minmax='max'):
+def calc_lm(d, im=None, pix=(), minmax='max'):
     """ Helper function to calculate location of image pixel in (l,m) coords.
     Assumes peak pixel, but input can be provided in pixel units.
     minmax defines whether to look for image maximum or minimum.
@@ -1087,9 +1087,15 @@ def calc_lm(d, im, pix=(), minmax='max'):
     elif len(pix) == 2:   # can also specify
         peakl, peakm = pix
 
-    npixx, npixy = im.shape
+    if im:
+        npixx, npixy = im.shape
+    else:
+        npixx = d['npixx']
+        npixy = d['npixy']
+
     l1 = (npixx/2. - peakl)/(npixx*d['uvres'])
     m1 = (npixy/2. - peakm)/(npixy*d['uvres'])
+
     return l1, m1
 
 
