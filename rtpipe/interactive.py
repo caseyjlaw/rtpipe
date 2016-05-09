@@ -1,13 +1,43 @@
-from scipy.special import erfinv
-import numpy as np
-import logging, pickle, os
+import logging, pickle, os, glob
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+import numpy as np
+from scipy.special import erfinv
 from bokeh.plotting import ColumnDataSource, Figure, save, output_file, show
 from bokeh.models import HoverTool, TapTool, OpenURL
 from bokeh.models.layouts import HBox, VBox
 from collections import OrderedDict 
 from rtpipe.parsecands import read_noise, read_candidates
+from time import asctime
+import activegit, sys
+
+def initializenb():
+    """ Find input files and log initialization info """
+
+    print('Working directory: {0}'.format(os.getcwd()))
+    print('Run on {0}'.format(asctime()))
+    try:
+        fileroot = os.environ['fileroot']
+        print('Setting fileroot to {0} from environment variable.\n'.format(fileroot))
+        candsfile = 'cands_{0}_merge.pkl'.format(fileroot)
+        noisefile = 'noise_{0}_merge.pkl'.format(fileroot)
+    except KeyError:
+        sdmdir = os.getcwd()
+        print('Setting sdmdir to current directory {0}\n'.format(os.path.abspath(sdmdir)))
+        candsfiles = glob.glob('cands_*_merge.pkl')
+        noisefiles = glob.glob('noise_*_merge.pkl')
+        if len(candsfiles) == 1 and len(noisefiles) == 1:
+            print('Found one cands/merge file set')
+        else:
+            print('Found multiple cands/noise file sets. Taking first.')
+
+        candsfile = candsfiles[0]
+        noisefile = noisefiles[0]
+        fileroot = candsfile.rstrip('_merge.pkl').lstrip('cands_')
+    print('Set: \n\t candsfile {} \n\t noisefile {} \n\t fileroot {} '.format(candsfile, noisefile, fileroot))
+    return (candsfile, noisefile, fileroot)
+
 
 def plot_interactive(mergepkl, noisepkl=None, thresh=6.0, thresh_link=7.0, ignoret=None, savehtml=True, url_path='plots'):
     """ Backwards compatible function for making interactive candidate summary plot """
@@ -336,7 +366,8 @@ def plotnoise(noisepkl, mergepkl, plot_width=950, plot_height=400):
     logger.info('Median image noise is {0:.3} Jy.'.format(fluxscale*imstd))
     ncum = plotnoisecum(noisepkl, fluxscale=fluxscale, plot_width=plot_width/2, plot_height=plot_height)
 
-    return HBox(ndist, ncum, width=plot_width)
+    hndl = show(HBox(ndist, ncum, width=plot_width, height=plot_height))
+    return hndl
 
 
 def plotnoisecum(noisepkl, fluxscale=1, plot_width=450, plot_height=400):
@@ -734,3 +765,24 @@ def displayplot(data, plinds, plottype, scaling, fileroot, url_path='http://www.
                                  edgeinds=plinds['edg'], url_path=url_path,
                                  fileroot=fileroot)
     hdl = show(pl)
+
+
+def addclassifications(agdir, prop, version=None, statfeats = [0,4,5,6,7,8]):
+    """ Calculates real score probability of prop from an activegit repo.
+
+    version is string name of activegit tag.
+    Default agdir initialization will have latest tag, so version is optional.
+    statfeats set to work with alnotebook naming.
+    """
+
+    try:
+        ag = activegit.ActiveGit(agdir)
+        if version:
+            ag.set_version(version)
+        clf = ag.read_classifier()
+
+        score = clf.predict_proba((np.nan_to_num(prop[:,statfeats])))[:,1]  # take real score
+    except:
+        logger.info('Failure when parsing activegit repo or applying classification.\n{0}'.format(sys.exc_info()[0]))
+
+    return score

@@ -1,4 +1,4 @@
-from ipywidgets import interact, FloatSlider, Text, Dropdown, Button, fixed
+from ipywidgets import interact, FloatSlider, Text, Dropdown, Button, Output, VBox, fixed
 import pickle, os
 from IPython.display import display, Javascript
 
@@ -83,16 +83,9 @@ def setDropdown(label, default=None, options=[], description='Set Dropdown', for
     hndl = interact(save, obj=dropdownw, label=fixed(label), format=fixed(format), statedir=fixed(statedir))
 
 
-def setButton(function, description=''):
-    """ Create button for clicking to run function """
-
-    def function2(b):
-        function()
-
-    button = Button(description=description, value=False)
-    display(button)
-    button.on_click(function2)
-
-def setnbname():
+def getnbname():
     """ Runs javascript to get name of notebook. Saved as python obj 'nbname' """
-    display(Javascript("""IPython.notebook.kernel.execute("nbname = " + "\'"+IPython.notebook.notebook_name+"\'");"""))
+
+    # can this be wrapped to return nbname after js call?
+
+    display(Javascript("""IPython.notebook.kernel.execute("nbname = " + "\'"+IPython.notebook.notebook_name+"\'");"""))    
