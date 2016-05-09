@@ -436,7 +436,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
 
                     # imaging in shared memory, mapped over ints
                     image1part = partial(image1, d, u, v, w, dmind, dtind, beamnum)
-                    nchunkdt = max(d['nthread'], d['nchunk']/dt)
+                    nchunkdt = min(searchints, max(d['nthread'], d['nchunk']/dt))  # parallelize in range bounded by (searchints, nthread)
                     irange = [(nskip_dm + searchints*chunk/nchunkdt, nskip_dm + searchints*(chunk+1)/nchunkdt) for chunk in range(nchunkdt)]
                     imageresults = resamppool.map(image1part, irange)
 
@@ -1087,7 +1087,7 @@ def calc_lm(d, im=None, pix=(), minmax='max'):
     elif len(pix) == 2:   # can also specify
         peakl, peakm = pix
 
-    if im:
+    if im != None:
         npixx, npixy = im.shape
     else:
         npixx = d['npixx']
@@ -1151,7 +1151,10 @@ def image1(d, u, v, w, dmind, dtind, beamnum, irange):
     i0, i1 = irange
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
 
+#    logger.info('i0 {0}, i1 {1}, dm {2}, dt {3}, len {4}'.format(i0, i1, dmind, dtind, len(data_resamp)))
     ims,snr,candints = rtlib.imgallfullfilterxyflux(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[i0:i1], d['npixx'], d['npixy'], d['uvres'], d['sigma_image1'])
+
+#    logger.info('finished imaging candints {0}'.format(candints))
 
     feat = {}
     for i in xrange(len(candints)):
@@ -1162,6 +1165,8 @@ def image1(d, u, v, w, dmind, dtind, beamnum, irange):
         logger.info('Got one!  Int=%d, DM=%d, dt=%d: SNR_im=%.1f @ (%.2e,%.2e).' % ((i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], l1, m1))
         candid =  (d['segment'], (i0+candints[i])*d['dtarr'][dtind], dmind, dtind, beamnum)
 
+#        logger.info(candid)
+        
         # assemble feature in requested order
         ff = []
         for feature in d['features']:
