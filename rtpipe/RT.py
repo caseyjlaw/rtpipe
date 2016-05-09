@@ -147,6 +147,7 @@ def pipeline(d, segments):
             readpool.join()
             raise
 
+
 def pipeline_dataprep(d, segment):
     """ Single-threaded pipeline for data prep that can be started in a pool.
     """
@@ -249,12 +250,14 @@ def pipeline_dataprep(d, segment):
     # d now has segment keyword defined
     return d
 
-def pipeline_reproduce(d, candloc=[], segment=None, product='data'):
-    """ Reproduce candidates with location candloc 
+
+def pipeline_reproduce(d, candloc=[], segment=None, lm=None, product='data'):
+    """ Reproduce data and/or candidates with given candloc or lm coordinate.
+
+    d and segment can be given, if only reading data.
     candloc is length 5 or 6 with ([scan], segment, candint, dmind, dtind, beamnum).
-    if merge pkl file given, candloc must have scan number first.
-    d and segment can be given, if only reading data
-    product can be 'data', 'dataph', 'imdata'
+    product can be 'data', 'dataph', 'imdata'.
+    lm is tuple of (l,m) coordinates in radians.
     """
 
     # set up shared arrays to fill
@@ -300,16 +303,18 @@ def pipeline_reproduce(d, candloc=[], segment=None, product='data'):
 
     elif product == 'dataph':
         logger.info('Reproducing data...')
-        data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w, dmind, dtind)
+        assert lm, 'lm must be tuple with (l, m) coords in radians.'
+        data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w, dmind, dtind, lm=lm)
         return data
 
     elif product == 'imdata':
         logger.info('Reproducing candidate...')
-        im, data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w, dmind, dtind, candint)
+        im, data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w, dmind, dtind, candint=candint)
         return im, data
 
     else:
         logger.error('product must be data, dataph, or imdata.')
+
 
 def meantsubpool(d, data_read):
     """ Wrapper for mean visibility subtraction in time.
@@ -323,6 +328,7 @@ def meantsubpool(d, data_read):
     blranges = [(d['nbl'] * t/d['nthread'], d['nbl']*(t+1)/d['nthread']) for t in range(d['nthread'])]
     with closing(mp.Pool(1, initializer=initreadonly, initargs=(data_read_mem,))) as tsubpool:
         tsubpool.map(tsubpart, blr)
+
 
 def dataflag(d, data_read):
     """ Flagging data in single process 
@@ -354,6 +360,7 @@ def dataflag(d, data_read):
                 chans = n.arange(d['spw_chanr_select'][spw][0], d['spw_chanr_select'][spw][1])
                 data_read[:,:,chans,pol] = 0j
 
+
 def dataflagatom(chans, pol, d, sig, mode, conv):
     """ Wrapper function to get shared memory as numpy array into pool
     Assumes data_mem is global mps.Array
@@ -363,6 +370,7 @@ def dataflagatom(chans, pol, d, sig, mode, conv):
 #    data = n.ma.masked_array(data, data==0j)  # this causes massive overflagging on 14sep03 data
 
     return rtlib.dataflag(data, chans, pol, d, sig, mode, conv)
+
 
 def search(d, data_mem, u_mem, v_mem, w_mem):
     """ Search function.
@@ -460,9 +468,12 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
     logger.info('Found %d cands in scan %d segment %d of %s. ' % (len(cands), d['scan'], d['segment'], d['filename']))
     return cands
 
-def runreproduce(d, data_mem, data_resamp_mem, u, v, w, dmind, dtind, candint=-1, twindow=30):
+
+def runreproduce(d, data_mem, data_resamp_mem, u, v, w, dmind, dtind, candint=-1, lm=None, twindow=30):
     """ Reproduce function, much like search.
-    If no candint is given, it returns resampled data. Otherwise, returns image and rephased data.
+
+    Returns image and rephased data for given candint.
+    If no candint is given, it returns resampled data by default. Optionally rephases to lm=(l, m) coordinates.
     """
 
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
@@ -481,6 +492,9 @@ def runreproduce(d, data_mem, data_resamp_mem, u, v, w, dmind, dtind, candint=-1
             npixy = d['npixy_full']
 
         if candint > -1:
+            if lm:
+                logger.warn('Using candint image to get l,m. Not using provided l,m.')
+
             # image
             logger.info('Imaging int %d with %d %d pixels...' % (candint, npixx, npixy))
             im = repropool.apply(image1wrap, [d, u, v, w, npixx, npixy, candint/d['dtarr'][dtind]])
@@ -500,7 +514,12 @@ def runreproduce(d, data_mem, data_resamp_mem, u, v, w, dmind, dtind, candint=-1
 
             return(im, data_resamp[minint:maxint].mean(axis=1))
         else:
+            if lm:
+                l1, m1 = lm
+                repropool.apply(move_phasecenter, [d, l1, m1, u, v])
+
             return data_resamp
+
 
 def add_transient(d, data, u, v, w, l1, m1, i, s, dm=0, dt=1):
     """ Add a transient to data.
@@ -517,6 +536,7 @@ def add_transient(d, data, u, v, w, l1, m1, i, s, dm=0, dt=1):
 
     for ch in range(d['nchan']):
         data[i+delay(ch):i+delay(ch)+dt, :, ch] += s * n.exp(2j*n.pi*ang(ch)[None,:,None])
+
 
 def make_transient(std, DMmax, Amin=6., Amax=20., rmax=20., rmin=0., DMmin=0.):
     """ Produce a mock transient pulse source for the purposes of characterizing the
@@ -559,6 +579,7 @@ def make_transient(std, DMmax, Amin=6., Amax=20., rmax=20., rmin=0., DMmin=0.):
     # Dispersion measure
     DM = random.uniform(DMmin, DMmax)
     return loff, moff, A, DM
+
 
 def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[]):
     """ 
@@ -646,6 +667,7 @@ def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[])
     # return info to reproduce/visualize refined cands
     return d, cands
 
+
 def pipeline_lightcurve(d, l1=0, m1=0, segments=[], scan=-1):
     """ Makes lightcurve at given (l1, m1)
     l1, m1 define phase center. if not set, then image max is used.
@@ -694,6 +716,7 @@ def pipeline_lightcurve(d, l1=0, m1=0, segments=[], scan=-1):
             lightcurve[nskip: nskip+d['readints']] = data_read.mean(axis=1)
 
     return phasecenters, lightcurve
+
 
 def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     """ Function defines pipeline state for search. Takes data/scan as input.
@@ -919,6 +942,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
 
     return d
 
+
 def getcandsfile(d, segment=-1, domock=False):
     """ Return name of candsfile for a given dictionary. Must have d['segment'] defined.
     domock is option to save simulated cands.
@@ -935,6 +959,7 @@ def getcandsfile(d, segment=-1, domock=False):
     else:
         return ''
 
+
 def getnoisefile(d, segment=-1):
     """ Return name of noisefile for a given dictionary. Must have d['segment'] defined.
     """
@@ -945,6 +970,7 @@ def getnoisefile(d, segment=-1):
     else:
         return ''
 
+
 def calc_nfalse(d):
     """ Calculate the number of thermal-noise false positives per segment.
     """
@@ -954,6 +980,7 @@ def calc_nfalse(d):
     qfrac = 1 - (erf(d['sigma_image1']/n.sqrt(2)) + 1)/2.
     nfalse = int(qfrac*ntrials)
     return nfalse
+
 
 def calc_segment_times(d):
     """ Helper function for set_pipeline to define segmenttimes list, given nsegments definition
@@ -972,6 +999,7 @@ def calc_segment_times(d):
     totaltimeread = 24*3600*(d['segmenttimes'][:, 1] - d['segmenttimes'][:, 0]).sum()            # not guaranteed to be the same for each segment
     d['readints'] = n.round(totaltimeread / (d['inttime']*d['nsegments']*d['read_tdownsample'])).astype(int)
     d['t_segment'] = totaltimeread/d['nsegments']
+
 
 def calc_memory_footprint(d, headroom=4., visonly=False, limit=False):
     """ Given pipeline state dict, this function calculates the memory required
@@ -1008,6 +1036,7 @@ def calc_fringetime(d):
     fringetime = 0.5*(24*3600)/(2*n.pi*maxbl/25.)   # max fringe window in seconds
     return fringetime
 
+
 def correct_dmdt(d, dmind, dtind, blrange):
     """ Dedisperses and resamples data *in place*.
     Drops edges, since it assumes that data is read with overlapping chunks in time.
@@ -1018,6 +1047,7 @@ def correct_dmdt(d, dmind, dtind, blrange):
     bl0,bl1 = blrange
     data_resamp[:, bl0:bl1] = data[:, bl0:bl1]
     rtlib.dedisperse_resample(data_resamp, d['freq'], d['inttime'], d['dmarr'][dmind], d['dtarr'][dtind], blrange, verbose=0)        # dedisperses data.
+
 
 def correct_dm(d, dm, blrange):
     """ Dedisperses data into data_resamp
@@ -1030,6 +1060,7 @@ def correct_dm(d, dm, blrange):
     data_resamp[:, bl0:bl1] = data[:, bl0:bl1]
     rtlib.dedisperse_par(data_resamp, d['freq'], d['inttime'], dm, blrange, verbose=0)        # dedisperses data.
 
+
 def correct_dt(d, dt, blrange):
     """ Resamples data_resamp
     Drops edges, since it assumes that data is read with overlapping chunks in time.
@@ -1039,6 +1070,7 @@ def correct_dt(d, dt, blrange):
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
     bl0,bl1 = blrange
     rtlib.resample_par(data_resamp, d['freq'], d['inttime'], dt, blrange, verbose=0)        # dedisperses data.
+
 
 def calc_lm(d, im, pix=(), minmax='max'):
     """ Helper function to calculate location of image pixel in (l,m) coords.
@@ -1060,12 +1092,15 @@ def calc_lm(d, im, pix=(), minmax='max'):
     m1 = (npixy/2. - peakm)/(npixy*d['uvres'])
     return l1, m1
 
+
 def move_phasecenter(d, l1, m1, u, v):
     """ Handler function for phaseshift_threaded
     """
 
+    logger.info('Rephasing data to (l, m)=(%.4f, %.4f).' % (l1, m1))
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
     rtlib.phaseshift_threaded(data_resamp, d, l1, m1, u, v)
+
 
 def calc_dmgrid(d, maxloss=0.05, dt=3000., mindm=0., maxdm=0.):
     """ Function to calculate the DM values for a given maximum sensitivity loss.
@@ -1098,6 +1133,7 @@ def calc_dmgrid(d, maxloss=0.05, dt=3000., mindm=0., maxdm=0.):
                 dmgrid_final.append(dmgrid[i])
 
     return dmgrid_final
+
 
 def image1(d, u, v, w, dmind, dtind, beamnum, irange):
     """ Parallelizable function for imaging a chunk of data for a single dm.
@@ -1173,6 +1209,7 @@ def image1(d, u, v, w, dmind, dtind, beamnum, irange):
         feat[candid] = list(ff)
     return feat
 
+
 def image2(d, i0, i1, u, v, w, dmind, dtind, beamnum):
     """ Parallelizable function for imaging a chunk of data for a single dm.
     Assumes data is dedispersed and resampled, so this just images each integration.
@@ -1242,6 +1279,7 @@ def image2(d, i0, i1, u, v, w, dmind, dtind, beamnum):
             logger.info('Almost...  Int=%d, DM=%d, dt=%d: SNR_im1=%.1f, SNR_im2=%.1f.' % ((i0+candints[i])*d['dtarr'][dtind], d['dmarr'][dmind], d['dtarr'][dtind], snr[i], snr2))
 
     return feat
+
 
 def image2w(d, i0, i1, u, v, w, dmind, dtind, beamnum, bls, uvkers):
     """ Parallelizable function for imaging a chunk of data for a single dm.
@@ -1315,6 +1353,7 @@ def image2w(d, i0, i1, u, v, w, dmind, dtind, beamnum, bls, uvkers):
 
     return feat
 
+
 def image1wrap(d, u, v, w, npixx, npixy, candint):
     """ Parallelizable function for imaging a chunk of data for a single dm.
     Assumes data is dedispersed and resampled, so this just images each integration.
@@ -1325,6 +1364,7 @@ def image1wrap(d, u, v, w, npixx, npixy, candint):
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
     image = rtlib.imgonefullxy(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[candint], npixx, npixy, d['uvres'], verbose=1)
     return image
+
 
 def sample_image(d, data, u, v, w, i=-1, verbose=1, imager='xy', wres=100):
     """ Samples one integration and returns image
@@ -1346,6 +1386,7 @@ def sample_image(d, data, u, v, w, i=-1, verbose=1, imager='xy', wres=100):
 
     return image
 
+
 def estimate_noiseperbl(data):
     """ Takes large data array and sigma clips it to find noise per bl for input to detect_bispectra.
     Takes mean across pols and channels for now, as in detect_bispectra.
@@ -1358,6 +1399,7 @@ def estimate_noiseperbl(data):
     noiseperbl = datamean[good].std()   # measure single noise for input to detect_bispectra
     logger.debug('Clipped to %d%% of data (%.3f to %.3f). Noise = %.3f.' % (100.*len(good[0])/len(datamean.flatten()), datameanmin, datameanmax, noiseperbl))
     return noiseperbl
+
 
 def noisepickle(d, data, u, v, w, chunk=200):
     """ Calculates noise properties and saves values to pickle.
@@ -1387,6 +1429,7 @@ def noisepickle(d, data, u, v, w, chunk=200):
                 pickle.dump(results, pkl)
             logger.info('Wrote %d noise measurement%s to %s.' % (len(results), 's'[:len(results)-1], noisefile))
 
+
 def savecands(d, cands, domock=False):
     """ Save all candidates in pkl file for later aggregation and filtering.
     domock is option to save simulated cands file
@@ -1396,11 +1439,14 @@ def savecands(d, cands, domock=False):
         pickle.dump(d, pkl)
         pickle.dump(cands, pkl)
 
+
 def datashape(d):
     return (d['readints'], d['nbl'], d['nchan'], d['npol'])
 
+
 def datasize(d):
     return long(d['readints']*d['nbl']*d['nchan']*d['npol'])
+
 
 def numpyview(arr, datatype, shape, raw=False):
     """ Takes mp shared array and returns numpy array with given shape.
@@ -1411,14 +1457,17 @@ def numpyview(arr, datatype, shape, raw=False):
     else:
         return n.frombuffer(arr.get_obj(), dtype=n.dtype(datatype)).view(n.dtype(datatype)).reshape(shape)  # for shared mp.Array
 
+
 def initreadonly(shared_arr_):
     global data_read_mem
     data_read_mem = shared_arr_ # must be inhereted, not passed as an argument
+
 
 def initresamp(shared_arr_, shared_arr2_):
     global data_mem, data_resamp_mem
     data_mem = shared_arr_
     data_resamp_mem = shared_arr2_
+
 
 def initread(shared_arr1_, shared_arr2_, shared_arr3_, shared_arr4_, shared_arr5_, shared_arr6_, shared_arr7_, shared_arr8_):
     global data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem

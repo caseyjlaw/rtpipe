@@ -144,7 +144,7 @@ def merge_segments(filename, scan, cleanup=True, sizelimit=0):
                 cands = {k: v for k,v in cands.items() if abs(v[snrcol]) > snrmax} # new cands dict
 
         # write cands to single file
-        with open(os.path.join(workdir, 'cands_' + fileroot + '_sc' + str(scan) + '.pkl', 'w')) as pkl:
+        with open(os.path.join(workdir, 'cands_' + fileroot + '_sc' + str(scan) + '.pkl'), 'w') as pkl:
             pickle.dump(state, pkl, protocol=2)
             pickle.dump( (np.array(cands.keys()), np.array(cands.values())), pkl, protocol=2)
             
@@ -168,7 +168,7 @@ def merge_segments(filename, scan, cleanup=True, sizelimit=0):
 
         # write noise to single file
         if len(noise):
-            with open(os.path.join(workdir, 'noise_' + fileroot + '_sc' + str(scan) + '.pkl', 'w')) as pkl:
+            with open(os.path.join(workdir, 'noise_' + fileroot + '_sc' + str(scan) + '.pkl'), 'w') as pkl:
                 pickle.dump(noise, pkl, protocol=2)
 
         if cleanup:
