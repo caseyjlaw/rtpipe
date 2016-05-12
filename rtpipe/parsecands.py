@@ -365,7 +365,8 @@ def nbcompile(workdir, fileroot, html=True, basenb='', agdir=''):
     from subprocess import call
 
     os.environ['fileroot'] = fileroot
-    os.environ['agdir'] = agdir
+    if agdir:
+        os.environ['agdir'] = agdir
 
     if not basenb:
         basenb = os.path.join(os.path.dirname(os.path.dirname(inspect.getfile(rtpipe))), 'notebooks/baseinteract.ipynb')
