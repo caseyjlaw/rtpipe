@@ -99,8 +99,6 @@ def setButton(description=''):
 
 
 def getnbname():
-    """ Runs javascript to get name of notebook. Saved as python obj 'nbname' """
-
-    # can this be wrapped to return nbname after js call?
+    """ Hack to get name of notebook as python obj 'nbname'. Does not work with 'run all' """
 
     display(Javascript("""IPython.notebook.kernel.execute("nbname = " + "\'"+IPython.notebook.notebook_name+"\'");"""))    
