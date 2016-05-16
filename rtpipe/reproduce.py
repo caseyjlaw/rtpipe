@@ -83,6 +83,7 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
             dmind = loc[candnum, dmindcol]
             dtind = loc[candnum, dtindcol]
             beamnum = 0
+            candloc = (scan, segment, candint, dmind, dtind, beamnum)
         elif len(candloc) and (candnum < 0):
             assert len(candloc) == 6, 'candloc should be length 6 ( scan, segment, candint, dmind, dtind, beamnum ).'
             logger.info('Reproducing and visualizing candidate %d at %s' % (candnum, candloc))

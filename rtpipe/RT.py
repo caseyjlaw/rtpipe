@@ -783,27 +783,34 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         d['fileroot'] = os.path.basename(os.path.abspath(filename))
 
     # autodetect calibration products locally
-    if not d['gainfile']:
+    if not d['gainfile'] or not os.path.exists(d['gainfile']):
         # first try to get CASA gain file
-        try:
-            filelist = glob.glob(os.path.join(d['workdir'], d['fileroot'] + '.g?'))
-            filelist.sort()
-            d['gainfile'] = filelist[-1]
-            logger.info('Autodetected CASA gainfile %s' % d['gainfile'])
+        gainfilelist = glob.glob(os.path.join(d['workdir'], d['fileroot'] + '.g?'))
+        bpfilelist = glob.glob(os.path.join(d['workdir'], d['fileroot'] + '.b?'))
 
-            # if CASA gainfile, look for CASA bpfile
-            filelist = glob.glob(os.path.join(d['workdir'], d['fileroot'] + '.b?'))
-            filelist.sort()
-            d['bpfile'] = filelist[-1]
+        # if not in workdir, look locally
+        if not gainfilelist or not bpfilelist:
+            gainfilelist = glob.glob(d['fileroot'] + '.g?')
+            bpfilelist = glob.glob(d['fileroot'] + '.b?')
+            
+        if gainfilelist and bpfilelist:
+            gainfilelist.sort()
+            d['gainfile'] = gainfilelist[-1]
+            logger.info('Autodetected CASA gainfile %s' % d['gainfile'])
+            bpfilelist.sort()
+            d['bpfile'] = bpfilelist[-1]
             logger.info('Autodetected CASA bpfile %s' % d['bpfile'])
-        except:
-            # if that fails, look for telcal file
-            try:
-                filelist = glob.glob(os.path.join(d['workdir'], filename + '.GN'))
-                d['gainfile'] = filelist[0]
-                logger.info('Autodetected telcal file %s' % d['gainfile'])
-            except:
-                logger.debug('Failed to autodetect CASA or telcal calibration files.')
+
+        # if that fails, look for telcal file
+        filelist = glob.glob(os.path.join(d['workdir'], filename + '.GN'))
+        if not filelist:
+            filelist = glob.glob(filename + '.GN')
+
+        if filelist:
+            d['gainfile'] = filelist[0]
+            logger.info('Autodetected telcal file %s' % d['gainfile'])
+
+        assert os.path.exists(d['gainfile']), 'Calibration file autodetection failed for gainfile {0}'.format(d['gainfile'])
 
     # define features
     d['featureind'] = ['segment', 'int', 'dmind', 'dtind', 'beamnum']  # feature index. should be stable.
