@@ -80,19 +80,13 @@ def pipeline(d, segments):
             # step through pool of jobs and pull data off as ready. this allows pool to continue to next segment.
             while results.keys():
                 for segment in results.keys():
-                    logger.debug('pipeline waiting on prep to complete for segment %d' % segment)
                     if results[segment].ready():
                         job = results.pop(segment)
                         d = job.get()
                     else:
                         continue
                     
-                    logger.debug('pipeline got result. now waiting on data lock for %d. data_read = %s. data = %s.'
-                                 % (segment, str(data_read.mean()), str(data.mean())))
                     with data_mem.get_lock():
-                        logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s'
-                                     % (segment, str(data_read.mean()), str(data.mean())))
-
                         if d['mock']: # could be list or int
                             # assume that std of vis in the middle of the segment is
                             # characteristic of noise throughout the segment
@@ -100,7 +94,7 @@ def pipeline(d, segments):
                             datamid = n.ma.masked_equal(data[d['readints']/2].real, 0, copy=True)
                             madstd = 1.4826 * n.ma.median(n.abs(datamid - n.ma.median(datamid)))/n.sqrt(d['npol']*d['nbl']*d['nchan'])
                             std = datamid.std()/n.sqrt(d['npol']*d['nbl']*d['nchan'])
-                            logger.debug('Noise per vix in central int: madstd {}, std {}'.format(madstd, std))
+                            logger.debug('Noise per vis in central int: madstd {}, std {}'.format(madstd, std))
                             dt = 1 # pulse width in integrations
 
                             if isinstance(d['mock'], int):
@@ -115,9 +109,9 @@ def pipeline(d, segments):
                                         candid =  (int(segment), int(i), DM, int(dt), int(0))
                                         falsecands[candid] = [SNR, SNR*madstd, loff, moff]
                                     except:
-                                        logger.info('Could not parse mock parameters: {}'.format(mock))
+                                        logger.warn('Could not parse mock parameters: {}'.format(mock))
                             else:
-                                logger.info('Not a recognized type for mock.')
+                                logger.warn('Not a recognized type for mock.')
 
                             for candid in falsecands:
                                 (segment, i, DM, dt, beamnum) = candid
@@ -147,7 +141,7 @@ def pipeline_dataprep(d, segment):
     """ Single-threaded pipeline for data prep that can be started in a pool.
     """
 
-    logger.debug('prep starting for segment %d' % segment)
+    logger.debug('dataprep starting for segment %d' % segment)
 
     # dataprep reads for a single segment, so d['segment'] defined here
     d['segment'] = segment
@@ -162,9 +156,7 @@ def pipeline_dataprep(d, segment):
     # 1) Read data
     ####    ####    ####    ####
 
-    logger.debug('prep at data_read lock for %d. data_read = %s' % (segment, str(data_read.mean())))
     with data_read_mem.get_lock():
-        logger.debug('prep entering data_read lock for %d' % segment)
         if d['dataformat'] == 'ms':   # CASA-based read
             segread = pm.readsegment(d, segment)
             data_read[:] = segread[0]
@@ -202,21 +194,21 @@ def pipeline_dataprep(d, segment):
                 logger.warning('Could not parse or apply gainfile %s.' % d['gainfile'])
                 raise
         else:
-            logger.info('Calibration file not found. Proceeding with no calibration applied.')
+            logger.warn('Calibration file not found. Proceeding with no calibration applied.')
 
         # flag data
         if len(d['flaglist']):
             logger.info('Flagging with flaglist: %s' % d['flaglist'])
             dataflag(d, data_read)
         else:
-            logger.info('No real-time flagging.')
+            logger.warn('No real-time flagging.')
 
         # mean t vis subtration
         if d['timesub'] == 'mean':
             logger.info('Subtracting mean visibility in time...')
             rtlib.meantsub(data_read, [0, d['nbl']])
         else:
-            logger.info('No mean time subtraction.')
+            logger.warn('No mean time subtraction.')
 
         # save noise pickle
         if d['savenoise']:
@@ -234,13 +226,10 @@ def pipeline_dataprep(d, segment):
         except KeyError:
             pass
 
-        logger.debug('prep finished data_read mods and waiting for data lock for segment %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
         with data_mem.get_lock():
-            logger.debug('prep data_read unlocked for segment %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
             data[:] = data_read[:]
             u[:] = u_read[:]; v[:] = v_read[:]; w[:] = w_read[:]
-            logger.debug('prep copied into data for segment %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
-    logger.info('All data unlocked for segment %d' % segment)
+    logger.debug('All data unlocked for segment %d' % segment)
 
     # d now has segment keyword defined
     return d
@@ -398,7 +387,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
 
     # SUBMITTING THE LOOPS
     if n.any(data):
-        logger.info('Searching in %d chunks with %d threads' % (d['nchunk'], d['nthread']))
+        logger.debug('Searching in %d chunks with %d threads' % (d['nchunk'], d['nthread']))
         logger.info('Dedispering to max (DM, dt) of (%d, %d) ...' % (d['dmarr'][-1], d['dtarr'][-1]) )
 
         # open pool
@@ -427,7 +416,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
                     # set dm- and dt-dependent int ranges for segment
                     nskip_dm = ((d['datadelay'][-1] - d['datadelay'][dmind]) / dt) * (d['segment'] != 0)  # nskip=0 for first segment
                     searchints = (d['readints'] - d['datadelay'][dmind]) / dt - nskip_dm
-                    logger.info('Imaging %d ints from %d for (%d,%d)' % (searchints, nskip_dm, dm, dt),)
+                    logger.debug('Imaging %d ints from %d for (%d,%d)' % (searchints, nskip_dm, dm, dt),)
 
                     # imaging in shared memory, mapped over ints
                     image1part = partial(image1, d, u, v, w, dmind, dtind, beamnum)
@@ -1274,7 +1263,6 @@ def image2w(d, i0, i1, u, v, w, dmind, dtind, beamnum, bls, uvkers):
         # reimage
         npix = max(d['npixx_full'], d['npixy_full'])
         im2 = rtlib.imgonefullw(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[i0+candints[i]], npix, d['uvres'], bls, uvkers, verbose=1)
-        logger.debug(im2.shape)
 
         # find most extreme pixel
         snrmax = im2.max()/im2.std()

@@ -45,7 +45,11 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
 
     # overload with provided kwargs
     for key in kwargs.keys():
-        logger.info('Setting %s to %s' % (key, kwargs[key]))
+        if key in params.defined:
+            stdname = '(standard)'
+        else:
+            stdname = ''
+        logger.info('Setting %s key %s to %s' % (stdname, key, kwargs[key]))
         d[key] = kwargs[key]
 
     # option of not writing log file (need to improve later)
@@ -318,8 +322,6 @@ def read_bdf_segment(d, segment=-1):
             antnum, time0, time1 = antflag
             badbls = np.where((blarr == antnum).any(axis=1))[0]
             badints = np.where((timearr >= time0) & (timearr <= time1))[0]
-            logger.debug('Flagging %d ints for antnum %d'
-                         % (len(badints), antnum))
             for badint in badints:
                 data[badint, badbls] = 0j
             badints_cum = badints_cum + list(badints)
@@ -415,7 +417,6 @@ def sdm2ms(sdmfile, msfile, scan, inttime='0'):
     """
 
     # fill ms file
-#    msfile2 = msfile.rstrip('.ms') + '_s' + scan + '.ms'
     if os.path.exists(msfile):
         logger.debug('%s already set.' % msfile)
     else:
