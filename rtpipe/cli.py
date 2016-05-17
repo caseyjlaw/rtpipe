@@ -48,7 +48,8 @@ def mergeall(filename, snrmin=0, snrmax=999):
 @click.argument('filename', type=str)
 @click.option('--scan', type=int, default=0)
 @click.option('--paramfile', type=str, default='rtpipe_cbe.conf')
-def searchone(filename, scan, paramfile):
+@click.option('--nologfile', type=bool, default=True)
+def searchone(filename, scan, paramfile, nologfile):
     """ Searches one scan of filename
 
     filename is name of local sdm ('filename.GN' expected locally).
@@ -60,7 +61,7 @@ def searchone(filename, scan, paramfile):
 
     if scan != 0:
         d = rt.set_pipeline(filename, scan, paramfile=paramfile,
-                            fileroot=os.path.basename(filename), nologfile=True)
+                            fileroot=os.path.basename(filename), nologfile=nologfile)
         rt.pipeline(d, range(d['nsegments']))
 
         # clean up and merge files
@@ -72,7 +73,7 @@ def searchone(filename, scan, paramfile):
         print('%s' % str([(ss, sc[ss]['source']) for ss in sc]))
         print('Example pipeline:')
         state = rt.set_pipeline(filename, sc.popitem()[0], paramfile=paramfile,
-                                fileroot=os.path.basename(filename), nologfile=True)
+                                fileroot=os.path.basename(filename), nologfile=nologfile)
 
 
 @cli.command()

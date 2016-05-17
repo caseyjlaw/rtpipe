@@ -47,12 +47,6 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
         logger.info('Setting %s to %s' % (key, kwargs[key]))
         d[key] = kwargs[key]
 
-    if 'silent' in kwargs.keys():
-        loglevel = logging.ERROR
-    else:
-        loglevel = logging.INFO
-    logger.setLevel(loglevel)
-
     # define scan list
     if 'bdfdir' not in d:
         d['bdfdir'] = None

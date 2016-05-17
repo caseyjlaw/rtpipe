@@ -731,44 +731,24 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     
     workdir = os.path.dirname(os.path.abspath(filename))
     filename = filename.rstrip('/')
+    assert os.path.exists(filename)
 
     # option of not writing log file (need to improve later)
-    if 'silent' in kwargs.keys():
-        loglevel = logging.ERROR
-    else:
-        loglevel = logging.INFO
-
-    logger.setLevel(loglevel)
-    
-    if ('nologfile' in kwargs.keys()) or ('silent' in kwargs.keys()):
-        pass
+    if 'nologfile' in kwargs:
+        if kwargs['nologfile']:
+            pass
+        else:
+            fh = logging.FileHandler(os.path.join(workdir, 'rtpipe_%d.log' % int(round(time.time()))))
+            fh.setLevel(logging.INFO)
+            fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            logger.addHandler(fh)
     else:
         fh = logging.FileHandler(os.path.join(workdir, 'rtpipe_%d.log' % int(round(time.time()))))
-        fh.setLevel(loglevel)
+        fh.setLevel(logging.INFO)
         fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         logger.addHandler(fh)
 
-    # define metadata (state) dict. chans/spw is special because it goes in to get_metadata call
-    # if 'chans' in kwargs.keys(): 
-    #     chans=kwargs['chans']
-    # else:
-    #     chans = []
-    # if 'spw' in kwargs.keys(): 
-    #     spw=kwargs['spw']
-    # else:
-    #     spw = []
-    # if 'read_fdownsample' in kwargs.keys(): 
-    #     rfd=kwargs['read_fdownsample']
-    # else:
-    #     rfd = 1
-    # if 'datacol' in kwargs.keys(): 
-    #     datacol=kwargs['datacol']
-    # else:
-    #     datacol = []
-
     # then get all metadata
-    assert os.path.exists(filename)
-
     if os.path.exists(os.path.join(filename, 'Main.xml')):
         d = ps.get_metadata(filename, scan, paramfile=paramfile, **kwargs)   # can take file name or Params instance
         d['dataformat'] = 'sdm'
