@@ -12,7 +12,7 @@ try:
     import casautil 
 except ImportError:
     import pwkit.environments.casa.util as casautil
-import os, glob, time, logging
+import os, glob, logging
 import cPickle as pickle
 from functools import partial
 import random
@@ -22,12 +22,7 @@ import math
 qa = casautil.tools.quanta()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logging.captureWarnings(True)
-logger = logging.getLogger(__name__)
-#if not len(logger.handlers):
-#    logger.setLevel(logging.INFO)
-#    ch = logging.StreamHandler()
-#    ch.setLevel(logging.INFO)
-#    logger.addHandler(ch)
+logger = logging.getLogger('rtpipe')
 
 def pipeline(d, segments):
     """ Transient search pipeline running on single node.
@@ -85,19 +80,13 @@ def pipeline(d, segments):
             # step through pool of jobs and pull data off as ready. this allows pool to continue to next segment.
             while results.keys():
                 for segment in results.keys():
-                    logger.debug('pipeline waiting on prep to complete for segment %d' % segment)
                     if results[segment].ready():
                         job = results.pop(segment)
                         d = job.get()
                     else:
                         continue
                     
-                    logger.debug('pipeline got result. now waiting on data lock for %d. data_read = %s. data = %s.'
-                                 % (segment, str(data_read.mean()), str(data.mean())))
                     with data_mem.get_lock():
-                        logger.debug('pipeline data unlocked. starting search for %d. data_read = %s. data = %s'
-                                     % (segment, str(data_read.mean()), str(data.mean())))
-
                         if d['mock']: # could be list or int
                             # assume that std of vis in the middle of the segment is
                             # characteristic of noise throughout the segment
@@ -105,7 +94,7 @@ def pipeline(d, segments):
                             datamid = n.ma.masked_equal(data[d['readints']/2].real, 0, copy=True)
                             madstd = 1.4826 * n.ma.median(n.abs(datamid - n.ma.median(datamid)))/n.sqrt(d['npol']*d['nbl']*d['nchan'])
                             std = datamid.std()/n.sqrt(d['npol']*d['nbl']*d['nchan'])
-                            logger.debug('Noise per vix in central int: madstd {}, std {}'.format(madstd, std))
+                            logger.debug('Noise per vis in central int: madstd {}, std {}'.format(madstd, std))
                             dt = 1 # pulse width in integrations
 
                             if isinstance(d['mock'], int):
@@ -120,9 +109,9 @@ def pipeline(d, segments):
                                         candid =  (int(segment), int(i), DM, int(dt), int(0))
                                         falsecands[candid] = [SNR, SNR*madstd, loff, moff]
                                     except:
-                                        logger.info('Could not parse mock parameters: {}'.format(mock))
+                                        logger.warn('Could not parse mock parameters: {}'.format(mock))
                             else:
-                                logger.info('Not a recognized type for mock.')
+                                logger.warn('Not a recognized type for mock.')
 
                             for candid in falsecands:
                                 (segment, i, DM, dt, beamnum) = candid
@@ -152,7 +141,7 @@ def pipeline_dataprep(d, segment):
     """ Single-threaded pipeline for data prep that can be started in a pool.
     """
 
-    logger.debug('prep starting for segment %d' % segment)
+    logger.debug('dataprep starting for segment %d' % segment)
 
     # dataprep reads for a single segment, so d['segment'] defined here
     d['segment'] = segment
@@ -167,9 +156,7 @@ def pipeline_dataprep(d, segment):
     # 1) Read data
     ####    ####    ####    ####
 
-    logger.debug('prep at data_read lock for %d. data_read = %s' % (segment, str(data_read.mean())))
     with data_read_mem.get_lock():
-        logger.debug('prep entering data_read lock for %d' % segment)
         if d['dataformat'] == 'ms':   # CASA-based read
             segread = pm.readsegment(d, segment)
             data_read[:] = segread[0]
@@ -207,21 +194,21 @@ def pipeline_dataprep(d, segment):
                 logger.warning('Could not parse or apply gainfile %s.' % d['gainfile'])
                 raise
         else:
-            logger.info('Calibration file not found. Proceeding with no calibration applied.')
+            logger.warn('Calibration file not found. Proceeding with no calibration applied.')
 
         # flag data
         if len(d['flaglist']):
             logger.info('Flagging with flaglist: %s' % d['flaglist'])
             dataflag(d, data_read)
         else:
-            logger.info('No real-time flagging.')
+            logger.warn('No real-time flagging.')
 
         # mean t vis subtration
         if d['timesub'] == 'mean':
             logger.info('Subtracting mean visibility in time...')
             rtlib.meantsub(data_read, [0, d['nbl']])
         else:
-            logger.info('No mean time subtraction.')
+            logger.warn('No mean time subtraction.')
 
         # save noise pickle
         if d['savenoise']:
@@ -239,13 +226,10 @@ def pipeline_dataprep(d, segment):
         except KeyError:
             pass
 
-        logger.debug('prep finished data_read mods and waiting for data lock for segment %d. data_read = %s. data = %s' % (segment, str(data_read.mean()), str(data.mean())))
         with data_mem.get_lock():
-            logger.debug('prep data_read unlocked for segment %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
             data[:] = data_read[:]
             u[:] = u_read[:]; v[:] = v_read[:]; w[:] = w_read[:]
-            logger.debug('prep copied into data for segment %d. data_read = %s. data = %s.' % (segment, str(data_read.mean()), str(data.mean())))
-    logger.info('All data unlocked for segment %d' % segment)
+    logger.debug('All data unlocked for segment %d' % segment)
 
     # d now has segment keyword defined
     return d
@@ -403,7 +387,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
 
     # SUBMITTING THE LOOPS
     if n.any(data):
-        logger.info('Searching in %d chunks with %d threads' % (d['nchunk'], d['nthread']))
+        logger.debug('Searching in %d chunks with %d threads' % (d['nchunk'], d['nthread']))
         logger.info('Dedispering to max (DM, dt) of (%d, %d) ...' % (d['dmarr'][-1], d['dtarr'][-1]) )
 
         # open pool
@@ -432,7 +416,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
                     # set dm- and dt-dependent int ranges for segment
                     nskip_dm = ((d['datadelay'][-1] - d['datadelay'][dmind]) / dt) * (d['segment'] != 0)  # nskip=0 for first segment
                     searchints = (d['readints'] - d['datadelay'][dmind]) / dt - nskip_dm
-                    logger.info('Imaging %d ints from %d for (%d,%d)' % (searchints, nskip_dm, dm, dt),)
+                    logger.debug('Imaging %d ints from %d for (%d,%d)' % (searchints, nskip_dm, dm, dt),)
 
                     # imaging in shared memory, mapped over ints
                     image1part = partial(image1, d, u, v, w, dmind, dtind, beamnum)
@@ -676,7 +660,7 @@ def pipeline_lightcurve(d, l1=0, m1=0, segments=[], scan=-1):
     if scan == -1: scan = d['scan']
     if segments == []: segments = range(d['nsegments'])
 
-    d = set_pipeline(d['filename'], scan, fileroot=d['fileroot'], dmarr=[0], dtarr=[1], savenoise=False, timesub='', nologfile=True, nsegments=d['nsegments'])
+    d = set_pipeline(d['filename'], scan, fileroot=d['fileroot'], dmarr=[0], dtarr=[1], savenoise=False, timesub='', logfile=False, nsegments=d['nsegments'])
 
     # define memory and numpy arrays
     data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
@@ -731,44 +715,9 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     
     workdir = os.path.dirname(os.path.abspath(filename))
     filename = filename.rstrip('/')
-
-    # option of not writing log file (need to improve later)
-    if 'silent' in kwargs.keys():
-        loglevel = logging.ERROR
-    else:
-        loglevel = logging.INFO
-
-    logger.setLevel(loglevel)
-    
-    if ('nologfile' in kwargs.keys()) or ('silent' in kwargs.keys()):
-        pass
-    else:
-        fh = logging.FileHandler(os.path.join(workdir, 'rtpipe_%d.log' % int(round(time.time()))))
-        fh.setLevel(loglevel)
-        fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-        logger.addHandler(fh)
-
-    # define metadata (state) dict. chans/spw is special because it goes in to get_metadata call
-    # if 'chans' in kwargs.keys(): 
-    #     chans=kwargs['chans']
-    # else:
-    #     chans = []
-    # if 'spw' in kwargs.keys(): 
-    #     spw=kwargs['spw']
-    # else:
-    #     spw = []
-    # if 'read_fdownsample' in kwargs.keys(): 
-    #     rfd=kwargs['read_fdownsample']
-    # else:
-    #     rfd = 1
-    # if 'datacol' in kwargs.keys(): 
-    #     datacol=kwargs['datacol']
-    # else:
-    #     datacol = []
-
-    # then get all metadata
     assert os.path.exists(filename)
 
+    # then get all metadata
     if os.path.exists(os.path.join(filename, 'Main.xml')):
         d = ps.get_metadata(filename, scan, paramfile=paramfile, **kwargs)   # can take file name or Params instance
         d['dataformat'] = 'sdm'
@@ -783,27 +732,34 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
         d['fileroot'] = os.path.basename(os.path.abspath(filename))
 
     # autodetect calibration products locally
-    if not d['gainfile']:
+    if not d['gainfile'] or not os.path.exists(d['gainfile']):
         # first try to get CASA gain file
-        try:
-            filelist = glob.glob(os.path.join(d['workdir'], d['fileroot'] + '.g?'))
-            filelist.sort()
-            d['gainfile'] = filelist[-1]
-            logger.info('Autodetected CASA gainfile %s' % d['gainfile'])
+        gainfilelist = glob.glob(os.path.join(d['workdir'], d['fileroot'] + '.g?'))
+        bpfilelist = glob.glob(os.path.join(d['workdir'], d['fileroot'] + '.b?'))
 
-            # if CASA gainfile, look for CASA bpfile
-            filelist = glob.glob(os.path.join(d['workdir'], d['fileroot'] + '.b?'))
-            filelist.sort()
-            d['bpfile'] = filelist[-1]
+        # if not in workdir, look locally
+        if not gainfilelist or not bpfilelist:
+            gainfilelist = glob.glob(d['fileroot'] + '.g?')
+            bpfilelist = glob.glob(d['fileroot'] + '.b?')
+            
+        if gainfilelist and bpfilelist:
+            gainfilelist.sort()
+            d['gainfile'] = gainfilelist[-1]
+            logger.info('Autodetected CASA gainfile %s' % d['gainfile'])
+            bpfilelist.sort()
+            d['bpfile'] = bpfilelist[-1]
             logger.info('Autodetected CASA bpfile %s' % d['bpfile'])
-        except:
-            # if that fails, look for telcal file
-            try:
-                filelist = glob.glob(os.path.join(d['workdir'], filename + '.GN'))
-                d['gainfile'] = filelist[0]
-                logger.info('Autodetected telcal file %s' % d['gainfile'])
-            except:
-                logger.debug('Failed to autodetect CASA or telcal calibration files.')
+
+        # if that fails, look for telcal file
+        filelist = glob.glob(os.path.join(d['workdir'], filename + '.GN'))
+        if not filelist:
+            filelist = glob.glob(filename + '.GN')
+
+        if filelist:
+            d['gainfile'] = filelist[0]
+            logger.info('Autodetected telcal file %s' % d['gainfile'])
+
+        assert os.path.exists(d['gainfile']), 'Calibration file autodetection failed for gainfile {0}'.format(d['gainfile'])
 
     # define features
     d['featureind'] = ['segment', 'int', 'dmind', 'dtind', 'beamnum']  # feature index. should be stable.
@@ -1072,7 +1028,7 @@ def correct_dt(d, dt, blrange):
     rtlib.resample_par(data_resamp, d['freq'], d['inttime'], dt, blrange, verbose=0)        # dedisperses data.
 
 
-def calc_lm(d, im=None, pix=(), minmax='max'):
+def calc_lm(d, im=[], pix=(), minmax='max'):
     """ Helper function to calculate location of image pixel in (l,m) coords.
     Assumes peak pixel, but input can be provided in pixel units.
     minmax defines whether to look for image maximum or minimum.
@@ -1087,7 +1043,7 @@ def calc_lm(d, im=None, pix=(), minmax='max'):
     elif len(pix) == 2:   # can also specify
         peakl, peakm = pix
 
-    if im != None:
+    if len(im):
         npixx, npixy = im.shape
     else:
         npixx = d['npixx']
@@ -1307,7 +1263,6 @@ def image2w(d, i0, i1, u, v, w, dmind, dtind, beamnum, bls, uvkers):
         # reimage
         npix = max(d['npixx_full'], d['npixy_full'])
         im2 = rtlib.imgonefullw(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[i0+candints[i]], npix, d['uvres'], bls, uvkers, verbose=1)
-        logger.debug(im2.shape)
 
         # find most extreme pixel
         snrmax = im2.max()/im2.std()

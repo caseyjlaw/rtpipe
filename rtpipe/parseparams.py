@@ -25,15 +25,13 @@ class Params(object):
         self.uvres = 0; self.npix = 0; self.npix_max = 0; self.uvoversample = 1.
         self.flaglist = [('badchtslide', 4., 0.) , ('badap', 3., 0.2), ('blstd', 3.0, 0.05)]
         self.flagantsol = True; self.gainfile = ''; self.bpfile = ''; self.fileroot = ''; self.applyonlineflags = True
-        self.savenoise = False; self.savecands = False; self.nologfile=False
+        self.savenoise = False; self.savecands = False; self.logfile = True; self.loglevel = 'INFO'
         self.writebdfpkl = False; self.mock = 0
                            
         # overload with the parameter file values, if provided
         if len(paramfile):
-            try:
-                self.parse(paramfile)
-            except:
-                print 'Not parsing paramfile.'
+            self.parse(paramfile)
+
 
     def parse(self, paramfile):
         """ Read parameter file and set parameter values.
@@ -52,15 +50,19 @@ class Params(object):
                     finally:
                         setattr(self, attribute.strip(), value_eval)
 
+
     @property
     def defined(self):
         return self.__dict__.keys()
 
+
     def __getitem__(self, key):
         return self.__dict__[key]
 
+
     def __str__(self):
         return str(self.__dict__)
+
 
     def __repr__(self):
         return str(self.__dict__)

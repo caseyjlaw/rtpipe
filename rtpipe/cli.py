@@ -26,7 +26,7 @@ def read(filename, paramfile, bdfdir, scan):
     logger.info('Scans, Target names:')
     logger.info('%s' % str([(ss, sc[ss]['source']) for ss in sc]))
     logger.info('Example pipeline:')
-    state = rt.set_pipeline(filename, scan, paramfile=paramfile, nologfile=True)
+    state = rt.set_pipeline(filename, scan, paramfile=paramfile, logfile=False)
 
 
 @cli.command()
@@ -48,7 +48,8 @@ def mergeall(filename, snrmin=0, snrmax=999):
 @click.argument('filename', type=str)
 @click.option('--scan', type=int, default=0)
 @click.option('--paramfile', type=str, default='rtpipe_cbe.conf')
-def searchone(filename, scan, paramfile):
+@click.option('--logfile', type=bool, default=False)
+def searchone(filename, scan, paramfile, logfile):
     """ Searches one scan of filename
 
     filename is name of local sdm ('filename.GN' expected locally).
@@ -60,7 +61,7 @@ def searchone(filename, scan, paramfile):
 
     if scan != 0:
         d = rt.set_pipeline(filename, scan, paramfile=paramfile,
-                            fileroot=os.path.basename(filename), nologfile=True)
+                            fileroot=os.path.basename(filename), logfile=logfile)
         rt.pipeline(d, range(d['nsegments']))
 
         # clean up and merge files
@@ -72,7 +73,7 @@ def searchone(filename, scan, paramfile):
         print('%s' % str([(ss, sc[ss]['source']) for ss in sc]))
         print('Example pipeline:')
         state = rt.set_pipeline(filename, sc.popitem()[0], paramfile=paramfile,
-                                fileroot=os.path.basename(filename), nologfile=True)
+                                fileroot=os.path.basename(filename), logfile=logfile)
 
 
 @cli.command()

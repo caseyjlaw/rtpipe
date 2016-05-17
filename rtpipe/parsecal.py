@@ -457,7 +457,7 @@ class telcal_sol():
                     self.select = self.select[nameselect]       # update overall selection
                     self.logger.debug('Selection down to %d solutions with %s' % (len(self.select), calname))
             if not nameselect:
-                self.logger.debug('Calibrator name %s not found. Ignoring.' % (calname))
+                self.logger.warn('Calibrator name %s not found. Ignoring.' % (calname))
 
         # select freq
         freqselect = n.where([ff in n.around(self.freqs, -6) for ff in n.around(1e6*self.skyfreq[self.select], -6)])   # takes solution if band center is in (rounded) array of chan freqs
@@ -567,7 +567,6 @@ class telcal_sol():
         """
 
         select = self.select[n.where( (self.skyfreq[self.select] == skyfreq) & (self.polarization[self.select] == pol) )[0]]
-        self.logger.debug('select %s' % (str(select)))
 
         if len(select):  # for when telcal solutions don't exist
             ind1 = n.where(ant1 == self.antnum[select])

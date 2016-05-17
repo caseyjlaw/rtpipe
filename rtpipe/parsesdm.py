@@ -9,6 +9,7 @@ import numpy as np
 import os
 import shutil
 import subprocess
+import time
 try:
     import casautil
     import tasklib
@@ -44,14 +45,22 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
 
     # overload with provided kwargs
     for key in kwargs.keys():
-        logger.info('Setting %s to %s' % (key, kwargs[key]))
+        if key in params.defined:
+            stdname = '(standard)'
+        else:
+            stdname = ''
+        logger.info('Setting %s key %s to %s' % (stdname, key, kwargs[key]))
         d[key] = kwargs[key]
 
-    if 'silent' in kwargs.keys():
-        loglevel = logging.ERROR
-    else:
-        loglevel = logging.INFO
-    logger.setLevel(loglevel)
+    # option of not writing log file (need to improve later)
+    if d['logfile']:
+        fh = logging.FileHandler(os.path.join(d['workdir'], 'rtpipe_%d.log' % int(round(time.time()))))
+        fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logger.parent.addHandler(fh)
+        if hasattr(logging, d['loglevel']):
+            logger.parent.setLevel(getattr(logging, d['loglevel']))
+        else:
+            logger.warn('loglevel of {0} not attribute of logging'.format(d['loglevel']))
 
     # define scan list
     if 'bdfdir' not in d:
@@ -313,8 +322,6 @@ def read_bdf_segment(d, segment=-1):
             antnum, time0, time1 = antflag
             badbls = np.where((blarr == antnum).any(axis=1))[0]
             badints = np.where((timearr >= time0) & (timearr <= time1))[0]
-            logger.debug('Flagging %d ints for antnum %d'
-                         % (len(badints), antnum))
             for badint in badints:
                 data[badint, badbls] = 0j
             badints_cum = badints_cum + list(badints)
@@ -410,7 +417,6 @@ def sdm2ms(sdmfile, msfile, scan, inttime='0'):
     """
 
     # fill ms file
-#    msfile2 = msfile.rstrip('.ms') + '_s' + scan + '.ms'
     if os.path.exists(msfile):
         logger.debug('%s already set.' % msfile)
     else:

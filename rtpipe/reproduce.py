@@ -30,7 +30,7 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
     for key in kwargs:
         logger.info('Setting %s to %s' % (key, kwargs[key]))
         d0[key] = kwargs[key]
-    d0['nologfile'] = True  # no need to save log
+    d0['logfile'] = False  # no need to save log
 
     # feature columns
     if 'snr2' in d0['features']:
@@ -83,6 +83,7 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
             dmind = loc[candnum, dmindcol]
             dtind = loc[candnum, dtindcol]
             beamnum = 0
+            candloc = (scan, segment, candint, dmind, dtind, beamnum)
         elif len(candloc) and (candnum < 0):
             assert len(candloc) == 6, 'candloc should be length 6 ( scan, segment, candint, dmind, dtind, beamnum ).'
             logger.info('Reproducing and visualizing candidate %d at %s' % (candnum, candloc))
@@ -108,7 +109,7 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
         d0['npix'] = 0
         d0['uvres'] = 0
         d0['nsegments'] = 0
-        d0['nologfile'] = True
+        d0['logfile'] = False
         # get cand data
         d = rt.set_pipeline(filename, scan, **d0)
         im, data = rt.pipeline_reproduce(d, candloc, product='imdata') # removed loc[candnum]
@@ -254,7 +255,7 @@ def convertloc(candsfile, candloc, memory_limit):
     for key in d0.keys():
         if not hasattr(params, key):
             _ = d0.pop(key)
-    d0['nologfile'] = True
+    d0['logfile'] = False
     d0['npix'] = 0
     d0['uvres'] = 0
     d0['nsegments'] = 0

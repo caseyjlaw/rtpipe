@@ -29,7 +29,7 @@ def read(label, statedir='.nbpipeline'):
 
     try:
         obj = pickle.load(open(objloc, 'r')) 
-    except (KeyError, IndexError):
+    except (KeyError, IndexError, EOFError):
         obj = open(objloc, 'r').read()
         try:
             obj = float(obj)
@@ -71,7 +71,7 @@ def setFloat(label, default=0, min=-20, max=20, description='Set Float', format=
     hndl = interact(save, obj=floatw, label=fixed(label), format=fixed(format), statedir=fixed(statedir))
 
 
-def setDropdown(label, default=None, options=[], description='Set Dropdown', format='pickle', statedir='.nbpipeline'):
+def setDropdown(label, default=None, options=[], description='Set Dropdown', format='text', statedir='.nbpipeline'):
     """ Set float in a notebook pipeline (via interaction or with nbconvert) """
 
     obj = read(label)
@@ -99,8 +99,6 @@ def setButton(description=''):
 
 
 def getnbname():
-    """ Runs javascript to get name of notebook. Saved as python obj 'nbname' """
-
-    # can this be wrapped to return nbname after js call?
+    """ Hack to get name of notebook as python obj 'nbname'. Does not work with 'run all' """
 
     display(Javascript("""IPython.notebook.kernel.execute("nbname = " + "\'"+IPython.notebook.notebook_name+"\'");"""))    
