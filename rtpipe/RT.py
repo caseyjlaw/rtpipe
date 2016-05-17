@@ -23,11 +23,6 @@ qa = casautil.tools.quanta()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logging.captureWarnings(True)
 logger = logging.getLogger(__name__)
-#if not len(logger.handlers):
-#    logger.setLevel(logging.INFO)
-#    ch = logging.StreamHandler()
-#    ch.setLevel(logging.INFO)
-#    logger.addHandler(ch)
 
 def pipeline(d, segments):
     """ Transient search pipeline running on single node.
@@ -1059,7 +1054,7 @@ def correct_dt(d, dt, blrange):
     rtlib.resample_par(data_resamp, d['freq'], d['inttime'], dt, blrange, verbose=0)        # dedisperses data.
 
 
-def calc_lm(d, im=None, pix=(), minmax='max'):
+def calc_lm(d, im=[], pix=(), minmax='max'):
     """ Helper function to calculate location of image pixel in (l,m) coords.
     Assumes peak pixel, but input can be provided in pixel units.
     minmax defines whether to look for image maximum or minimum.
@@ -1074,7 +1069,7 @@ def calc_lm(d, im=None, pix=(), minmax='max'):
     elif len(pix) == 2:   # can also specify
         peakl, peakm = pix
 
-    if im != None:
+    if len(im):
         npixx, npixy = im.shape
     else:
         npixx = d['npixx']
