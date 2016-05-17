@@ -9,6 +9,7 @@ import numpy as np
 import os
 import shutil
 import subprocess
+import time
 try:
     import casautil
     import tasklib
@@ -46,6 +47,16 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
     for key in kwargs.keys():
         logger.info('Setting %s to %s' % (key, kwargs[key]))
         d[key] = kwargs[key]
+
+    # option of not writing log file (need to improve later)
+    if d['logfile']:
+        fh = logging.FileHandler(os.path.join(d['workdir'], 'rtpipe_%d.log' % int(round(time.time()))))
+        fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logger.parent.addHandler(fh)
+        if hasattr(logging, d['loglevel']):
+            logger.parent.setLevel(getattr(logging, d['loglevel']))
+        else:
+            logger.warn('loglevel of {0} not attribute of logging'.format(d['loglevel']))
 
     # define scan list
     if 'bdfdir' not in d:

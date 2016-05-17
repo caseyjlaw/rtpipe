@@ -12,7 +12,7 @@ try:
     import casautil 
 except ImportError:
     import pwkit.environments.casa.util as casautil
-import os, glob, time, logging
+import os, glob, logging
 import cPickle as pickle
 from functools import partial
 import random
@@ -22,7 +22,7 @@ import math
 qa = casautil.tools.quanta()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logging.captureWarnings(True)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('rtpipe')
 
 def pipeline(d, segments):
     """ Transient search pipeline running on single node.
@@ -671,7 +671,7 @@ def pipeline_lightcurve(d, l1=0, m1=0, segments=[], scan=-1):
     if scan == -1: scan = d['scan']
     if segments == []: segments = range(d['nsegments'])
 
-    d = set_pipeline(d['filename'], scan, fileroot=d['fileroot'], dmarr=[0], dtarr=[1], savenoise=False, timesub='', nologfile=True, nsegments=d['nsegments'])
+    d = set_pipeline(d['filename'], scan, fileroot=d['fileroot'], dmarr=[0], dtarr=[1], savenoise=False, timesub='', logfile=False, nsegments=d['nsegments'])
 
     # define memory and numpy arrays
     data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
@@ -727,21 +727,6 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     workdir = os.path.dirname(os.path.abspath(filename))
     filename = filename.rstrip('/')
     assert os.path.exists(filename)
-
-    # option of not writing log file (need to improve later)
-    if 'nologfile' in kwargs:
-        if kwargs['nologfile']:
-            pass
-        else:
-            fh = logging.FileHandler(os.path.join(workdir, 'rtpipe_%d.log' % int(round(time.time()))))
-            fh.setLevel(logging.INFO)
-            fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-            logger.addHandler(fh)
-    else:
-        fh = logging.FileHandler(os.path.join(workdir, 'rtpipe_%d.log' % int(round(time.time()))))
-        fh.setLevel(logging.INFO)
-        fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-        logger.addHandler(fh)
 
     # then get all metadata
     if os.path.exists(os.path.join(filename, 'Main.xml')):
