@@ -65,8 +65,11 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
     # define scan list
     if 'bdfdir' not in d:
         d['bdfdir'] = None
-    scans, sources = sdmreader.read_metadata(d['filename'],
-                                             scan, bdfdir=d['bdfdir'])
+
+    scans = read_scans(d['filename'])
+    sources = read_sources(d['filename'])
+#    scans, sources = sdmreader.read_metadata(d['filename'],
+#                                             scan, bdfdir=d['bdfdir'])
 
     # define source props
     d['source'] = scans[scan]['source']
@@ -476,6 +479,7 @@ def calc_uvw(sdmfile, scan=0, datetime=0, radec=()):
 
     return u, v, w
 
+
 def get_uvw_segment(d, segment=-1):
     """ Calculates uvw for each baseline at mid time of a given segment.
     d defines pipeline state. assumes segmenttimes defined by RT.set_pipeline.
@@ -503,6 +507,66 @@ def get_uvw_segment(d, segment=-1):
     w = w * d['freq_orig'][0] * (1e9/3e8) * (-1)
 
     return u.astype('float32'), v.astype('float32'), w.astype('float32')
+
+
+def read_sources(sdmname):
+    """ Use sdmpy to get all sources and ra,dec per scan as dict """
+
+    sdm = sdmpy.SDM(sdmname)
+    sourcedict = {}
+
+    for row in sdm['Field']:
+        src = row['fieldName'].strip()
+        sourcenum = int(row["sourceId"])
+        direction = row["referenceDir"].strip()
+        (ra,dec) = [float(val) for val in direction.strip().split(' ')[3:]]  # skip first two values in string
+
+        sourcedict[sourcenum] = {}
+        sourcedict[sourcenum]['source'] = src
+        sourcedict[sourcenum]['ra'] = ra
+        sourcedict[sourcenum]['dec'] = dec
+
+    return sourcedict
+
+
+def read_scans(sdmfile):
+    """ Use sdmpy to get all scans and info needed for rtpipe as dict """
+
+    sdm = sdmpy.SDM(sdmfile)
+    scandict = {}
+
+    for scan in sdm.scans():
+        scannum = int(scan.idx)
+        intentstr = ' '.join(scan.intents)
+        startmjd = scan.bdf.startTime
+        endmjd = scan.bdf.endTime
+        nints = sdm.bdf.numIntegration
+        src = scan.source
+        interval = scan.bdf.get_integration(0).interval
+        bdfstr = scan.bdf.fname
+
+# or use bdfdir
+#        try:
+#            bdfstr = sdm['Main'][i]['dataUID'].replace(':', '_').replace('/', '_')
+#        except KeyError:
+#            bdfstr = sdm['Main'][i]['dataOid'].replace(':', '_').replace('/', '_')
+#        scandict[scannum]['bdfstr'] = os.path.join(bdfdir, bdfstr)
+
+        scandict[scannum] = {}
+        scandict[scannum]['source'] = src
+        scandict[scannum]['startmjd'] = startmjd
+        scandict[scannum]['endmjd'] = startmjd + (nints*interval)/(24*3600)
+        scandict[scannum]['intent'] = intentstr
+        scandict[scannum]['duration'] = endmjd-startmjd
+        scandict[scannum]['nints'] = nints
+        scandict[scannum]['bdfstr'] = bdfstr
+
+        # clear reference to nonexistent BDFs (either bad or not in standard locations)
+#        if (not os.path.exists(scandict[scannum]['bdfstr'])) or ('X1' in bdfstr):
+#            scandict[scannum]['bdfstr'] = None
+#            logger.debug('No bdf found scan %d of %s' % (scannum, sdmfile) )
+
+    return scandict
 
 
 def sdm2ms(sdmfile, msfile, scan, inttime='0'):
@@ -570,81 +634,3 @@ def filter_scans(sdmfile, namefilter='', intentfilter=''):
     logger.debug('Found a total of %d scans and %d with name=%s and intent=%s.'
                  % (len(scans), len(goodscans), namefilter, intentfilter))
     return goodscans
-
-
-""" Misc stuff from Steve. Not yet in sdmreader. """
-
-
-def call_qatime(arg, form='', prec=0):
-    """
-    This is a wrapper for qa.time(), which in casa 4.0 returns a list of
-    strings instead of just a scalar string.  In this case, return the first
-    value in the list.
-    - Todd Hunter
-    """
-
-    result = qa.time(arg, form=form, prec=prec)
-    if (isinstance(result, list) or isinstance(result, np.ndarray)):
-        return(result[0])
-    else:
-        return(result)
-
-
-def listscans(dicts):
-    myscans = dicts[0]
-    mysources = dicts[1]
-    if (myscans == []):
-        return
-    # Loop over scans
-    for key in myscans.keys():
-        mys = myscans[key]
-        src = mys['source']
-        tim = mys['timerange']
-        sint = mys['intent']
-        dur = mys['duration'] * 1440
-        logger.debug('%8i %24s %48s  %.1f minutes  %s ' % (key, src, tim,
-                                                           dur, sint))
-    durations = duration(myscans)
-    logger.debug('  Found ', len(mysources), ' sources in Source.xml')
-    for key in durations:
-        for mysrc in mysources.keys():
-            if (key[0] == mysources[mysrc]['source']):
-                ra = mysources[mysrc]['ra']
-                dec = mysources[mysrc]['dec']
-                break
-        raString = qa.formxxx('%.12frad' % ra, format('hms'))
-        decString = qa.formxxx('%.12frad' % dec, format('dms')).replace('.',
-                                                                        ':', 2)
-        logger.debug('   Total %24s (%d)  %5.1f minutes  '
-                     '(%.3f, %+.3f radian): %s %s'
-                     % (key[0], int(mysrc), key[1], ra, dec,
-                        raString, decString))
-    durations = duration(myscans, nocal=True)
-    for key in durations:
-        logger.debug('   Total %24s      %5.1f minutes'
-                     '(neglecting pntg, atm & sideband cal. scans)'
-                     % (key[0], key[1]))
-    return
-
-
-def duration(myscans, nocal=False):
-    durations = []
-    for key in myscans.keys():
-        mys = myscans[key]
-        src = mys['source']
-        if (nocal and (mys['intent'].find('CALIBRATE_SIDEBAND') >= 0 or
-                       mys['intent'].find('CALIBRATE_POINTING') >= 0 or
-                       mys['intent'].find('CALIBRATE_ATMOSPHERE') >= 0)):
-            dur = 0
-        else:
-            dur = mys['duration']*1440
-        new = 1
-        for s in range(len(durations)):
-            if (src == durations[s][0]):
-                new = 0
-                source = s
-        if (new == 1):
-            durations.append([src, dur])
-        else:
-            durations[source][1] = durations[source][1] + dur
-    return(durations)
