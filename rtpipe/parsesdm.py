@@ -150,7 +150,7 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
     d['urange'] = {}
     d['vrange'] = {}
     d['scan'] = scan
-    (u, v, w) = sdmreader.calc_uvw(d['filename'],
+    (u, v, w) = calc_uvw(d['filename'],
                                    d['scan'])  # default uses time at start
     u = u * d['freq_orig'][0] * (1e9/3e8) * (-1)
     v = v * d['freq_orig'][0] * (1e9/3e8) * (-1)
@@ -378,6 +378,104 @@ def read_bdf_segment(d, segment=-1):
     return data.take(d['chans'], axis=2).take(takepol, axis=3)
 
 
+def calc_uvw(sdmfile, scan=0, datetime=0, radec=()):
+    """ Calculates and returns uvw in meters for a given SDM, time, and pointing direction.
+    sdmfile is path to sdm directory that includes "Station.xml" file.
+    scan is scan number defined by observatory.
+    datetime is time (as string) to calculate uvw (format: '2014/09/03/08:33:04.20')
+    radec is (ra,dec) as tuple in units of degrees (format: (180., +45.))
+    """
+
+    # set up CASA tools
+    try:
+        import casautil
+    except ImportError:
+        try:
+            import pwkit.environments.casa.util as casautil
+        except ImportError:
+            logger.info('Cannot find pwkit/casautil. No calc_uvw possible.')
+            return
+
+    me = casautil.tools.measures()
+    qa = casautil.tools.quanta()
+    logger.debug('Accessing CASA libraries with casautil.')
+
+    assert os.path.exists(os.path.join(sdmfile, 'Station.xml')), 'sdmfile %s has no Station.xml file. Not an SDM?' % sdmfile
+
+    # get scan info
+    scans, sources = read_metadata(sdmfile, scan)
+
+    # default is to use scan info
+    if (datetime == 0) and (len(radec) == 0):
+        assert scan != 0, 'scan must be set when using datetime and radec'   # default scan value not valid
+
+        logger.info('Calculating uvw for first integration of scan %d of source %s' % (scan, scans[scan]['source']))
+        datetime = qa.time(qa.quantity(scans[scan]['startmjd'],'d'), form="ymd", prec=8)[0]
+        sourcenum = [kk for kk in sources.keys() if sources[kk]['source'] == scans[scan]['source']][0]
+        direction = me.direction('J2000', str(np.degrees(sources[sourcenum]['ra']))+'deg', str(np.degrees(sources[sourcenum]['dec']))+'deg')
+
+    # secondary case is when datetime is also given
+    elif (datetime != 0) and (len(radec) == 0):
+        assert scan != 0, 'scan must be set when using datetime and radec'   # default scan value not valid
+        assert '/' in datetime, 'datetime must be in yyyy/mm/dd/hh:mm:ss.sss format'
+
+        logger.info('Calculating uvw at %s for scan %d of source %s' % (datetime, scan, scans[scan]['source']))
+        sourcenum = [kk for kk in sources.keys() if sources[kk]['source'] == scans[scan]['source']][0]
+        direction = me.direction('J2000', str(np.degrees(sources[sourcenum]['ra']))+'deg', str(np.degrees(sources[sourcenum]['dec']))+'deg')
+
+    else:
+        assert '/' in datetime, 'datetime must be in yyyy/mm/dd/hh:mm:ss.sss format'
+        assert len(radec) == 2, 'radec must be (ra,dec) tuple in units of degrees'
+
+        logger.info('Calculating uvw at %s in direction %s' % (datetime, direction))
+        logger.info('This mode assumes all antennas used.')
+        ra = radec[0]; dec = radec[1]
+        direction = me.direction('J2000', str(ra)+'deg', str(dec)+'deg')
+
+    # define metadata "frame" for uvw calculation
+    sdm = sdmpy.SDM(sdmfile)
+    telescopename = sdm['ExecBlock'][0]['telescopeName'].strip()
+    logger.debug('Found observatory name %s' % telescopename)
+
+    me.doframe(me.observatory(telescopename))
+    me.doframe(me.epoch('utc', datetime))
+    me.doframe(direction)
+
+    # read antpos
+    if scan != 0:
+        configid = [row.configDescriptionId for row in sdm['Main'] if scan == int(row.scanNumber)][0]
+        antidlist = [row.antennaId for row in sdm['ConfigDescription'] if configid == row.configDescriptionId][0].split(' ')[2:]
+        stationidlist = [ant.stationId for antid in antidlist for ant in sdm['Antenna'] if antid == ant.antennaId]
+    else:
+        stationidlist = [ant.stationId for ant in sdm['Antenna']]
+
+    positions = [station.position.strip().split(' ')
+                 for station in sdm['Station'] 
+                 if station.stationId in stationidlist]
+    x = [float(positions[i][2]) for i in range(len(positions))]
+    y = [float(positions[i][3]) for i in range(len(positions))]
+    z = [float(positions[i][4]) for i in range(len(positions))]
+    ants = me.position('itrf', qa.quantity(x, 'm'), qa.quantity(y, 'm'), qa.quantity(z, 'm'))
+
+    # calc bl
+    bls = me.asbaseline(ants)
+    uvwlist = me.expand(me.touvw(bls)[0])[1]['value']
+
+    # define new bl order to match sdm binary file bl order
+    u = np.empty(len(uvwlist)/3); v = np.empty(len(uvwlist)/3); w = np.empty(len(uvwlist)/3)
+    nants = len(ants['m0']['value'])
+    ord1 = [i*nants+j for i in range(nants) for j in range(i+1,nants)]
+    ord2 = [i*nants+j for j in range(nants) for i in range(j)]
+    key=[]
+    for new in ord2:
+        key.append(ord1.index(new))
+    for i in range(len(key)):
+        u[i] = uvwlist[3*key[i]]
+        v[i] = uvwlist[3*key[i]+1]
+        w[i] = uvwlist[3*key[i]+2]
+
+    return u, v, w
+
 def get_uvw_segment(d, segment=-1):
     """ Calculates uvw for each baseline at mid time of a given segment.
     d defines pipeline state. assumes segmenttimes defined by RT.set_pipeline.
@@ -395,7 +493,7 @@ def get_uvw_segment(d, segment=-1):
     else:
         datetime = 0
 
-    (u, v, w) = sdmreader.calc_uvw(d['filename'], d['scan'],
+    (u, v, w) = calc_uvw(d['filename'], d['scan'],
                                    datetime=datetime)
 
     # cast to units of lambda at first channel.
