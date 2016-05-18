@@ -79,7 +79,7 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
 
     # define spectral info
     sdm = sdmpy.SDM(d['filename'])
-    d['spw_orig'] = [int(row.spectralWindowId.split('_')[1])
+    d['spw_orig'] = [int(str(row.spectralWindowId).split('_')[1])
                      for row in sdm['SpectralWindow']]
     d['spw_nchan'] = [int(row.numChan) for row in sdm['SpectralWindow']]
 
@@ -187,7 +187,7 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
 
     # define ants/bls
     # hacking here to fit observatory-specific use of antenna names
-    if 'VLA' in sdm['ExecBlock'][0]['telescopeName']:
+    if 'VLA' in str(sdm['ExecBlock'][0]['telescopeName']):
 # find config first, then antids, then ant names
         configid = [row.configDescriptionId for row in sdm['Main']
                     if d['scan'] == int(row.scanNumber)][0]
@@ -389,24 +389,12 @@ def calc_uvw(sdmfile, scan=0, datetime=0, radec=()):
     radec is (ra,dec) as tuple in units of degrees (format: (180., +45.))
     """
 
-    # set up CASA tools
-    try:
-        import casautil
-    except ImportError:
-        try:
-            import pwkit.environments.casa.util as casautil
-        except ImportError:
-            logger.info('Cannot find pwkit/casautil. No calc_uvw possible.')
-            return
-
-    me = casautil.tools.measures()
-    qa = casautil.tools.quanta()
-    logger.debug('Accessing CASA libraries with casautil.')
-
     assert os.path.exists(os.path.join(sdmfile, 'Station.xml')), 'sdmfile %s has no Station.xml file. Not an SDM?' % sdmfile
 
     # get scan info
-    scans, sources = read_metadata(sdmfile, scan)
+    scans = read_scans(sdmfile)
+    sources = read_sources(sdmfile)
+#    scans, sources = read_metadata(sdmfile, scan)
 
     # default is to use scan info
     if (datetime == 0) and (len(radec) == 0):
@@ -437,7 +425,7 @@ def calc_uvw(sdmfile, scan=0, datetime=0, radec=()):
 
     # define metadata "frame" for uvw calculation
     sdm = sdmpy.SDM(sdmfile)
-    telescopename = sdm['ExecBlock'][0]['telescopeName'].strip()
+    telescopename = str(sdm['ExecBlock'][0]['telescopeName']).strip()
     logger.debug('Found observatory name %s' % telescopename)
 
     me.doframe(me.observatory(telescopename))
@@ -446,13 +434,14 @@ def calc_uvw(sdmfile, scan=0, datetime=0, radec=()):
 
     # read antpos
     if scan != 0:
-        configid = [row.configDescriptionId for row in sdm['Main'] if scan == int(row.scanNumber)][0]
-        antidlist = [row.antennaId for row in sdm['ConfigDescription'] if configid == row.configDescriptionId][0].split(' ')[2:]
-        stationidlist = [ant.stationId for antid in antidlist for ant in sdm['Antenna'] if antid == ant.antennaId]
+        raise NotImplementedError, 'Need to port this to new sdmpy'
+#        configid = [str(row.configDescriptionId) for row in sdm['Main'] if scan == int(row.scanNumber)][0]
+#        antidlist = [row.antennaId for row in sdm['ConfigDescription'] if configid == row.configDescriptionId][0].split(' ')[2:]
+#        stationidlist = [ant.stationId for antid in antidlist for ant in sdm['Antenna'] if antid == ant.antennaId]
     else:
-        stationidlist = [ant.stationId for ant in sdm['Antenna']]
+        stationidlist = [str(ant.stationId) for ant in sdm['Antenna']]
 
-    positions = [station.position.strip().split(' ')
+    positions = [str(station.position).strip().split(' ')
                  for station in sdm['Station'] 
                  if station.stationId in stationidlist]
     x = [float(positions[i][2]) for i in range(len(positions))]
@@ -516,10 +505,10 @@ def read_sources(sdmname):
     sourcedict = {}
 
     for row in sdm['Field']:
-        src = row['fieldName'].strip()
-        sourcenum = int(row["sourceId"])
-        direction = row["referenceDir"].strip()
-        (ra,dec) = [float(val) for val in direction.strip().split(' ')[3:]]  # skip first two values in string
+        src = str(row.fieldName)
+        sourcenum = int(row.sourceId)
+        direction = str(row.referenceDir)
+        (ra,dec) = [float(val) for val in direction.split(' ')[3:]]  # skip first two values in string
 
         sourcedict[sourcenum] = {}
         sourcedict[sourcenum]['source'] = src
@@ -536,15 +525,15 @@ def read_scans(sdmfile):
     scandict = {}
 
     for scan in sdm.scans():
-        scannum = int(scan.idx)
-        intentstr = ' '.join(scan.intents)
-        startmjd = scan.bdf.startTime
-        endmjd = scan.bdf.endTime
-        nints = sdm.bdf.numIntegration
-        src = scan.source
-        interval = scan.bdf.get_integration(0).interval
-        bdfstr = scan.bdf.fname
-
+        try:
+            scannum = int(scan.idx)
+            intentstr = ' '.join(scan.intents)
+            src = scan.source
+            startmjd = scan.bdf.startTime
+            nints = scan.bdf.numIntegration
+            interval = scan.bdf.get_integration(0).interval
+            endmjd = startmjd + (nints*interval)/(24*3600)
+            bdfstr = scan.bdf.fname
 # or use bdfdir
 #        try:
 #            bdfstr = sdm['Main'][i]['dataUID'].replace(':', '_').replace('/', '_')
@@ -552,14 +541,16 @@ def read_scans(sdmfile):
 #            bdfstr = sdm['Main'][i]['dataOid'].replace(':', '_').replace('/', '_')
 #        scandict[scannum]['bdfstr'] = os.path.join(bdfdir, bdfstr)
 
-        scandict[scannum] = {}
-        scandict[scannum]['source'] = src
-        scandict[scannum]['startmjd'] = startmjd
-        scandict[scannum]['endmjd'] = startmjd + (nints*interval)/(24*3600)
-        scandict[scannum]['intent'] = intentstr
-        scandict[scannum]['duration'] = endmjd-startmjd
-        scandict[scannum]['nints'] = nints
-        scandict[scannum]['bdfstr'] = bdfstr
+            scandict[scannum] = {}
+            scandict[scannum]['source'] = src
+            scandict[scannum]['startmjd'] = startmjd
+            scandict[scannum]['endmjd'] = endmjd
+            scandict[scannum]['intent'] = intentstr
+            scandict[scannum]['duration'] = endmjd-startmjd
+            scandict[scannum]['nints'] = nints
+            scandict[scannum]['bdfstr'] = bdfstr
+        except IOError:
+            logger.warn('No BDF found for scan {0}'.format(scannum))
 
         # clear reference to nonexistent BDFs (either bad or not in standard locations)
 #        if (not os.path.exists(scandict[scannum]['bdfstr'])) or ('X1' in bdfstr):
@@ -615,11 +606,11 @@ def filter_scans(sdmfile, namefilter='', intentfilter=''):
     # find scans
     sdm = sdmpy.SDM(sdmfile)
 
-    if 'VLA' in sdm['ExecBlock'][0]['telescopeName']:
+    if 'VLA' in str(sdm['ExecBlock'][0]['telescopeName']):
         scans = [(int(scan.scanNumber), str(scan.sourceName),
                   str(scan.scanIntent))
                  for scan in sdm['Scan']]
-    elif 'GMRT' in sdm['ExecBlock'][0]['telescopeName']:
+    elif 'GMRT' in str(sdm['ExecBlock'][0]['telescopeName']):
         scans = [(int(scan.scanNumber), str(scan.sourceName),
                   str(scan.scanIntent))
                  for scan in sdm['Subscan']]
