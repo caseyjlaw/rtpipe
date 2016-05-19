@@ -64,9 +64,9 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
 
     # define scan list
     if 'bdfdir' not in d:
-        d['bdfdir'] = None
+        d['bdfdir'] = ''
 
-    scans = read_scans(d['filename'])
+    scans = read_scans(d['filename'], bdfdir=d['bdfdir'])
     sources = read_sources(d['filename'])
 #    scans, sources = sdmreader.read_metadata(d['filename'],
 #                                             scan, bdfdir=d['bdfdir'])
@@ -154,13 +154,13 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
     d['vrange'] = {}
     d['scan'] = scan
     (u, v, w) = calc_uvw(d['filename'],
-                                   d['scan'])  # default uses time at start
+                         d['scan'], bdfdir=d['bdfdir'])  # default uses time at start
     u = u * d['freq_orig'][0] * (1e9/3e8) * (-1)
     v = v * d['freq_orig'][0] * (1e9/3e8) * (-1)
     d['urange'][d['scan']] = u.max() - u.min()
     d['vrange'][d['scan']] = v.max() - v.min()
-    d['dishdiameter'] = float(sdm['Antenna'][0]
-                              .dishDiameter.strip())  # should be in meters
+    d['dishdiameter'] = float(str(sdm['Antenna'][0]
+                                  .dishDiameter).strip())  # should be in meters
     # delay beam larger than VLA field of view at all freqs
     d['uvres_full'] = np.round(d['dishdiameter']
                                / (3e-1 / d['freq'].min()) / 2).astype('int')
@@ -189,19 +189,19 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
     # hacking here to fit observatory-specific use of antenna names
     if 'VLA' in str(sdm['ExecBlock'][0]['telescopeName']):
 # find config first, then antids, then ant names
-        configid = [row.configDescriptionId for row in sdm['Main']
+        configid = [str(row.configDescriptionId) for row in sdm['Main']
                     if d['scan'] == int(row.scanNumber)][0]
-        antids = [row.antennaId for row in sdm['ConfigDescription']
+        antids = [str(row.antennaId) for row in sdm['ConfigDescription']
                   if configid == row.configDescriptionId][0].split(' ')[2:]
-        d['ants'] = [int(row.name.lstrip('ea'))
+        d['ants'] = [int(str(row.name).lstrip('ea'))
                      for antid in antids
                      for row in sdm['Antenna']
-                     if antid == row.antennaId]
+                     if antid == str(row.antennaId)]
 # Not complete. Execblock defines ants per scan, which can change.
 #        d['ants'] = [int(ant.name.lstrip('ea'))
 #                     for ant in sdm['Antenna']]
-    elif 'GMRT' in sdm['ExecBlock'][0]['telescopeName']:
-        d['ants'] = [int(ant.antennaId.split('_')[1])
+    elif 'GMRT' in str(sdm['ExecBlock'][0]['telescopeName']):
+        d['ants'] = [int(str(ant.antennaId).split('_')[1])
                      for ant in sdm['Antenna']]
 
     # remove unwanted ants
@@ -223,11 +223,11 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
         interval = float(scan.interval)
         nints = int(scan.numIntegration)
         # get inttime in seconds
-        if 'VLA' in sdm['ExecBlock'][0]['telescopeName']:
+        if 'VLA' in str(sdm['ExecBlock'][0]['telescopeName']):
             # VLA uses interval as scan duration
             inttime = interval/nints
             scannum = int(scan.scanNumber)
-        elif 'GMRT' in sdm['ExecBlock'][0]['telescopeName']:
+        elif 'GMRT' in str(sdm['ExecBlock'][0]['telescopeName']):
             # GMRT uses interval as the integration duration
             inttime = interval
             scannum = int(scan.subscanNumber)
@@ -237,9 +237,9 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
 
     # define pols
     d['pols_orig'] = [pol
-                      for pol in (sdm['Polarization'][0]
-                                  .corrType.strip()
-                                  .split(' '))
+                      for pol in (str(sdm['Polarization'][0]
+                                      .corrType).strip()
+                                      .split(' '))
                       if pol in ['XX', 'YY', 'XY', 'YX',
                                  'RR', 'LL', 'RL', 'LR']]
     d['npol_orig'] = int(sdm['Polarization'][0].numCorr)
@@ -308,10 +308,10 @@ def read_bdf_segment(d, segment=-1):
     if d['applyonlineflags'] and segment > -1:
         sdm = sdmpy.SDM(d['filename'])
 
-        allantdict = dict(zip([ant.antennaId for ant in sdm['Antenna']],
-                           [int(ant.name.lstrip('ea'))
-                            for ant in sdm['Antenna']]))
-        antflags = [(allantdict[flag.antennaId.split(' ')[2]],
+        allantdict = dict(zip([str(ant.antennaId) for ant in sdm['Antenna']],
+                              [int(str(ant.name).lstrip('ea'))
+                               for ant in sdm['Antenna']]))
+        antflags = [(allantdict[str(flag.antennaId).split(' ')[2]],
                      int(flag.startTime)/(1e9*24*3600),
                      int(flag.endTime)/(1e9*24*3600))
                     for flag in sdm['Flag']]  # assumes one flag per entry
@@ -331,7 +331,7 @@ def read_bdf_segment(d, segment=-1):
         logger.info('Applied online flags to %d ints.'
                     % (len(set(badints_cum))))
     elif segment == -1:
-        logger.info('Online flags not yet supported without segments.')
+        logger.warn('Online flags not yet supported without segments.')
     else:
         logger.info('Not applying online flags.')
 
@@ -344,7 +344,7 @@ def read_bdf_segment(d, segment=-1):
     # !! not a perfect test of permutability!!
     if len(dfreqneg) <= 1:
         if len(dfreqneg) == 1:
-            logger.warn('Rolling spw frequencies to increasing order: %s'
+            logger.info('Rolling spw frequencies to increasing order: %s'
                         % str(d['spw_reffreq']))
             rollch = np.sum([d['spw_nchan'][ss]
                              for ss in range(np.where(dfreq < 0)[0][0]+1)])
@@ -381,18 +381,19 @@ def read_bdf_segment(d, segment=-1):
     return data.take(d['chans'], axis=2).take(takepol, axis=3)
 
 
-def calc_uvw(sdmfile, scan=0, datetime=0, radec=()):
+def calc_uvw(sdmfile, scan=0, datetime=0, radec=(), bdfdir=''):
     """ Calculates and returns uvw in meters for a given SDM, time, and pointing direction.
     sdmfile is path to sdm directory that includes "Station.xml" file.
     scan is scan number defined by observatory.
     datetime is time (as string) to calculate uvw (format: '2014/09/03/08:33:04.20')
     radec is (ra,dec) as tuple in units of degrees (format: (180., +45.))
+    bdfdir is path to bdfs (optional, for pre-archive SDMs)
     """
 
     assert os.path.exists(os.path.join(sdmfile, 'Station.xml')), 'sdmfile %s has no Station.xml file. Not an SDM?' % sdmfile
 
     # get scan info
-    scans = read_scans(sdmfile)
+    scans = read_scans(sdmfile, bdfdir=bdfdir)
     sources = read_sources(sdmfile)
 #    scans, sources = read_metadata(sdmfile, scan)
 
@@ -434,10 +435,9 @@ def calc_uvw(sdmfile, scan=0, datetime=0, radec=()):
 
     # read antpos
     if scan != 0:
-        raise NotImplementedError, 'Need to port this to new sdmpy'
-#        configid = [str(row.configDescriptionId) for row in sdm['Main'] if scan == int(row.scanNumber)][0]
-#        antidlist = [row.antennaId for row in sdm['ConfigDescription'] if configid == row.configDescriptionId][0].split(' ')[2:]
-#        stationidlist = [ant.stationId for antid in antidlist for ant in sdm['Antenna'] if antid == ant.antennaId]
+        configid = [str(row.configDescriptionId) for row in sdm['Main'] if scan == int(row.scanNumber)][0]
+        antidlist = [str(row.antennaId) for row in sdm['ConfigDescription'] if configid == str(row.configDescriptionId)][0].split(' ')[2:]
+        stationidlist = [ant.stationId for antid in antidlist for ant in sdm['Antenna'] if antid == str(ant.antennaId)]
     else:
         stationidlist = [str(ant.stationId) for ant in sdm['Antenna']]
 
@@ -482,12 +482,12 @@ def get_uvw_segment(d, segment=-1):
         t1 = d['segmenttimes'][segment][1]
         datetime = qa.time(qa.quantity((t1+t0)/2, 'd'),
                            form=['ymdhms'], prec=9)[0]
-        logger.info('Calculating uvw for segment %d' % (segment))
+        logger.debug('Calculating uvw for segment %d' % (segment))
     else:
         datetime = 0
 
     (u, v, w) = calc_uvw(d['filename'], d['scan'],
-                                   datetime=datetime)
+                         datetime=datetime, bdfdir=d['bdfdir'])
 
     # cast to units of lambda at first channel.
     # -1 keeps consistent with ms reading convention
@@ -518,44 +518,47 @@ def read_sources(sdmname):
     return sourcedict
 
 
-def read_scans(sdmfile):
+def read_scans(sdmfile, bdfdir=''):
     """ Use sdmpy to get all scans and info needed for rtpipe as dict """
 
-    sdm = sdmpy.SDM(sdmfile)
+    sdm = sdmpy.SDM(sdmfile, bdfdir)
     scandict = {}
+    skippedscans = []
 
     for scan in sdm.scans():
+        scannum = int(scan.idx)
+        scandict[scannum] = {}
+
+        intentstr = ' '.join(scan.intents)
+        src = scan.source
+
+        scandict[scannum]['source'] = src
+        scandict[scannum]['intent'] = intentstr
+
+        # bdf specific properties
         try:
-            scannum = int(scan.idx)
-            intentstr = ' '.join(scan.intents)
-            src = scan.source
             startmjd = scan.bdf.startTime
             nints = scan.bdf.numIntegration
             interval = scan.bdf.get_integration(0).interval
             endmjd = startmjd + (nints*interval)/(24*3600)
             bdfstr = scan.bdf.fname
-# or use bdfdir
-#        try:
-#            bdfstr = sdm['Main'][i]['dataUID'].replace(':', '_').replace('/', '_')
-#        except KeyError:
-#            bdfstr = sdm['Main'][i]['dataOid'].replace(':', '_').replace('/', '_')
-#        scandict[scannum]['bdfstr'] = os.path.join(bdfdir, bdfstr)
 
-            scandict[scannum] = {}
-            scandict[scannum]['source'] = src
             scandict[scannum]['startmjd'] = startmjd
             scandict[scannum]['endmjd'] = endmjd
-            scandict[scannum]['intent'] = intentstr
             scandict[scannum]['duration'] = endmjd-startmjd
             scandict[scannum]['nints'] = nints
             scandict[scannum]['bdfstr'] = bdfstr
-        except IOError:
-            logger.warn('No BDF found for scan {0}'.format(scannum))
 
-        # clear reference to nonexistent BDFs (either bad or not in standard locations)
-#        if (not os.path.exists(scandict[scannum]['bdfstr'])) or ('X1' in bdfstr):
-#            scandict[scannum]['bdfstr'] = None
-#            logger.debug('No bdf found scan %d of %s' % (scannum, sdmfile) )
+            # clear reference to nonexistent BDFs (either bad or not in standard locations)
+            if (not os.path.exists(scandict[scannum]['bdfstr'])) or ('X1' in bdfstr):
+                scandict[scannum]['bdfstr'] = None
+                logger.debug('Invalid bdf for %d of %s' % (scannum, sdmfile) )
+
+        except IOError:
+            skippedscans.append(scannum)
+
+    logger.warn('No BDF found for scans {0}'.format(skippedscans))
+
 
     return scandict
 
