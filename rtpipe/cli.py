@@ -1,6 +1,7 @@
 import rtpipe.RT as rt
 import rtpipe.parsecands as pc
-import click, sdmreader, os
+import rtpipe.parsesdm as ps
+import click, os, glob
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logging.captureWarnings(True)
@@ -22,26 +23,11 @@ def read(filename, paramfile, bdfdir, scan):
 
     filename = os.path.abspath(filename)
 
-    sc, sr = sdmreader.read_metadata(filename, bdfdir=bdfdir)
+    scans = ps.read_scans(filename, bdfdir=bdfdir)
     logger.info('Scans, Target names:')
-    logger.info('%s' % str([(ss, sc[ss]['source']) for ss in sc]))
+    logger.info('%s' % str([(ss, scans[ss]['source']) for ss in scans]))
     logger.info('Example pipeline:')
     state = rt.set_pipeline(filename, scan, paramfile=paramfile, logfile=False)
-
-
-@cli.command()
-@click.argument('filename')
-@click.option('--snrmin', default=0.)
-@click.option('--snrmax', default=999.)
-def mergeall(filename, snrmin=0, snrmax=999):
-    """ Merge cands/noise files over all scans """
-
-    filename = os.path.abspath(filename)
-
-    sc, sr = sdmreader.read_metadata(filename)
-    for scan in sc:
-        pc.merge_segments(filename, scan)
-    pc.merge_scans(os.path.dirname(filename), os.path.basename(filename), sc.keys(), snrmin=snrmin, snrmax=snrmax)
 
 
 @cli.command()
@@ -49,7 +35,8 @@ def mergeall(filename, snrmin=0, snrmax=999):
 @click.option('--scan', type=int, default=0)
 @click.option('--paramfile', type=str, default='rtpipe_cbe.conf')
 @click.option('--logfile', type=bool, default=False)
-def searchone(filename, scan, paramfile, logfile):
+@click.option('--bdfdir', default='')
+def searchone(filename, scan, paramfile, logfile, bdfdir):
     """ Searches one scan of filename
 
     filename is name of local sdm ('filename.GN' expected locally).
@@ -68,12 +55,45 @@ def searchone(filename, scan, paramfile, logfile):
         pc.merge_segments(filename, scan)
         pc.merge_scans(os.path.dirname(filename), os.path.basename(filename), sc.keys())
     else:
-        sc,sr = sdmreader.read_metadata(filename)
-        print('Scans, Target names:')
-        print('%s' % str([(ss, sc[ss]['source']) for ss in sc]))
-        print('Example pipeline:')
-        state = rt.set_pipeline(filename, sc.popitem()[0], paramfile=paramfile,
+        scans = ps.read_scans(filename, bdfdir=bdfdir)
+        logger.info('Scans, Target names:')
+        logger.info('%s' % str([(ss, scans[ss]['source']) for ss in scans]))
+        logger.info('Example pipeline:')
+        state = rt.set_pipeline(filename, scans.popitem()[0], paramfile=paramfile,
                                 fileroot=os.path.basename(filename), logfile=logfile)
+
+
+@cli.command()
+@click.argument('filename')
+@click.option('--snrmin', default=0.)
+@click.option('--snrmax', default=999.)
+@click.option('--bdfdir', default='')
+def mergeall(filename, snrmin, snrmax, bdfdir):
+    """ Merge cands/noise files over all scans
+
+    Tries to find scans from filename, but will fall back to finding relevant files if it does not exist.
+    """
+
+    filename = os.path.abspath(filename)
+    bignumber = 500
+
+    if os.path.exists(filename):
+        scans = ps.read_scans(filename, bdfdir=bdfdir)
+        scanlist = sorted(scans.keys())
+    else:
+        logger.warn('Could not find file {0}. Estimating scans from available files.'.format(filename))
+        filelist = glob.glob(os.path.join(os.path.dirname(filename), '*{0}_sc*pkl'.format(os.path.basename(filename))))
+        try:
+            scanlist = sorted([int(fn.rstrip('.pkl').split('_sc')[1].split('seg')[0]) for fn in filelist])
+        except IndexError:
+            logger.warn('Could not parse filenames for scans. Looking over big range.')
+            scanlist = range(bignumber)
+
+    logger.info('Merging over scans {0}'.format(scanlist))
+
+    for scan in scanlist:
+        pc.merge_segments(filename, scan)
+    pc.merge_scans(os.path.dirname(filename), os.path.basename(filename), scanlist, snrmin=snrmin, snrmax=snrmax)
 
 
 @cli.command()

@@ -602,7 +602,6 @@ def sdm2ms(sdmfile, msfile, scan, inttime='0'):
 def filter_scans(sdmfile, namefilter='', intentfilter=''):
     """ Parses xml in sdmfile to get scan info for those containing
     'namefilter' and 'intentfilter'
-    mostly replaced by sdmreader.read_metadata.
     """
 
     goodscans = {}
