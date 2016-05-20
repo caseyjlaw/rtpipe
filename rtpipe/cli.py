@@ -84,7 +84,7 @@ def mergeall(filename, snrmin, snrmax, bdfdir):
         logger.warn('Could not find file {0}. Estimating scans from available files.'.format(filename))
         filelist = glob.glob(os.path.join(os.path.dirname(filename), '*{0}_sc*pkl'.format(os.path.basename(filename))))
         try:
-            scanlist = sorted([int(fn.rstrip('.pkl').split('_sc')[1].split('seg')[0]) for fn in filelist])
+            scanlist = sorted(set([int(fn.rstrip('.pkl').split('_sc')[1].split('seg')[0]) for fn in filelist]))
         except IndexError:
             logger.warn('Could not parse filenames for scans. Looking over big range.')
             scanlist = range(bignumber)
