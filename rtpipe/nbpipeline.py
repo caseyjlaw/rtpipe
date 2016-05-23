@@ -36,7 +36,8 @@ class state:
                 pickle.dump(obj, fp)
             elif format == 'text':
                 fp.write(str(obj))
-
+            else:
+                print('Format {0} not recognized. Please choose either pickle or text.'.format(format))
 
     def load(self, label):
         """ Load obj with give label from hidden state directory """
