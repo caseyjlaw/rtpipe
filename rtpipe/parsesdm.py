@@ -16,7 +16,6 @@ try:
 except ImportError:
     import pwkit.environments.casa.tasks as tasklib
     import pwkit.environments.casa.util as casautil
-import sdmreader
 import sdmpy
 import rtpipe.parseparams as pp
 from rtlib_cython import calc_blarr
@@ -68,8 +67,6 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
 
     scans = read_scans(d['filename'], bdfdir=d['bdfdir'])
     sources = read_sources(d['filename'])
-#    scans, sources = sdmreader.read_metadata(d['filename'],
-#                                             scan, bdfdir=d['bdfdir'])
 
     # define source props
     d['source'] = scans[scan]['source']
@@ -265,6 +262,42 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
     return d
 
 
+def read_bdf(sdmfile, scannum, nskip=0, readints=0, bdfdir=''):
+    """ Uses sdmpy to read a given range of integrations from sdm of given scan.
+
+    readints=0 will read all of bdf (skipping nskip).
+    """
+
+    assert os.path.exists(sdmfile), 'sdmfile %s does not exist' % sdmfile
+
+    sdm = sdmpy.SDM(sdmfile, bdfdir=bdfdir)
+    scan = sdm.scan(scannum)
+    assert scan.bdf.fname, 'bdfstr not defined for scan %d' % scannum
+
+    if readints == 0:
+        readints = scan.bdf.numIntegration - nskip
+
+    logger.info('Reading %d ints starting at int %d' % (readints, nskip))
+    chans = scan.numchans
+    nchans = sum(chans)
+    pols = sdmpy.scan.sdmarray(sdm['Polarization'][0].corrType)
+    npols = len(pols) 
+    data = np.empty( (readints, scan.bdf.numBaseline, nchans, npols), dtype='complex64', order='C')
+
+    # read data
+    for i in xrange(readints):
+        integ = scan.bdf.get_integration(i+nskip)
+        count = 0
+        for bb in integ.basebands:
+            for spwnum in range(len(integ.spws[bb])):
+                ch0 = sum(chans[:count])
+                ch1 = sum(chans[:count+1])
+                data[i,:,ch0:ch1,:] = integ.get_data(bb, spwnum)[:,0,:,:]  # 0 for nBin (not used here)
+                count += 1
+
+    return data
+
+
 def read_bdf_segment(d, segment=-1):
     """ Reads bdf (sdm) format data into numpy array for realtime pipeline.
 
@@ -297,11 +330,8 @@ def read_bdf_segment(d, segment=-1):
     # read (all) data
     if 'bdfdir' not in d:
         d['bdfdir'] = None
-    data = (sdmreader.read_bdf(d['filename'], d['scan'],
-                               nskip=nskip, readints=readints,
-                               writebdfpkl=d['writebdfpkl'],
-                               bdfdir=d['bdfdir'])
-            .astype('complex64'))
+
+    data = read_bdf(d['filename'], d['scan'], nskip=nskip, readints=readints, bdfdir=d['bdfdir']).astype('complex64')
 
     # read Flag.xml and apply flags for given ant/time range
     # currently only implemented for segmented data
