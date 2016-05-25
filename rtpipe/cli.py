@@ -45,6 +45,7 @@ def searchone(filename, scan, paramfile, logfile, bdfdir):
     """
 
     filename = os.path.abspath(filename)
+    scans = ps.read_scans(filename, bdfdir=bdfdir)
 
     if scan != 0:
         d = rt.set_pipeline(filename, scan, paramfile=paramfile,
@@ -53,9 +54,8 @@ def searchone(filename, scan, paramfile, logfile, bdfdir):
 
         # clean up and merge files
         pc.merge_segments(filename, scan)
-        pc.merge_scans(os.path.dirname(filename), os.path.basename(filename), sc.keys())
+        pc.merge_scans(os.path.dirname(filename), os.path.basename(filename), scans.keys())
     else:
-        scans = ps.read_scans(filename, bdfdir=bdfdir)
         logger.info('Scans, Target names:')
         logger.info('%s' % str([(ss, scans[ss]['source']) for ss in scans]))
         logger.info('Example pipeline:')
