@@ -8,10 +8,9 @@ Requirements
 
 * Python 2.7
 * Standard scientific Python stuff: numpy, scipy, matplotlib, multiprocessing, bokeh
-* [pwkit](http://github.com/pkgw/pwkit) (for access to CASA libraries; best with anaconda installer)
+* [pwkit](http://github.com/pkgw/pwkit) (for access to CASA libraries)
 * Cython (tested with 0.19.1)
-* [sdmreader](http://github.com/caseyjlaw/sdmreader) (for reading SDM format data)
-* [sdmpy](http://github.com/demorest/sdmreader) (for reading SDM format data)
+* [sdmpy](http://github.com/caseyjlaw/sdmpy) (for reading SDM format data)
 * [pyFFTW](https://pypi.python.org/pypi/pyFFTW) (accelerated FFTs; tested with 0.92)
 
 Install
@@ -19,7 +18,7 @@ Install
     conda install numpy scipy pwkit casa-tools casa-python casa-data jupyter bokeh cython matplotlib
     pip install rtpipe
 
-pwkit is needed to access CASA libraries. If using conda, can also install pwkit with `conda install -c pkgw casa-python casa-data` and then simply `pip install rtpipe`. Alternatively, one can build pwkit and environment variables set like so to see libraries of an existing CASA installation:
+pwkit is needed to access CASA libraries and so the anaconda installer is thus required. Alternatively, one can build pwkit and environment variables set like so to see libraries of an existing CASA installation:
 
     setenv CASA_HOME /home/casa/packages/RHEL6/stable/current
     setenv PYTHONPATH ${PYTHONPATH}:${CASA_HOME}/lib/python2.7

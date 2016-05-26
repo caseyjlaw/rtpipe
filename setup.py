@@ -13,7 +13,7 @@ setup(
     url = 'http://github.com/caseyjlaw/rtpipe',
     data_files = [ ('notebooks', glob.glob('notebooks/*')) ],
     packages = find_packages(),        # get all python scripts in realtime
-    install_requires=['cython', 'sdmpy', 'sdmreader', 'scipy', 'pwkit', 'pyfftw', 'numpy', 'click', 'matplotlib', 'requests'],
+    install_requires=['cython', 'sdmpy>=1.3', 'scipy', 'pwkit', 'pyfftw', 'numpy', 'click', 'matplotlib', 'requests'],
     cmdclass = {'build_ext': build_ext},
     ext_modules = ext_modules,
     entry_points='''
