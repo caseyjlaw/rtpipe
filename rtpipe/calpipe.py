@@ -4,7 +4,7 @@ except ImportError:
     import pwkit.environments.casa.tasks as tl
 import rtpipe.parsesdm as ps
 import os, string, glob
-import sdmreader, sdmpy
+import sdmpy
 from collections import OrderedDict
 
 class pipe(object):
@@ -21,7 +21,8 @@ class pipe(object):
         else:
             self.workdir = workdir
 
-        self.scans, self.sources = sdmreader.read_metadata(sdmfile)
+        self.scans = ps.read_scans(sdmfile)
+        self.sources = ps.read_sources(sdmfile)
         self.gainscans = [sc for sc in self.scans.keys() if 'PHASE' in self.scans[sc]['intent']]   # get all cal fields
         self.bpscans = [sc for sc in self.scans.keys() if 'BANDPASS' in self.scans[sc]['intent']]   # get all cal fields
         self.sdm = sdmpy.SDM(self.sdmfile)

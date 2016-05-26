@@ -364,10 +364,10 @@ def plotnoise(noisepkl, mergepkl, plot_width=950, plot_height=400):
     ndist, imstd, flagfrac = plotnoisedist(noisepkl, plot_width=plot_width/2, plot_height=plot_height)
     fluxscale = calcfluxscale(d, imstd, flagfrac)
     logger.info('Median image noise is {0:.3} Jy.'.format(fluxscale*imstd))
-    ncum = plotnoisecum(noisepkl, fluxscale=fluxscale, plot_width=plot_width/2, plot_height=plot_height)
+    ncum, imnoise = plotnoisecum(noisepkl, fluxscale=fluxscale, plot_width=plot_width/2, plot_height=plot_height)
 
-    hndl = show(HBox(ndist, ncum, width=plot_width, height=plot_height))
-    return hndl
+    hndle = show(HBox(ndist, ncum, width=plot_width, height=plot_height))
+    return imnoise
 
 
 def plotnoisecum(noisepkl, fluxscale=1, plot_width=450, plot_height=400):
@@ -375,6 +375,7 @@ def plotnoisecum(noisepkl, fluxscale=1, plot_width=450, plot_height=400):
 
     noisepkl is standard noise pickle file.
     fluxscale is scaling applied by gain calibrator. telcal solutions have fluxscale=1.
+    also returns corrected imnoise values if non-unity fluxscale provided
     """
 
     # noise histogram
@@ -386,8 +387,10 @@ def plotnoisecum(noisepkl, fluxscale=1, plot_width=450, plot_height=400):
                        y_axis_label='Cumulative fraction', tools='pan, wheel_zoom, reset')
     noiseplot.line(imnoise, frac)
 
-    return noiseplot
-
+    if fluxscale != 1:
+        return noiseplot, imnoise
+    else:
+        return noiseplot
 
 def plotnoisedist(noisepkl, plot_width=450, plot_height=400):
     """ """
