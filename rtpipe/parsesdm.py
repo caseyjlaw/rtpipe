@@ -587,8 +587,8 @@ def read_scans(sdmfile, bdfdir=''):
         except IOError:
             skippedscans.append(scannum)
 
-    logger.warn('No BDF found for scans {0}'.format(skippedscans))
-
+    if skippedscans:
+        logger.warn('No BDF found for scans {0}'.format(skippedscans))
 
     return scandict
 
