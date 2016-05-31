@@ -24,6 +24,8 @@ def read_candidates(candsfile, snrmin=0, snrmax=999, returnstate=False):
     """
 
     # read in pickle file of candidates
+    assert os.path.exists(candsfile)
+
     try:
         with open(candsfile, 'rb') as pkl:
             d = pickle.load(pkl)
