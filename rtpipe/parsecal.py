@@ -608,6 +608,7 @@ class telcal_sol():
         chan_bandnum = [range(nch_tot*i/len(skyfreqs), nch_tot*(i+1)/len(skyfreqs)) for i in range(len(skyfreqs))]  # divide chans by number of spw in solution
         self.logger.info('Solutions for %d spw: (%s)' % (len(skyfreqs), skyfreqs))
 
+        gains = n.zeros_like(data)
         for j in range(len(skyfreqs)):
             skyfreq = skyfreqs[j]
             chans = chan_bandnum[j]
@@ -623,9 +624,11 @@ class telcal_sol():
                 for pol in self.polind:
                     # apply gain correction
                     invg1g2 = self.calcgain(ant1, ant2, skyfreq, pol)
-                    data[:,i,chans,pol-self.polind[0]] = data[:,i,chans,pol-self.polind[0]] * invg1g2    # hack: lousy data pol indexing
+                    gains[:,i,chans,pol-self.polind[0]] = invg1g2
 
                     # apply delay correction
                     d1d2 = self.calcdelay(ant1, ant2, skyfreq, pol)
                     delayrot = 2*n.pi*(d1d2[0] * 1e-9) * relfreq      # phase to rotate across band
-                    data[:,i,chans,pol-self.polind[0]] = data[:,i,chans,pol-self.polind[0]] * n.exp(-1j*delayrot[None, None, :])     # do rotation
+                    gains[:,i,chans,pol-self.polind[0]] = gains[:,i,chans,pol-self.polind[0]] * n.exp(-1j*delayrot[None, None, :])
+
+        return data * gains
