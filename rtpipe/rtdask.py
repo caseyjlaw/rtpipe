@@ -6,6 +6,7 @@ import rtlib_cython as rtlib
 from functools import partial
 import logging
 import numpy as np
+from numba import jit
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logging.captureWarnings(True)
@@ -26,16 +27,23 @@ def dataprep(d, segment):
     return data
 
 
+def calcchunk(length, blocksize):
+    """ Calculate chunk tuple given a dimension length and blocksize"""
+
+    ext = np.linspace(0, length, blocksize+1, dtype=int)
+    chunks = tuple([(ext[i+1] - ext[i]) for i in range(len(ext)-1) ])
+    return chunks
+
+
 def read_segment(d, segment, blocksize=10):
     """ Read segment of data and chunk it for efficiency of later algorithms """
 
     data = ps.read_bdf_segment(d, segment)
-    ext0 = np.linspace(0, data.shape[0], blocksize+1, dtype=int)
-    ext1 = np.linspace(0, data.shape[1], blocksize+1, dtype=int)
-    ext2 = np.linspace(0, data.shape[2], blocksize+1, dtype=int)
+    chunks0 = calcchunk(data.shape[0], blocksize)
+    chunks1 = calcchunk(data.shape[1], blocksize)
+    chunks2 = calcchunk(data.shape[2], blocksize)
 
-    calcchunk = lambda ext: tuple([(ext[i+1] - ext[i]) for i in range(len(ext)-1) ])
-    chunks = (calcchunk(ext0), calcchunk(ext1), calcchunk(ext2), (1,1))
+    chunks = (chunks0, chunks1, chunks2, (1,1))
 
     return da.from_array(data, chunks=chunks)
 
@@ -49,7 +57,40 @@ def calibrate(data, d, segment):
 
 
 def meantsub(data):
-    return data - data.mean(axis=0)  # includes zeros
+    return data - mean0(data, axis=0)
+
+
+@jit
+def count0(data, axis=0):
+    """ Numba-accelerated count of non-zero entries """
+
+    total = 0
+    nonzeros = arr2.all(axis=0)
+    for ?
+        if nonzeros[i,j,k]:
+            total += data[i,j,k,axis?]
+    
+
+@jit
+def mean0(data, axis=0):
+    """ Numba-accelerated mean over an axis ignoring zeros """
+
+    mean = data.sum(axis=axis)
+    total = count0(data, axis=axis)
+
+    return mean/total
+
+
+@jit
+def std0(data, axis=0):
+    """ Numba-accelerated mean over an axis ignoring zeros """
+
+    # or make a dask graph?
+
+    std = data**2.sum(axis=axis)
+    total = count0(data, axis=axis)
+
+    return (std/total)**(1/2.)
 
 
 def search():
