@@ -7,6 +7,7 @@ from functools import partial
 import logging
 import numpy as np
 from numba import jit
+#from statsmodels.robust.scale import mad
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logging.captureWarnings(True)
@@ -14,13 +15,15 @@ logger = logging.getLogger('rtpipe')
 
 
 def dataprep(d, segment):
+    """ Wraps major data preparation functions """
+
     data = read_segment(d, segment)
 
-    (u_read, v_read, w_read) = ps.get_uvw_segment(d, segment)
+#    (u_read, v_read, w_read) = ps.get_uvw_segment(d, segment)
 
-    data = calibrate(data, d, segment)
+    data = calibrate(d, data)
 
-#    rt.dataflag(d, data)  # can't use cython
+    data = flagdata(d, data)
 
     data = meantsub(data) # does not ignore zeros yet
 
@@ -38,7 +41,9 @@ def calcchunk(length, blocksize):
 def read_segment(d, segment, blocksize=10):
     """ Read segment of data and chunk it for efficiency of later algorithms """
 
-    data = ps.read_bdf_segment(d, segment)
+    d['segment'] = segment
+
+    data = ps.read_bdf_segment(d, d['segment'])
     chunks0 = calcchunk(data.shape[0], blocksize)
     chunks1 = calcchunk(data.shape[1], blocksize)
     chunks2 = calcchunk(data.shape[2], blocksize)
@@ -48,16 +53,41 @@ def read_segment(d, segment, blocksize=10):
     return da.from_array(data, chunks=chunks)
 
 
-def calibrate(data, d, segment):
+def calibrate(d, data):
     sols = pc.telcal_sol(d['gainfile'])   # parse gainfile
-    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, rtlib.calc_blarr(d), calname='', pols=d['pols'], radec=(), spwind=[])
+    sols.set_selection(d['segmenttimes'][d['segment']].mean(), d['freq']*1e9, rtlib.calc_blarr(d), calname='', pols=d['pols'], radec=(), spwind=[])
     data2 = sols.apply(data)
 
     return data2
 
+def mad(data):
+    """ Flattens data and calculates median absolute deviation """
+
+    return np.median(np.absolute(data - np.median(data)))
+
+
+@jit
+def flagdata(d, data, thresh=5):
+    """ Runs flagging algorithms defined in d['flaglist'] """
+
+    # blstd
+    blstd0 = data[...,0].std(axis=1)
+    blstd1 = data[...,1].std(axis=1)
+    madblstd0 = mad(blstd0)
+    madblstd1 = mad(blstd1)
+
+    for i in xrange(data.shape[0]):
+        for j in xrange(data.shape[2]):
+            if data[i,:,j,0].std() > thresh*madblstd0:
+                data[i,:,j,0] = 0j
+            if data[i,:,j,1].std() > thresh*madblstd1:
+                data[i,:,j,1] = 0j
+
+    return data
+
 
 def meantsub(data):
-    return data - mean0(data, axis=0)
+    return data - np.mean(data, axis=0) # or mean0(data, axis=0)
 
 
 @jit
@@ -65,10 +95,10 @@ def count0(data, axis=0):
     """ Numba-accelerated count of non-zero entries """
 
     total = 0
-    nonzeros = arr2.all(axis=0)
-    for ?
-        if nonzeros[i,j,k]:
-            total += data[i,j,k,axis?]
+    nonzeros = np.nonzero(data)
+#    for ?
+#        if nonzeros[i,j,k]:
+#            total += data[i,j,k,axis?]
     
 
 @jit
@@ -76,7 +106,8 @@ def mean0(data, axis=0):
     """ Numba-accelerated mean over an axis ignoring zeros """
 
     mean = data.sum(axis=axis)
-    total = count0(data, axis=axis)
+#    total = count0(data, axis=axis)
+    total = data.shape[axis]
 
     return mean/total
 
@@ -87,10 +118,11 @@ def std0(data, axis=0):
 
     # or make a dask graph?
 
-    std = data**2.sum(axis=axis)
-    total = count0(data, axis=axis)
+    squares = (data**2).sum(axis=axis)
+#    total = count0(data, axis=axis)
+    total = data.shape[axis]
 
-    return (std/total)**(1/2.)
+    return (squares/total)**(1/2.)
 
 
 def search():
