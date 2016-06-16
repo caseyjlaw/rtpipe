@@ -1,3 +1,6 @@
+import multiprocessing as mp
+import multiprocessing.sharedctypes as mps
+from contextlib import closing
 import numpy as np
 from numba import jit, complex64, float32, int32, boolean
 import logging
@@ -5,20 +8,117 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # can choose between numpy and pyfftw
-try:
-    import pyfftw
-    import pyfftw.interfaces.numpy_fft as fft
-except ImportError:
-    from numpy import fft
+import pyfftw
+
+def makedatamem(shape=(100,351,256,2)):
+    data_mem = mps.Array(mps.ctypes.c_float, 2*shape[0]*shape[1]*shape[2]*shape[3])
+    data = numpyview(data_mem, 'complex64', shape)
+    data.real[:] = np.random.normal(size=shape)
+    data.imag[:] = np.random.normal(size=shape)
+    return data_mem
 
 
-# must flatten?!
-@jit 
+@jit(nopython=True, nogil=True)
+def std1d(data):
+    """ Takes 1d input data and measures std while ignoring zeros"""
+
+    mn = 0
+    nonzero = 0
+    for da in data:
+        mn += da
+        if da != 0j:
+            nonzero += 1
+
+    if nonzero:
+        mn /= nonzero
+    else:
+        return 0j
+
+    sq = 0
+    for da in data:
+        sq += np.abs(da-mn)**2
+
+    return np.sqrt(sq/nonzero)
+
+
+@jit(nopython=True, nogil=True)
+def blstd4d(data):
+    """ Takes 4d input data and measures std while ignoring zeros"""
+
+    nints, nbl, nch, npol = data.shape
+    output = np.zeros(shape=(nints, nch, npol))
+    for i in xrange(nints):
+        for j in xrange(nch):
+            for k in xrange(npol):
+                mn = 0
+                nonzero = 0
+                for bl in data[i,:,j,k]:
+                    mn += bl
+                    if bl != 0j:
+                        nonzero += 1
+
+                if nonzero:
+                    mn /= nonzero
+                    sq = 0
+                    for bl in data[i,:,j,k]:
+                        sq += np.abs(bl-mn)**2
+
+                    output[i,j,k] = np.sqrt(sq/nonzero)
+                else:
+                    output[i,j,k] = 0.
+
+    return output
+
+
+@jit(nopython=True, nogil=True)
+def blstd3d(data):
+    """ Takes 3d input data and measures std while ignoring zeros"""
+
+    nbl, nch, npol = data.shape
+    output = np.zeros(shape=(nch, npol))
+    for j in xrange(nch):
+        for k in xrange(npol):
+            mn = 0
+            nonzero = 0
+            for bl in data[:,j,k]:
+                mn += bl
+                if bl != 0j:
+                    nonzero += 1
+
+            if nonzero:
+                mn /= nonzero
+                sq = 0
+                for bl in data[:,j,k]:
+                    sq += np.abs(bl-mn)**2
+
+                output[j,k] = np.sqrt(sq/nonzero)
+            else:
+                output[j,k] = 0.
+
+    return output
+
+
+@jit(nopython=True, nogil=True)
 def flag_calcmad(data):
-    """ Calculate median absolute deviation of data array """
+    """ Calculate median absolute deviation of 1d array """
 
-    absdev = np.abs(data - np.median(data))
-    return np.median(absdev)
+    return np.median(np.abs(data - np.median(data)))
+
+
+def numpyview(arr, datatype, shape):
+    """ Takes mp shared mp.Array and returns numpy array with given shape.
+    """
+
+    return np.frombuffer(arr.get_obj(),
+                         dtype=np.dtype(datatype)).view(np.dtype(datatype)).reshape(shape)
+
+
+def initdata(arr_mem):
+    """ Share numpy array arr via global data_mem. Must be inhereted, not passed as an argument """
+
+    global data_mem
+    data_mem = arr_mem
+
 
 
 # @jit
