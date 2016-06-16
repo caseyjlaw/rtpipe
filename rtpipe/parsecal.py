@@ -1,10 +1,12 @@
-import numpy as n
+import numpy as np
 import os, glob, sys
 try:
     import casautil
 except ImportError:
     import pwkit.environments.casa.util as casautil
 import logging, logging.config
+from numba import jit
+
 
 # set up
 tb = casautil.tools.table()
@@ -43,11 +45,11 @@ class casa_sol():
         tb.close()
         tb.open(os.path.join(gainfile, 'ANTENNA'))
         antname = tb.getcol('NAME')   # ant number in order written to gain file
-        antnum = n.array([int(antname[i][2:]) for i in range(len(antname))])
+        antnum = np.array([int(antname[i][2:]) for i in range(len(antname))])
         tb.close()
         tb.open(os.path.join(gainfile, 'FIELD'))
         caldir = tb.getcol('PHASE_DIR')   # shape = (2 dirs, 1?, n sources)
-        calra = n.mod(caldir[0,0,:], 2*n.pi)
+        calra = np.mod(caldir[0,0,:], 2*np.pi)
         caldec = caldir[1,0,:]
         self.radec = zip(calra, caldec)
 
@@ -79,65 +81,65 @@ class casa_sol():
         # ifid1L = specname[1][9] + '-' + specname[1][10]       # one value
 
         # # paste R,L end to end, so first loop over time, then spw, then pol
-        # mjd = n.concatenate( (time, time), axis=0)
+        # mjd = np.concatenate( (time, time), axis=0)
         # ifid = [ifid0R]*(nsol/2) + [ifid1R]*(nsol/2) + [ifid0L]*(nsol/2) + [ifid1L]*(nsol/2)   # first quarter is spw0,pol0, then spw1,pol0, ...
-        # skyfreq = n.concatenate( (reffreq[0]*n.ones(nsol/2), reffreq[1]*n.ones(nsol/2), reffreq[0]*n.ones(nsol/2), reffreq[1]*n.ones(nsol/2)), axis=0)
-        # gain = n.concatenate( (gain[0,0],gain[1,0]), axis=0)
-        # amp = n.abs(gain)
-        # phase = n.degrees(n.angle(gain))
+        # skyfreq = np.concatenate( (reffreq[0]*np.ones(nsol/2), reffreq[1]*np.ones(nsol/2), reffreq[0]*np.ones(nsol/2), reffreq[1]*np.ones(nsol/2)), axis=0)
+        # gain = np.concatenate( (gain[0,0],gain[1,0]), axis=0)
+        # amp = np.abs(gain)
+        # phase = np.degrees(np.angle(gain))
         # source = [source]*nsol*2
-        # flagged = n.concatenate( (flag[0,0],flag[1,0]), axis=0)
+        # flagged = np.concatenate( (flag[0,0],flag[1,0]), axis=0)
                    
-        nants = len(n.unique(antnum))
-        nspw = len(n.unique(spw))
-        self.spwlist = n.unique(spw)
+        nants = len(np.unique(antnum))
+        nspw = len(np.unique(spw))
+        self.spwlist = np.unique(spw)
         npol = len(gain)
 
         # merge times less than some threshold
         nsol = 0
-        newmjd = [n.unique(mjd)[0]]
-        uniquefield = [field[n.where(newmjd[0] == mjd)][0]]
+        newmjd = [np.unique(mjd)[0]]
+        uniquefield = [field[np.where(newmjd[0] == mjd)][0]]
 
         skip = []
-        for i in range(1, len(n.unique(mjd))):
-            if 24*3600*(n.unique(mjd)[i] - n.unique(mjd)[i-1]) < 30.:
-                skip.append(n.unique(mjd)[i])
+        for i in range(1, len(np.unique(mjd))):
+            if 24*3600*(np.unique(mjd)[i] - np.unique(mjd)[i-1]) < 30.:
+                skip.append(np.unique(mjd)[i])
                 continue
             else:
-                newmjd.append(n.unique(mjd)[i])
-                uniquefield.append(field[n.where(n.unique(mjd)[i] == mjd)[0][0]])
+                newmjd.append(np.unique(mjd)[i])
+                uniquefield.append(field[np.where(np.unique(mjd)[i] == mjd)[0][0]])
         
-        self.uniquemjd = n.array(newmjd)
-        self.uniquefield = n.array(uniquefield)
+        self.uniquemjd = np.array(newmjd)
+        self.uniquefield = np.array(uniquefield)
         nsol = len(self.uniquemjd)
 
         self.logger.info('Parsed gain table solutions for %d solutions (skipping %d), %d ants, %d spw, and %d pols' % (nsol, len(skip), nants, nspw, npol))
         self.logger.info('Unique solution fields/times: %s' % str(zip(self.uniquefield, self.uniquemjd)))
 
-        self.gain = n.zeros( (nsol, nants, nspw, npol), dtype='complex' )
-        flags = n.zeros( (nsol, nants, nspw, npol), dtype='complex' )
+        self.gain = np.zeros( (nsol, nants, nspw, npol), dtype='complex' )
+        flags = np.zeros( (nsol, nants, nspw, npol), dtype='complex' )
         for sol in range(nsol):
             for ant in range(nants):
                 for spw in range(nspw):
                     for pol in range(npol):
                         self.gain[sol, ant, spw, pol] = gain[pol,0,spw*nsol*nants+sol*nants+ant]
                         flags[sol, ant, spw, pol] = flagged[pol,0,spw*nsol*nants+sol*nants+ant]
-        self.gain = n.ma.masked_array(self.gain, flags)
+        self.gain = np.ma.masked_array(self.gain, flags)
 
-#        gain = n.concatenate( (n.concatenate( (gain[0,0,:nants*nsol].reshape(nsol,nants,1,1), gain[1,0,:nants*nsol].reshape(nsol,nants,1,1)), axis=3), n.concatenate( (gain[0,0,nants*nsol:].reshape(nsol,nants,1,1), gain[1,0,nants*nsol:].reshape(nsol,nants,1,1)), axis=3)), axis=2)
-#        flagged = n.concatenate( (n.concatenate( (flagged[0,0,:nants*nsol].reshape(nsol,nants,1,1), flagged[1,0,:nants*nsol].reshape(nsol,nants,1,1)), axis=3), n.concatenate( (flagged[0,0,nants*nsol:].reshape(nsol,nants,1,1), flagged[1,0,nants*nsol:].reshape(nsol,nants,1,1)), axis=3)), axis=2)
-#        self.gain = n.ma.masked_array(gain, flagged == True)        
+#        gain = np.concatenate( (np.concatenate( (gain[0,0,:nants*nsol].reshape(nsol,nants,1,1), gain[1,0,:nants*nsol].reshape(nsol,nants,1,1)), axis=3), np.concatenate( (gain[0,0,nants*nsol:].reshape(nsol,nants,1,1), gain[1,0,nants*nsol:].reshape(nsol,nants,1,1)), axis=3)), axis=2)
+#        flagged = np.concatenate( (np.concatenate( (flagged[0,0,:nants*nsol].reshape(nsol,nants,1,1), flagged[1,0,:nants*nsol].reshape(nsol,nants,1,1)), axis=3), np.concatenate( (flagged[0,0,nants*nsol:].reshape(nsol,nants,1,1), flagged[1,0,nants*nsol:].reshape(nsol,nants,1,1)), axis=3)), axis=2)
+#        self.gain = np.ma.masked_array(gain, flagged == True)        
 
-        self.mjd = n.array(mjd); self.antnum = antnum
+        self.mjd = np.array(mjd); self.antnum = antnum
 
         # make another version of ants array
-#        self.antnum = n.concatenate( (antnum, antnum), axis=0)
-#        self.amp = n.array(amp); self.phase = n.array(phase)
-#        self.antname = n.concatenate( (antname[antnum], antname[antnum]), axis=0)
-#        self.complete = n.arange(len(self.mjd))
+#        self.antnum = np.concatenate( (antnum, antnum), axis=0)
+#        self.amp = np.array(amp); self.phase = np.array(phase)
+#        self.antname = np.concatenate( (antname[antnum], antname[antnum]), axis=0)
+#        self.complete = np.arange(len(self.mjd))
 
         # for consistency with telcal
-        #self.ifid = n.array(ifid); self.skyfreq = n.array(skyfreq); self.source = n.array(source)
+        #self.ifid = np.array(ifid); self.skyfreq = np.array(skyfreq); self.source = np.array(source)
 
     def parsebp(self, bpfile, debug=False):
         """ Takes bp CASA cal table and places values in numpy arrays.
@@ -151,37 +153,37 @@ class casa_sol():
           polynomialAmplitude, timesBP, antennasBP, cal_desc_idBP, spwBP]) = openBpolyFile(bpfile, debug)
 
         # index iterates over antennas, then times/sources (solution sets). each index has 2x npoly, which are 2 pols
-        polynomialAmplitude = n.array(polynomialAmplitude); polynomialPhase = n.array(polynomialPhase)
+        polynomialAmplitude = np.array(polynomialAmplitude); polynomialPhase = np.array(polynomialPhase)
         polynomialAmplitude[:,0] = 0.; polynomialAmplitude[:,nPolyAmp] = 0.
         polynomialPhase[:,0] = 0.; polynomialPhase[nPolyPhase] = 0.
-        ampSolR, ampSolL = calcChebyshev(polynomialAmplitude, frequencyLimits, n.array(frequenciesGHz)*1e+9)
-        phaseSolR, phaseSolL = calcChebyshev(polynomialPhase, frequencyLimits, n.array(frequenciesGHz)*1e+9)
+        ampSolR, ampSolL = calcChebyshev(polynomialAmplitude, frequencyLimits, np.array(frequenciesGHz)*1e+9)
+        phaseSolR, phaseSolL = calcChebyshev(polynomialPhase, frequencyLimits, np.array(frequenciesGHz)*1e+9)
 
-        nants = len(n.unique(antennasBP))
-        self.bptimes = n.array(timesBP)
+        nants = len(np.unique(antennasBP))
+        self.bptimes = np.array(timesBP)
         ptsperspec = 1000
         npol = 2
         self.logger.info('Parsed bp solutions for %d solutions, %d ants, %d spw, and %d pols' % (nUniqueTimesBP, nants, nSpws, nPolarizations))
-        self.bandpass = n.zeros( (nants, nSpws*ptsperspec, npol), dtype='complex')
+        self.bandpass = np.zeros( (nants, nSpws*ptsperspec, npol), dtype='complex')
         for spw in range(nSpws):
             ampSolR[spw*nants:(spw+1)*nants] += 1 - ampSolR[spw*nants:(spw+1)*nants].mean()     # renormalize mean over ants (per spw) == 1
             ampSolL[spw*nants:(spw+1)*nants] += 1 - ampSolL[spw*nants:(spw+1)*nants].mean()
             for ant in range(nants):
-                self.bandpass[ant, spw*ptsperspec:(spw+1)*ptsperspec, 0] = ampSolR[ant+spw*nants] * n.exp(1j*phaseSolR[ant+spw*nants])
-                self.bandpass[ant, spw*ptsperspec:(spw+1)*ptsperspec, 1] = ampSolL[ant+spw*nants] * n.exp(1j*phaseSolL[ant+spw*nants])
+                self.bandpass[ant, spw*ptsperspec:(spw+1)*ptsperspec, 0] = ampSolR[ant+spw*nants] * np.exp(1j*phaseSolR[ant+spw*nants])
+                self.bandpass[ant, spw*ptsperspec:(spw+1)*ptsperspec, 1] = ampSolL[ant+spw*nants] * np.exp(1j*phaseSolL[ant+spw*nants])
 
-        self.bpfreq = n.zeros( (nSpws*ptsperspec) )
+        self.bpfreq = np.zeros( (nSpws*ptsperspec) )
         for spw in range(nSpws):
             self.bpfreq[spw*ptsperspec:(spw+1)*ptsperspec] = 1e9 * frequenciesGHz[nants*spw]
 
-#        bpSolR0 = ampSolR[:nants] * n.exp(1j*phaseSolR[:nants])
-#        bpSolR1 = ampSolR[nants:] * n.exp(1j*phaseSolR[nants:])
-#        bpSolL0 = ampSolL[:nants] * n.exp(1j*phaseSolL[:nants])
-#        bpSolL1 = ampSolL[nants:] * n.exp(1j*phaseSolL[nants:])
+#        bpSolR0 = ampSolR[:nants] * np.exp(1j*phaseSolR[:nants])
+#        bpSolR1 = ampSolR[nants:] * np.exp(1j*phaseSolR[nants:])
+#        bpSolL0 = ampSolL[:nants] * np.exp(1j*phaseSolL[:nants])
+#        bpSolL1 = ampSolL[nants:] * np.exp(1j*phaseSolL[nants:])
 
         # structure close to tpipe data structure (nant, freq, pol). note that freq is oversampled to 1000 bins.
-#        self.bandpass = n.concatenate( (n.concatenate( (bpSolR0[:,:,None], bpSolR1[:,:,None]), axis=1), n.concatenate( (bpSolL0[:,:,None], bpSolL1[:,:,None]), axis=1)), axis=2)
-#        self.bpfreq = 1e9*n.concatenate( (frequenciesGHz[0], frequenciesGHz[nants]), axis=0)    # freq values at bp bins
+#        self.bandpass = np.concatenate( (np.concatenate( (bpSolR0[:,:,None], bpSolR1[:,:,None]), axis=1), np.concatenate( (bpSolL0[:,:,None], bpSolL1[:,:,None]), axis=1)), axis=2)
+#        self.bpfreq = 1e9*np.concatenate( (frequenciesGHz[0], frequenciesGHz[nants]), axis=0)    # freq values at bp bins
 #        self.logger.info('Parsed bp table solutions for %d solutions, %d ants, %d spw, and %d pols' % (nUniqueTimesBP, nants, nSpws, nPolarizations))
 
     def set_selection(self, time, freqs, blarr, calname='', radec=(), dist=1, spwind=[], pols=['XX','YY']):
@@ -206,32 +208,32 @@ class casa_sol():
             polord = ['RR', 'LL']
         self.polind = [polord.index(pol) for pol in pols]
 
-        self.ant1ind = [n.where(ant1 == n.unique(blarr))[0][0] for (ant1,ant2) in blarr]
-        self.ant2ind = [n.where(ant2 == n.unique(blarr))[0][0] for (ant1,ant2) in blarr]
+        self.ant1ind = [np.where(ant1 == np.unique(blarr))[0][0] for (ant1,ant2) in blarr]
+        self.ant2ind = [np.where(ant2 == np.unique(blarr))[0][0] for (ant1,ant2) in blarr]
 
         # select by smallest time distance for source within some angular region of target
         if radec:
             ra, dec = radec
-            calra = n.array(self.radec)[:,0]
-            caldec = n.array(self.radec)[:,1]
-            fields = n.where( (n.abs(calra - ra) < n.radians(dist)) & (n.abs(caldec - dec) < n.radians(dist)) )[0]
+            calra = np.array(self.radec)[:,0]
+            caldec = np.array(self.radec)[:,1]
+            fields = np.where( (np.abs(calra - ra) < np.radians(dist)) & (np.abs(caldec - dec) < np.radians(dist)) )[0]
             if len(fields) == 0:
-                self.logger.warn('Warning: no close calibrator found. Removing radec restriction.')
-                fields = n.unique(self.uniquefield)
+                self.logger.warn('Warning: no close calibrator found. Removing radec restrictionp.')
+                fields = np.unique(self.uniquefield)
         else:
-            fields = n.unique(self.uniquefield)
+            fields = np.unique(self.uniquefield)
 
         sel = []
         for field in fields:
-            sel += list(n.where(field == self.uniquefield)[0])
-        mjddist = n.abs(time - self.uniquemjd[sel])
-        closestgain = n.where(mjddist == mjddist.min())[0][0]
+            sel += list(np.where(field == self.uniquefield)[0])
+        mjddist = np.abs(time - self.uniquemjd[sel])
+        closestgain = np.where(mjddist == mjddist.min())[0][0]
 
-        self.logger.info('Using gain solution for field %d at MJD %.5f, separated by %d min ' % (self.uniquefield[n.where(self.uniquemjd == self.uniquemjd[sel][closestgain])], self.uniquemjd[closestgain], mjddist[closestgain]*24*60))
+        self.logger.info('Using gain solution for field %d at MJD %.5f, separated by %d min ' % (self.uniquefield[np.where(self.uniquemjd == self.uniquemjd[sel][closestgain])], self.uniquemjd[closestgain], mjddist[closestgain]*24*60))
         self.gain = self.gain.take(self.spwind, axis=2).take(self.polind, axis=3)[closestgain]
 
         if hasattr(self, 'bandpass'):
-            bins = [n.where(n.min(n.abs(self.bpfreq-selfreq)) == n.abs(self.bpfreq-selfreq))[0][0] for selfreq in freqs]
+            bins = [np.where(np.min(np.abs(self.bpfreq-selfreq)) == np.abs(self.bpfreq-selfreq))[0][0] for selfreq in freqs]
             self.bandpass = self.bandpass.take(bins, axis=1).take(self.polind, axis=2)
             self.freqs = freqs
             self.logger.debug('Using bandpass at BP bins (1000 bins per spw): %s', str(bins))
@@ -241,12 +243,12 @@ class casa_sol():
         """
  
         if len(self.gain.shape) == 4:
-            gamp = n.abs(self.gain).mean(axis=0)   # mean gain amp for each ant over time
+            gamp = np.abs(self.gain).mean(axis=0)   # mean gain amp for each ant over time
         elif len(self.gain.shape) == 3:
-            gamp = n.abs(self.gain)   # gain amp for selected time
+            gamp = np.abs(self.gain)   # gain amp for selected time
 
-#        badgain = n.where(gamp < gamp.mean() - sig*gamp.std())
-        badgain = n.where( (gamp < gamp.mean() - sig*gamp.std()) | gamp.mask)
+#        badgain = np.where(gamp < gamp.mean() - sig*gamp.std())
+        badgain = np.where( (gamp < gamp.mean() - sig*gamp.std()) | gamp.mask)
         self.logger.info('Flagging low/bad gains for ant/spw/pol: %s %s %s' % (str(self.antnum[badgain[0]]), str(badgain[1]), str(badgain[2])))
 
         badants = badgain
@@ -260,16 +262,16 @@ class casa_sol():
         if self.flagants:
             badants = self.calc_flag()
         else:
-            badants = n.array([[]])
+            badants = np.array([[]])
 
         # apply gain correction
         if hasattr(self, 'bandpass'):
-            corr = n.ones_like(data)
-            flag = n.ones_like(data.real).astype('int')
+            corr = np.ones_like(data)
+            flag = np.ones_like(data.real).astype('int')
             chans_uncal = range(len(self.freqs))
             for spwi in range(len(self.spwind)):
-                chsize = n.round(self.bpfreq[1]-self.bpfreq[0], 0)
-                ww = n.where( (self.freqs >= self.bpfreq[self.spwind[spwi]*1000]) & (self.freqs <= self.bpfreq[(self.spwind[spwi]+1)*1000-1]+chsize) )[0]
+                chsize = np.round(self.bpfreq[1]-self.bpfreq[0], 0)
+                ww = np.where( (self.freqs >= self.bpfreq[self.spwind[spwi]*1000]) & (self.freqs <= self.bpfreq[(self.spwind[spwi]+1)*1000-1]+chsize) )[0]
                 if len(ww) == 0:
                     self.logger.info('Gain solution frequencies not found in data for spw %d.' % (self.spwind[spwi]))
                 firstch = ww[0]
@@ -277,9 +279,9 @@ class casa_sol():
                 for ch in ww:
                     chans_uncal.remove(ch)
                 self.logger.info('Combining gain sol from spw=%d with BW chans from %d-%d' % (self.spwind[spwi], firstch, lastch))
-                for badant in n.transpose(badants):
+                for badant in np.transpose(badants):
                     if badant[1] == spwi:
-                        badbl = n.where((badant[0] == n.array(self.ant1ind)) | (badant[0] == n.array(self.ant2ind)))[0]
+                        badbl = np.where((badant[0] == np.array(self.ant1ind)) | (badant[0] == np.array(self.ant2ind)))[0]
                         flag[:, badbl, firstch:lastch, badant[2]] = 0
 
                 corr1 = self.gain[self.ant1ind, spwi, :][None, :, None, :] * self.bandpass[self.ant1ind, firstch:lastch, :][None, :, :, :]
@@ -301,11 +303,11 @@ class casa_sol():
         p.clf()
         fig = p.figure(1)
         nspw = len(self.gain[0])
-        ext = n.ceil(n.sqrt(nspw))  # find best squre plot (simplest)
+        ext = np.ceil(np.sqrt(nspw))  # find best squre plot (simplest)
         for spw in range(len(self.gain[0])):
             ax = fig.add_subplot(ext, ext, spw+1)
             for pol in [0,1]:
-                ax.scatter(range(len(self.gain)), n.abs(self.gain.data[:,spw,pol]), color=n.array(['k','y']).take(self.gain.mask[:,spw,pol]), marker=['x','.'][pol])
+                ax.scatter(range(len(self.gain)), np.abs(self.gain.data[:,spw,pol]), color=np.array(['k','y']).take(self.gain.mask[:,spw,pol]), marker=['x','.'][pol])
 
         fig.show()
 
@@ -328,7 +330,7 @@ def openBpolyFile(caltable, debug=False):
                 logger.info("I do not recognized polynomial type = %s" % (pType))
                 return
         # Here we assume that all spws have been solved with the same mode
-        uniqueTimesBP = n.unique(tb.getcol('TIME'))
+        uniqueTimesBP = np.unique(tb.getcol('TIME'))
         nUniqueTimesBP = len(uniqueTimesBP)
         if (nUniqueTimesBP >= 2):
             logger.debug("Multiple BP sols found with times differing by %s seconds. Using first." % (str(uniqueTimesBP-uniqueTimesBP[0])))
@@ -341,7 +343,7 @@ def openBpolyFile(caltable, debug=False):
         increments = 0.001*(frequencyLimits[1,:]-frequencyLimits[0,:])
         frequenciesGHz = []
         for i in range(len(frequencyLimits[0])):
-           freqs = (1e-9)*n.arange(frequencyLimits[0,i],frequencyLimits[1,i],increments[i])       # **for some reason this is nch-1 long?**
+           freqs = (1e-9)*np.arange(frequencyLimits[0,i],frequencyLimits[1,i],increments[i])       # **for some reason this is nch-1 long?**
            frequenciesGHz.append(freqs)
         polynomialAmplitude = []
         polynomialPhase = []
@@ -386,10 +388,10 @@ def calcChebyshev(coeffs, validDomain, freqs):
     logger = logging.getLogger(__name__)
 
     domain = (validDomain[1] - validDomain[0])[0]
-    bins = -1 + 2* n.array([ (freqs[i]-validDomain[0,i])/domain for i in range(len(freqs))])
+    bins = -1 + 2* np.array([ (freqs[i]-validDomain[0,i])/domain for i in range(len(freqs))])
     ncoeffs = len(coeffs[0])/2
-    rr = n.array([n.polynomial.chebyshev.chebval(bins[i], coeffs[i,:ncoeffs]) for i in range(len(coeffs))])
-    ll = n.array([n.polynomial.chebyshev.chebval(bins[i], coeffs[i,ncoeffs:]) for i in range(len(coeffs))])
+    rr = np.array([np.polynomial.chebyshev.chebval(bins[i], coeffs[i,:ncoeffs]) for i in range(len(coeffs))])
+    ll = np.array([np.polynomial.chebyshev.chebval(bins[i], coeffs[i,ncoeffs:]) for i in range(len(coeffs))])
 
     return rr,ll
 
@@ -410,16 +412,18 @@ class telcal_sol():
             self.logger.warn('Gainfile not found.')
             raise IOError
 
+
     def flagants(self, threshold=50):
         """ Flags solutions with amplitude more than threshold larger than median.
         """
 
         # identify very low gain amps not already flagged
-        badsols = n.where( (n.median(self.amp)/self.amp > threshold) & (self.flagged == False))[0]
+        badsols = np.where( (np.median(self.amp)/self.amp > threshold) & (self.flagged == False))[0]
         if len(badsols):
             self.logger.info('Solutions %s flagged (times %s, ants %s, freqs %s) for low gain amplitude.' % (str(badsols), self.mjd[badsols], self.antname[badsols], self.ifid[badsols]))
             for sol in badsols:
                 self.flagged[sol] = True
+
 
     def set_selection(self, time, freqs, blarr, calname='', radec=(), dist=0, spwind=[], pols=['XX','YY']):
         """ Set select parameter that defines spectral window, time, or any other selection.
@@ -451,16 +455,16 @@ class telcal_sol():
 
         if calname:
             nameselect = []
-            for ss in n.unique(self.source[self.select]):
+            for ss in np.unique(self.source[self.select]):
                 if calname in ss:
-                    nameselect = n.where(self.source[self.select] == ss)   # define selection for name
+                    nameselect = np.where(self.source[self.select] == ss)   # define selection for name
                     self.select = self.select[nameselect]       # update overall selection
                     self.logger.debug('Selection down to %d solutions with %s' % (len(self.select), calname))
             if not nameselect:
                 self.logger.warn('Calibrator name %s not found. Ignoring.' % (calname))
 
         # select freq
-        freqselect = n.where([ff in n.around(self.freqs, -6) for ff in n.around(1e6*self.skyfreq[self.select], -6)])   # takes solution if band center is in (rounded) array of chan freqs
+        freqselect = np.where([ff in np.around(self.freqs, -6) for ff in np.around(1e6*self.skyfreq[self.select], -6)])   # takes solution if band center is in (rounded) array of chan freqs
         if len(freqselect[0]) == 0:
             raise StandardError('No complete set of telcal solutions at that frequency.')
         self.select = self.select[freqselect[0]]    # update overall selection
@@ -469,11 +473,11 @@ class telcal_sol():
         # select pol
 #        ifids = self.ifid[self.select]
 #        if (polstr == 'RR') or (polstr == 'XX'):
-#            polselect = n.where(['A' in ifid or 'B' in ifid for ifid in ifids])
+#            polselect = np.where(['A' in ifid or 'B' in ifid for ifid in ifids])
 #        elif (polstr == 'LL') or (polstr == 'YY'):
-#            polselect = n.where(['C' in ifid or 'D' in ifid for ifid in ifids])
+#            polselect = np.where(['C' in ifid or 'D' in ifid for ifid in ifids])
 #        self.select = self.select[polselect]    # update overall selection
-        self.polarization = n.empty(len(self.ifid))
+        self.polarization = np.empty(len(self.ifid))
         for i in range(len(self.ifid)):
             if ('A' in self.ifid[i]) or ('B' in self.ifid[i]):
                 self.polarization[i] = 0
@@ -481,21 +485,22 @@ class telcal_sol():
                 self.polarization[i] = 1
 
         # select by smallest time distance for source
-        mjddist = n.abs(time - n.unique(self.mjd[self.select]))
-        closest = n.where(mjddist == mjddist.min())
+        mjddist = np.abs(time - np.unique(self.mjd[self.select]))
+        closest = np.where(mjddist == mjddist.min())
         if len(closest[0]) > 1:
             self.logger.info('Multiple closest solutions in time (%s). Taking first.' % (str(closest[0])))
             closest = closest[0][0]
-        timeselect = n.where(self.mjd[self.select] == n.unique(self.mjd[self.select])[closest])   # define selection for time
+        timeselect = np.where(self.mjd[self.select] == np.unique(self.mjd[self.select])[closest])   # define selection for time
         self.select = self.select[timeselect[0]]    # update overall selection
         self.logger.info('Selection down to %d solutions separated from given time by %d minutes' % (len(self.select), mjddist[closest]*24*60))
 
         self.logger.debug('Selected solutions: %s' % str(self.select))
-        self.logger.info('MJD: %s' % str(n.unique(self.mjd[self.select])))
-        self.logger.debug('Mid frequency (MHz): %s' % str(n.unique(self.skyfreq[self.select])))
-        self.logger.debug('IFID: %s' % str(n.unique(self.ifid[self.select])))
-        self.logger.info('Source: %s' % str(n.unique(self.source[self.select])))
-        self.logger.debug('Ants: %s' % str(n.unique(self.antname[self.select])))
+        self.logger.info('MJD: %s' % str(np.unique(self.mjd[self.select])))
+        self.logger.debug('Mid frequency (MHz): %s' % str(np.unique(self.skyfreq[self.select])))
+        self.logger.debug('IFID: %s' % str(np.unique(self.ifid[self.select])))
+        self.logger.info('Source: %s' % str(np.unique(self.source[self.select])))
+        self.logger.debug('Ants: %s' % str(np.unique(self.antname[self.select])))
+
 
     def parseGN(self, telcalfile, onlycomplete=True):
         """Takes .GN telcal file and places values in numpy arrays.
@@ -537,42 +542,44 @@ class telcal_sol():
                 self.logger.warn('Trouble parsing line of telcal file. Skipping.')
                 continue
 
-        self.mjd = n.array(mjd); self.utc = n.array(utc); self.lstd = n.array(lstd); self.lsts = n.array(lsts)
-        self.ifid = n.array(ifid); self.skyfreq = n.array(skyfreq); self.antname = n.array(antname); self.amp = n.array(amp) 
-        self.phase = n.array(phase); self.residual = n.array(residual); self.delay = n.array(delay)
-        self.flagged = n.array(flagged); self.zeroed = n.array(zeroed); self.ha = n.array(ha); self.az = n.array(az)
-        self.el = n.array(el); self.source = n.array(source); 
-        #self.flagreason = n.array(flagreason)
+        self.mjd = np.array(mjd); self.utc = np.array(utc); self.lstd = np.array(lstd); self.lsts = np.array(lsts)
+        self.ifid = np.array(ifid); self.skyfreq = np.array(skyfreq); self.antname = np.array(antname); self.amp = np.array(amp) 
+        self.phase = np.array(phase); self.residual = np.array(residual); self.delay = np.array(delay)
+        self.flagged = np.array(flagged); self.zeroed = np.array(zeroed); self.ha = np.array(ha); self.az = np.array(az)
+        self.el = np.array(el); self.source = np.array(source); 
+        #self.flagreason = np.array(flagreason)
 
         # purify list to keep only complete solution sets
         if onlycomplete:
-            completecount = len(n.unique(self.ifid)) * len(n.unique(self.antname))
+            completecount = len(np.unique(self.ifid)) * len(np.unique(self.antname))
             complete = []
-            for mjd in n.unique(self.mjd):
-                mjdselect = list(n.where(mjd == self.mjd)[0])
+            for mjd in np.unique(self.mjd):
+                mjdselect = list(np.where(mjd == self.mjd)[0])
                 if len(mjdselect) == completecount:
                     complete = complete + mjdselect
-            self.complete = n.array(complete)
+            self.complete = np.array(complete)
         else:
-            self.complete = n.arange(len(self.mjd))
+            self.complete = np.arange(len(self.mjd))
 
         # make another version of ants array
         antnum = []
         for aa in self.antname:
             antnum.append(int(aa[2:]))    # cuts the 'ea' from start of antenna string to get integer
-        self.antnum = n.array(antnum)
+        self.antnum = np.array(antnum)
 
+
+#    @jit(nopython=True)
     def calcgain(self, ant1, ant2, skyfreq, pol):
         """ Calculates the complex gain product (g1*g2) for a pair of antennas.
         """
 
-        select = self.select[n.where( (self.skyfreq[self.select] == skyfreq) & (self.polarization[self.select] == pol) )[0]]
+        select = self.select[np.where( (self.skyfreq[self.select] == skyfreq) & (self.polarization[self.select] == pol) )[0]]
 
         if len(select):  # for when telcal solutions don't exist
-            ind1 = n.where(ant1 == self.antnum[select])
-            ind2 = n.where(ant2 == self.antnum[select])
-            g1 = self.amp[select][ind1]*n.exp(1j*n.radians(self.phase[select][ind1])) * (not self.flagged.astype(int)[select][ind1][0])
-            g2 = self.amp[select][ind2]*n.exp(-1j*n.radians(self.phase[select][ind2])) * (not self.flagged.astype(int)[select][ind2][0])
+            ind1 = np.where(ant1 == self.antnum[select])
+            ind2 = np.where(ant2 == self.antnum[select])
+            g1 = self.amp[select][ind1]*np.exp(1j*np.radians(self.phase[select][ind1])) * (not self.flagged.astype(int)[select][ind1][0])
+            g2 = self.amp[select][ind2]*np.exp(-1j*np.radians(self.phase[select][ind2])) * (not self.flagged.astype(int)[select][ind2][0])
         else:
             g1 = [0]; g2 = [0]
 
@@ -583,32 +590,34 @@ class telcal_sol():
             invg1g2 = 0
         return invg1g2
 
+
+#    @jit(nopython=True)
     def calcdelay(self, ant1, ant2, skyfreq, pol):
         """ Calculates the relative delay (d1-d2) for a pair of antennas in ns.
         """
 
-        select = self.select[n.where( (self.skyfreq[self.select] == skyfreq) & (self.polarization[self.select] == pol) )[0]]
+        select = self.select[np.where( (self.skyfreq[self.select] == skyfreq) & (self.polarization[self.select] == pol) )[0]]
 
-        ind1 = n.where(ant1 == self.antnum[select])
-        ind2 = n.where(ant2 == self.antnum[select])
+        ind1 = np.where(ant1 == self.antnum[select])
+        ind2 = np.where(ant2 == self.antnum[select])
         d1 = self.delay[select][ind1]
         d2 = self.delay[select][ind2]
         if len(d1-d2) > 0:
             return d1-d2
         else:
-            return n.array([0])
+            return np.array([0])
 
-    def apply(self, data):
-        """ Applies calibration solution to data array. Assumes structure of (nint, nbl, nch, npol).
-        """
+#    @jit(nopython=True)
+    def gains(self):
+        """ Returns gain array with shape of (nbl, nch, npol).  """
 
         # find best skyfreq for each channel
-        skyfreqs = n.unique(self.skyfreq[self.select])    # one per spw
+        skyfreqs = np.unique(self.skyfreq[self.select])    # one per spw
         nch_tot = len(self.freqs)
         chan_bandnum = [range(nch_tot*i/len(skyfreqs), nch_tot*(i+1)/len(skyfreqs)) for i in range(len(skyfreqs))]  # divide chans by number of spw in solution
         self.logger.info('Solutions for %d spw: (%s)' % (len(skyfreqs), skyfreqs))
 
-        gains = n.zeros_like(data)
+        gainarr = np.zeros(shape=(len(self.blarr), nch_tot, len(self.polind)), dtype=np.complex64)
         for j in range(len(skyfreqs)):
             skyfreq = skyfreqs[j]
             chans = chan_bandnum[j]
@@ -617,18 +626,44 @@ class telcal_sol():
             # define freq structure to apply delay solution
             nch = len(chans)
             chanref = nch/2    # reference channel at center
-            relfreq = self.chansize*(n.arange(nch) - chanref)   # relative frequency
+            relfreq = self.chansize*(np.arange(nch) - chanref)   # relative frequency
 
-            for i in range(len(self.blarr)):
+            for i in xrange(len(self.blarr)):
                 ant1, ant2 = self.blarr[i]  # ant numbers (1-based)
                 for pol in self.polind:
                     # apply gain correction
-                    invg1g2 = self.calcgain(ant1, ant2, skyfreq, pol)
-                    gains[:,i,chans,pol-self.polind[0]] = invg1g2
+                    gainarr[i,chans,pol-self.polind[0]] = self.calcgain(ant1, ant2, skyfreq, pol)
 
                     # apply delay correction
                     d1d2 = self.calcdelay(ant1, ant2, skyfreq, pol)
-                    delayrot = 2*n.pi*(d1d2[0] * 1e-9) * relfreq      # phase to rotate across band
-                    gains[:,i,chans,pol-self.polind[0]] = gains[:,i,chans,pol-self.polind[0]] * n.exp(-1j*delayrot[None, None, :])
+                    delayrot = 2*np.pi*(d1d2[0] * 1e-9) * relfreq      # phase to rotate across band
+                    gainarr[i,chans,pol-self.polind[0]] *= np.exp(-1j*delayrot)
 
-        return data * gains
+        return gainarr
+
+
+def getgains(d, segment):
+    """ Parse telcal file and return gains in shape of data array """
+
+    sols = telcal_sol(d['gainfile'])
+    blarr = calc_blarr(d['ants'])
+    sols.set_selection(d['segmenttimes'][segment].mean(), d['freq']*1e9, blarr)
+    return sols.gains()
+
+
+#@jit(nopython=True)
+def calc_blarr(antlist):
+    """ Returns array of bl pairs (SDM format) """
+
+    nants = len(antlist)
+    nbl = nants*(nants-1)/2
+    blarr = np.zeros((nbl, 2), dtype=np.int)
+
+    bl = 0
+    for j in xrange(nants):
+        for i in xrange(0,j):
+            blarr[bl,0] = antlist[i]
+            blarr[bl,1] = antlist[j]
+            bl += 1
+
+    return blarr
