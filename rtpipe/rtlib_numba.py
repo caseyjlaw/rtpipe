@@ -5,7 +5,6 @@ import multiprocessing.sharedctypes as mps
 from contextlib import closing
 import numpy as np
 from numba import jit
-from numba.types import boolean, complex64, float32
 import rtpipe.parsecal as pc
 import logging
 import pyfftw
@@ -21,9 +20,7 @@ def pipeline_dataprep(d, segment):
     data = readsegment(datashape(d), mode='numpy')
     data *= pc.getgains(d, segment)
 
-    chanranges = [xrange(*d['spw_chanr_select'][ss]) for ss in d['spw']]
-    pols = range(d['npol'])
-    flags = calcflags(data, d['flaglist'], chanranges, pols)
+    flags = calcflags(d, data, d['flaglist'])
     data *= flags
 
     data -= calcmeant(data)
@@ -56,73 +53,91 @@ def readsegment(shape=(100,351,256,2), mode='numpy'):
         data.real[:] = np.random.normal(size=shape)
         data.imag[:] = np.random.normal(size=shape)
     else:
-        data = np.zeros(shape=shape, dtype=np.complex64)
+        data = np.zeros(shape=shape, dtype="complex64")
         data.real = np.random.normal(size=shape)
         data.imag = np.random.normal(size=shape)
 
     return data
 
 
-def calcflags(data, flaglist, chanranges, pols):
+def calcflags(d, data, flaglist):
     """ Calculates flags on data array given list of flags """
 
-    flags = np.ones(shape=data.shape, dtype=boolean)
+    chanranges = [range(*d['spw_chanr_select'][ss]) for ss in d['spw']]
+    pols = range(d['npol'])
+
+    flags = np.ones(shape=data.shape, dtype="bool")
 
     for flagdef in flaglist:
         mode, sigma, conv = flagdef  # may want to redefine standard
 
-        if mode == 'blstd':
-            flags *= calcflags_blstd(data, chanranges, pols)
-        elif mode == 'badchtslide':
-            flags *= calcflags_badchtslide(data, chanranges, pols)
-        elif mode == 'badap':
-            logger.warn('Flagging mode {0} not yet implemented'.format(mode))
-        else:
-            logger.warn('Flagging mode {0} not available'.format(mode))
+        for chans in chanranges:
+            for pol in pols:
+                if mode == 'blstd':
+                    nints, _, nch, _ = data.shape
+                    blstd = np.zeros(shape=(nints, nch), dtype="float32")
+
+                    calcflags_blstd(data, flags, blstd, chans, pol, sigma)
+                elif mode == 'badchtslide':
+                    calcflags_badchtslide(data, flags, chans, pol, sigma)
+                elif mode == 'badap':
+                    logger.warn('Flagging mode {0} not yet implemented'.format(mode))
+                else:
+                    logger.warn('Flagging mode {0} not available'.format(mode))
 
     return flags
 
 
 @jit(nopython=True)
-def calcflags_blstd(data, chanranges, pols):
-    """ """
+def calcflags_blstd(data, flags, blstd, chans, pol, sigma):
+    """ Flaging based on standard deviation over baseline axis """
 
-    for chans in chanranges:
-        for pol in pols:
-            blstd = blstd3d(data[:, :, chans, pol])
-            blstdmed = np.median(blstd.flatten())
-            blstdstd = 1.4826*calcmad(blstd.flatten())
-            flags[:, :, chans, pol] = (blstd < blstdmed + sigma*blstdstd)[:,None,:]
+    for j in xrange(len(data)):
+        for k in chans:
+            mn = 0
+            nonzero = 0
+            for bl in data[j, :, k, pol]:
+                mn += bl
+                if bl != 0j:
+                    nonzero += 1
 
-    return flags
+            if nonzero:
+                mn /= nonzero
+                sq = 0
+                for bl in data[j, :, k, pol]:
+                    sq += np.abs(bl-mn)**2
+
+                blstd[j,k] = np.sqrt(sq/nonzero)
+            else:
+                blstd[j,k] = 0.
+
+    blstdmed = np.median(blstd.flatten())
+    blstdstd = 1.4826*calcmad(blstd.flatten())
+    flags[:, :, chans, pol] = (blstd < blstdmed + sigma*blstdstd)[:,None,:] #broke!
 
 
-@jit(nopython=True)
-def calcflags_badchtslide(data, chanranges, pols):
-    """ """
+#@jit(nopython=True)
+def calcflags_badchtslide(data, flags, chans, pol, sigma):
+    """ Flagging based on sliding window in time and channel """
 
-    for chans in chanranges:
-        for pol in pols:
-            win = 20
-            meanamp = np.abs(data[:,:,chans,pol]).mean(axis=1)
+    win = 20
+    meanamp = np.abs(data[:,:,chans,pol]).mean(axis=1)
 
-            meanspec = meanamp.mean(axis=0)
-            meddevspec = np.zeros_like(meanspec)
-            for ch in range(len(meanspec)):
-                rr = range(max(0, ch-win/2), min(len(meanspec), ch+win/2))
-                rr.remove(ch)
-                meddevspec[ch] = meanspec[ch] - np.median(meanspec[rr])
-            flags[:, :, chans, pol] = (meddevspec < sigma*meddevspec.std())[None, None, :]
+    meanspec = meanamp.mean(axis=0)
+    meddevspec = np.zeros_like(meanspec)
+    for ch in range(len(meanspec)):
+        rr = range(max(0, ch-win//2), min(len(meanspec), ch+win//2))
+        rr.remove(ch)
+        meddevspec[ch] = meanspec[ch] - np.median(meanspec[rr])
+    flags[:, :, chans, pol] = (meddevspec < sigma*meddevspec.std())[None, None, :]
 
-            meanlc = meanamp.mean(axis=1)
-            meddevlc = np.zeros_like(meanlc)
-            for t in range(len(meanlc)):
-                rr = range(max(0, t-win/2), min(len(meanlc), t+win/2))
-                rr.remove(t)
-                meddevlc[t] = meanlc[t] - np.median(meanlc[rr])
-            flags[:, :, chans, pol] = (meddevlc < sigma*meddevlc.std())[:, None, None]
-
-    return flags
+    meanlc = meanamp.mean(axis=1)
+    meddevlc = np.zeros_like(meanlc)
+    for t in range(len(meanlc)):
+        rr = range(max(0, t-win//2), min(len(meanlc), t+win//2))
+        rr.remove(t)
+        meddevlc[t] = meanlc[t] - np.median(meanlc[rr])
+    flags[:, :, chans, pol] = (meddevlc < sigma*meddevlc.std())[:, None, None]
 
 
 @jit(nopython=True)
@@ -146,35 +161,6 @@ def std1d(data):
         sq += np.abs(da-mn)**2
 
     return np.sqrt(sq/nonzero)
-
-
-@jit(nopython=True)
-def blstd3d(data):
-    """ Takes 3d (nints, nbl, nch) input data and measures std while ignoring zeros"""
-
-    nints, nbl, nch = data.shape
-    output = np.zeros(shape=(nints, nch), dtype=float32)
-
-    for j in xrange(nints):
-        for k in xrange(nch):
-            mn = 0
-            nonzero = 0
-            for bl in data[j, :, k]:
-                mn += bl
-                if bl != 0j:
-                    nonzero += 1
-
-            if nonzero:
-                mn /= nonzero
-                sq = 0
-                for bl in data[j, :, k]:
-                    sq += np.abs(bl-mn)**2
-
-                output[j,k] = np.sqrt(sq/nonzero)
-            else:
-                output[j,k] = 0.
-
-    return output
 
 
 @jit(nopython=True)
