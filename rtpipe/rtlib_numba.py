@@ -1,8 +1,11 @@
+from __future__ import print_function, division, absolute_import
+
 import multiprocessing as mp
 import multiprocessing.sharedctypes as mps
 from contextlib import closing
 import numpy as np
-from numba import jit, float32, complex64
+from numba import jit
+from numba.types import boolean, complex64, float32
 import rtpipe.parsecal as pc
 import logging
 import pyfftw
@@ -15,15 +18,13 @@ def pipeline_dataprep(d, segment):
     """ Read and prepare data for search. Use numpy arrays. """
 
     d['segment'] = segment
-    shape = datashape(d)
-    data = readsegment(shape, mode='numpy')
+    data = readsegment(datashape(d), mode='numpy')
     data *= pc.getgains(d, segment)
 
-    d['flaglist'] = [('blstd', 3., 0.)]
-
-    for flagdef in d['flaglist']:
-        flags = calcflags(d, data, flagdef)
-        data *= flags
+    chanranges = [xrange(*d['spw_chanr_select'][ss]) for ss in d['spw']]
+    pols = range(d['npol'])
+    flags = calcflags(data, d['flaglist'], chanranges, pols)
+    data *= flags
 
     data -= calcmeant(data)
 
@@ -42,6 +43,9 @@ def pipeline_dataprep2(d):
     v = numpyview(v_mem, 'float32', d['nbl'], raw=False)
     w = numpyview(w_mem, 'float32', d['nbl'], raw=False)
 
+    data[:] = readsegment(datashape(d), mode='mem')
+    # start up pool, etc...
+
 
 def readsegment(shape=(100,351,256,2), mode='numpy'):
     """ Mock data reader. Can return shared data_mem or data (numpy array) """
@@ -51,30 +55,72 @@ def readsegment(shape=(100,351,256,2), mode='numpy'):
         data = numpyview(data_mem, 'complex64', shape)
         data.real[:] = np.random.normal(size=shape)
         data.imag[:] = np.random.normal(size=shape)
-        return data_mem
     else:
-        data = np.zeros(shape=shape, dtype=complex64)
+        data = np.zeros(shape=shape, dtype=np.complex64)
         data.real = np.random.normal(size=shape)
         data.imag = np.random.normal(size=shape)
-        return data
+
+    return data
 
 
-#@jit(nopython=True) # no work with dict?
-def calcflags(d, data, flagdef):
-    """ Calculates flags on data array given specification in flagdef """
+def calcflags(data, flaglist, chanranges, pols):
+    """ Calculates flags on data array given list of flags """
 
-    flags = np.zeros(shape=data.shape, dtype=bool)
-    mode, sigma, conv = flagdef  # may want to redefine standard
+    flags = np.ones(shape=data.shape, dtype=boolean)
 
-    for ss in d['spw']:
-        chans = xrange(d['spw_chanr_select'][ss][0], d['spw_chanr_select'][ss][1])
-        for pol in xrange(d['npol']):
+    for flagdef in flaglist:
+        mode, sigma, conv = flagdef  # may want to redefine standard
 
-            if mode == 'blstd':
-                blstd = blstd3d(data[:, :, chans, pol])
-                blstdmed = np.median(blstd.flatten())
-                blstdstd = 1.4826*calcmad(blstd.flatten())
-                flags[:, :, chans, pol] = (blstd < blstdmed + sigma*blstdstd)[:,None,:]
+        if mode == 'blstd':
+            flags *= calcflags_blstd(data, chanranges, pols)
+        elif mode == 'badchtslide':
+            flags *= calcflags_badchtslide(data, chanranges, pols)
+        elif mode == 'badap':
+            logger.warn('Flagging mode {0} not yet implemented'.format(mode))
+        else:
+            logger.warn('Flagging mode {0} not available'.format(mode))
+
+    return flags
+
+
+@jit(nopython=True)
+def calcflags_blstd(data, chanranges, pols):
+    """ """
+
+    for chans in chanranges:
+        for pol in pols:
+            blstd = blstd3d(data[:, :, chans, pol])
+            blstdmed = np.median(blstd.flatten())
+            blstdstd = 1.4826*calcmad(blstd.flatten())
+            flags[:, :, chans, pol] = (blstd < blstdmed + sigma*blstdstd)[:,None,:]
+
+    return flags
+
+
+@jit(nopython=True)
+def calcflags_badchtslide(data, chanranges, pols):
+    """ """
+
+    for chans in chanranges:
+        for pol in pols:
+            win = 20
+            meanamp = np.abs(data[:,:,chans,pol]).mean(axis=1)
+
+            meanspec = meanamp.mean(axis=0)
+            meddevspec = np.zeros_like(meanspec)
+            for ch in range(len(meanspec)):
+                rr = range(max(0, ch-win/2), min(len(meanspec), ch+win/2))
+                rr.remove(ch)
+                meddevspec[ch] = meanspec[ch] - np.median(meanspec[rr])
+            flags[:, :, chans, pol] = (meddevspec < sigma*meddevspec.std())[None, None, :]
+
+            meanlc = meanamp.mean(axis=1)
+            meddevlc = np.zeros_like(meanlc)
+            for t in range(len(meanlc)):
+                rr = range(max(0, t-win/2), min(len(meanlc), t+win/2))
+                rr.remove(t)
+                meddevlc[t] = meanlc[t] - np.median(meanlc[rr])
+            flags[:, :, chans, pol] = (meddevlc < sigma*meddevlc.std())[:, None, None]
 
     return flags
 
@@ -149,7 +195,10 @@ def calcmeant(data):
         for k in xrange(nchan):
             for l in xrange(npol):
                 nz = data[:,j,k,l].nonzero()[0]
-                meant[j,k,l] = data[nz,j,k,l].mean()
+                if len(nz):
+                    meant[j,k,l] = data[nz,j,k,l].mean()
+                else:
+                    meant[j,k,l] = 0j
 
     return meant
 
