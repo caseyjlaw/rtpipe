@@ -4,7 +4,7 @@ import multiprocessing as mp
 import multiprocessing.sharedctypes as mps
 from contextlib import closing
 import numpy as np
-from numba import jit
+from numba import jit, guvectorize
 import rtpipe.parsecal as pc
 import logging
 import pyfftw
@@ -63,107 +63,120 @@ def readsegment(shape=(100,351,256,2), mode='numpy'):
 def calcflags(d, data, flaglist):
     """ Calculates flags on data array given list of flags """
 
+    # define how to iterate
     chanranges = [range(*d['spw_chanr_select'][ss]) for ss in d['spw']]
     pols = range(d['npol'])
 
-    flags = np.ones(shape=data.shape, dtype="bool")
+    flags = np.ones(shape=data.shape, dtype="bool") # flags accumulated here
 
     for flagdef in flaglist:
         mode, sigma, conv = flagdef  # may want to redefine standard
 
-        for chans in chanranges:
-            for pol in pols:
-                if mode == 'blstd':
-                    nints, _, nch, _ = data.shape
-                    blstd = np.zeros(shape=(nints, nch), dtype="float32")
+        if mode == 'blstd':
+            blstd = np.zeros(shape=(data.shape[0], data.shape[2], data.shape[3]), dtype="float32")
+            calcblstd(data, blstd)
 
-                    calcflags_blstd(data, flags, blstd, chans, pol, sigma)
-                elif mode == 'badchtslide':
-                    calcflags_badchtslide(data, flags, chans, pol, sigma)
-                elif mode == 'badap':
-                    logger.warn('Flagging mode {0} not yet implemented'.format(mode))
-                else:
-                    logger.warn('Flagging mode {0} not available'.format(mode))
+            for chans in chanranges:
+                for pol in pols:
+                    blstdmed = np.median(blstd[:,chans,pol].flatten())
+                    blstdstd = 1.4826*calcmad(blstd[:,chans,pol].flatten())
+                    calcflags_blstd(flags, blstd, blstdmed, blstdstd, sigma, chans, pol)
+
+        elif mode == 'badchslide':
+            meanamp = np.abs(data).mean(axis=1) # includes zeros. move to jit?
+            for pol in pols:
+                meanspec = meanamp[...,pol].mean(axis=0) # includes zeros. move to jit?
+                meddevspec = np.zeros_like(meanspec)
+                meddev(meanspec, meddevspec)
+
+                for chans in chanranges:
+                    calcflags_badchslide(flags, meanspec, meddevspec, sigma, chans, pol)
+
+        elif mode == 'badtslide':
+            meanamp = np.abs(data).mean(axis=1) # includes zeros. move to jit?
+            for chans in chanranges:
+                for pol in pols:
+                    meanlc = meanamp[:,chans,pol].mean(axis=1) # includes zeros. move to jit?
+                    meddevlc = np.zeros_like(meanlc)
+                    meddev(meanlc, meddevlc)
+
+                    calcflags_badchslide(flags, meanlc, meddevlc, sigma, chans, pol)
+
+        elif mode == 'badap':
+            logger.warn('Flagging mode {0} not yet implemented'.format(mode))
+
+        else:
+            logger.warn('Flagging mode {0} not available'.format(mode))
 
     return flags
 
 
 @jit(nopython=True)
-def calcflags_blstd(data, flags, blstd, chans, pol, sigma):
+def calcblstd(data, blstd):
+    """ Takes 4d data and fills 3d blstd measurement ignoring zeros """
+
+    for i in xrange(data.shape[0]):
+        for j in xrange(data.shape[2]):
+            for k in xrange(data.shape[3]):
+                mn = 0
+                nonzero = 0
+                for bl in data[i, :, j, k]:
+                    mn += bl
+                    if bl != 0j:
+                        nonzero += 1
+
+                if nonzero:
+                    mn /= nonzero
+
+                sq = 0
+                for bl in data[i, :, j, k]:
+                    sq += np.abs(bl - mn)**2
+
+                if nonzero:
+                    blstd[i,j,k] = np.sqrt(sq/nonzero).real
+                else:
+                    blstd[i,j,k] = 0.
+
+
+@jit(nopython=True)
+def calcflags_blstd(flags, blstd, blstdmed, blstdstd, sigma, chans, pol):
     """ Flaging based on standard deviation over baseline axis """
 
-    for j in xrange(len(data)):
-        for k in chans:
-            mn = 0
-            nonzero = 0
-            for bl in data[j, :, k, pol]:
-                mn += bl
-                if bl != 0j:
-                    nonzero += 1
-
-            if nonzero:
-                mn /= nonzero
-                sq = 0
-                for bl in data[j, :, k, pol]:
-                    sq += np.abs(bl-mn)**2
-
-                blstd[j,k] = np.sqrt(sq/nonzero)
-            else:
-                blstd[j,k] = 0.
-
-    blstdmed = np.median(blstd.flatten())
-    blstdstd = 1.4826*calcmad(blstd.flatten())
-    flags[:, :, chans, pol] = (blstd < blstdmed + sigma*blstdstd)[:,None,:] #broke!
-
-
-#@jit(nopython=True)
-def calcflags_badchtslide(data, flags, chans, pol, sigma):
-    """ Flagging based on sliding window in time and channel """
-
-    win = 20
-    meanamp = np.abs(data[:,:,chans,pol]).mean(axis=1)
-
-    meanspec = meanamp.mean(axis=0)
-    meddevspec = np.zeros_like(meanspec)
-    for ch in range(len(meanspec)):
-        rr = range(max(0, ch-win//2), min(len(meanspec), ch+win//2))
-        rr.remove(ch)
-        meddevspec[ch] = meanspec[ch] - np.median(meanspec[rr])
-    flags[:, :, chans, pol] = (meddevspec < sigma*meddevspec.std())[None, None, :]
-
-    meanlc = meanamp.mean(axis=1)
-    meddevlc = np.zeros_like(meanlc)
-    for t in range(len(meanlc)):
-        rr = range(max(0, t-win//2), min(len(meanlc), t+win//2))
-        rr.remove(t)
-        meddevlc[t] = meanlc[t] - np.median(meanlc[rr])
-    flags[:, :, chans, pol] = (meddevlc < sigma*meddevlc.std())[:, None, None]
+    for i in xrange(flags.shape[0]):
+        for j in xrange(flags.shape[1]):
+            for chan in chans:
+                flags[i, j, chan, pol] = blstd[i, chan, pol] < blstdmed + sigma*blstdstd
 
 
 @jit(nopython=True)
-def std1d(data):
-    """ Takes 1d input data and measures std while ignoring zeros"""
+def meddev(arr, md, win=20):
+    """ Calculate the median deviation of array """
 
-    mn = 0
-    nonzero = 0
-    for da in data:
-        mn += da
-        if da != 0j:
-            nonzero += 1
-
-    if nonzero:
-        mn /= nonzero
-    else:
-        return 0j
-
-    sq = 0
-    for da in data:
-        sq += np.abs(da-mn)**2
-
-    return np.sqrt(sq/nonzero)
+    for ind in xrange(arr.shape[0]):
+        rr = xrange(max(0, ind-win//2), min(len(arr), ind+win//2))
+        md[ind] = arr[ind] - np.median(arr[rr])
 
 
 @jit(nopython=True)
+def calcflags_badchslide(flags, meanspec, meddevspec, sigma, chans, pol):
+    """ Flagging based on sliding window in channel """
+
+    for i in xrange(flags.shape[0]):
+        for j in xrange(flags.shape[1]):
+            for chan in chans:
+                flags[i, j, chan, pol] = meddevspec[chan-chans[0]] < sigma*meddevspec.std()
+
+
+@jit(nopython=True)
+def calcflags_badtslide(flags, meanlc, meddevlc, sigma, chans, pol):
+    """ Flagging based on sliding window in time """
+
+    for i in xrange(data.shape[0]):
+        for j in xrange(data.shape[1]):
+            for chan in chans:
+                flags[i, j, chan, pol] = meddevlc[i] < sigma*meddevlc.std())
+
+
 def calcmad(data):
     """ Calculate median absolute deviation of 1d array """
 
