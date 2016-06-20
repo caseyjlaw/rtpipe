@@ -1,21 +1,12 @@
-#
-# functions to read and convert sdm files
-# claw, 14jun03
-#
-
 import logging
 logger = logging.getLogger(__name__)
 import numpy as np
-import os
-import shutil
-import subprocess
-import time
-try:
-    import casautil
-    import tasklib
-except ImportError:
-    import pwkit.environments.casa.tasks as tasklib
-    import pwkit.environments.casa.util as casautil
+import os.path
+from shutil import rmtree
+from subprocess import call
+from time import time
+import pwkit.environments.casa.tasks as tasklib
+import pwkit.environments.casa.util as casautil
 import sdmpy
 import rtpipe.parseparams as pp
 from rtlib_cython import calc_blarr
@@ -53,7 +44,7 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
 
     # option of not writing log file (need to improve later)
     if d['logfile']:
-        fh = logging.FileHandler(os.path.join(d['workdir'], 'rtpipe_%d.log' % int(round(time.time()))))
+        fh = logging.FileHandler(os.path.join(d['workdir'], 'rtpipe_%d.log' % int(round(time()))))
         fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         logger.parent.addHandler(fh)
         if hasattr(logging, d['loglevel']):
@@ -216,18 +207,13 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
     d['starttime_mjd'] = scans[d['scan']]['startmjd']
     # assume inttime same for all scans
 
-    for scan in sdm['Main']:
-        interval = float(scan.interval)
-        nints = int(scan.numIntegration)
+    for scan in sdm.scans():
+        interval = scan.bdf.get_integration(0).interval
+        nints = int(scan.bdf.numIntegration)
         # get inttime in seconds
-        if 'VLA' in str(sdm['ExecBlock'][0]['telescopeName']):
-            # VLA uses interval as scan duration
-            inttime = interval/nints
-            scannum = int(scan.scanNumber)
-        elif 'GMRT' in str(sdm['ExecBlock'][0]['telescopeName']):
-            # GMRT uses interval as the integration duration
-            inttime = interval
-            scannum = int(scan.subscanNumber)
+        inttime = interval/nints
+        scannum = int(scan.idx)
+
         if scannum == d['scan']:
             d['inttime'] = np.round(inttime)*1e-9
             d['nints'] = nints
@@ -283,17 +269,9 @@ def read_bdf(sdmfile, scannum, nskip=0, readints=0, bdfdir=''):
     pols = sdmpy.scan.sdmarray(sdm['Polarization'][0].corrType)
     npols = len(pols) 
     data = np.empty( (readints, scan.bdf.numBaseline, nchans, npols), dtype='complex64', order='C')
-
-    # read data
-    for i in xrange(readints):
-        integ = scan.bdf.get_integration(i+nskip)
-        count = 0
-        for bb in integ.basebands:
-            for spwnum in range(len(integ.spws[bb])):
-                ch0 = sum(chans[:count])
-                ch1 = sum(chans[:count+1])
-                data[i,:,ch0:ch1,:] = integ.get_data(bb, spwnum)[:,0,:,:]  # 0 for nBin (not used here)
-                count += 1
+    data[:] = scan.bdf
+              .get_data(trange=[nskip, nskip+readints])
+              .reshape((data.shape[0], data.shape[1], data.shape[2]*data.shape[3]*data.shape[4], data.shape[5]))
 
     return data
 
@@ -609,7 +587,7 @@ def sdm2ms(sdmfile, msfile, scan, inttime='0'):
         logger.info('No %s found. Creating anew.' % msfile)
         if inttime != '0':
             logger.info('Filtering by int time.')
-            subprocess.call(['asdm2MS', '--ocm', 'co',
+            call(['asdm2MS', '--ocm', 'co',
                              '--icm', 'co', '--lazy', '--scans',
                              scan, sdmfile, msfile + '.tmp'])
             cfg = tasklib.SplitConfig()  # configure split
@@ -620,40 +598,10 @@ def sdm2ms(sdmfile, msfile, scan, inttime='0'):
             cfg.antenna = '*&*'  # discard autos
             tasklib.split(cfg)  # run task
             # clean up
-            shutil.rmtree(msfile+'.tmp')
+            rmtree(msfile+'.tmp')
         else:
-            subprocess.call(['asdm2MS', '--ocm', 'co',
+            call(['asdm2MS', '--ocm', 'co',
                              '--icm', 'co', '--lazy', '--scans',
                              scan, sdmfile, msfile])
 
     return msfile
-
-
-def filter_scans(sdmfile, namefilter='', intentfilter=''):
-    """ Parses xml in sdmfile to get scan info for those containing
-    'namefilter' and 'intentfilter'
-    """
-
-    goodscans = {}
-    # find scans
-    sdm = sdmpy.SDM(sdmfile)
-
-    if 'VLA' in str(sdm['ExecBlock'][0]['telescopeName']):
-        scans = [(int(scan.scanNumber), str(scan.sourceName),
-                  str(scan.scanIntent))
-                 for scan in sdm['Scan']]
-    elif 'GMRT' in str(sdm['ExecBlock'][0]['telescopeName']):
-        scans = [(int(scan.scanNumber), str(scan.sourceName),
-                  str(scan.scanIntent))
-                 for scan in sdm['Subscan']]
-
-    # set total number of integrations
-    scanint = [int(scan.numIntegration) for scan in sdm['Main']]
-    bdfnum = [scan.dataUID.split('/')[-1] for scan in sdm['Main']]
-    for i in range(len(scans)):
-        if intentfilter in scans[i][2]:
-            if namefilter in scans[i][1]:
-                goodscans[scans[i][0]] = (scans[i][1], scanint[i], bdfnum[i])
-    logger.debug('Found a total of %d scans and %d with name=%s and intent=%s.'
-                 % (len(scans), len(goodscans), namefilter, intentfilter))
-    return goodscans

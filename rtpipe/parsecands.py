@@ -1,4 +1,3 @@
-from scipy.special import erfinv
 import glob, os, logging, sys
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -9,7 +8,6 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import cPickle as pickle
-import json, requests
 
 
 def read_candidates(candsfile, snrmin=0, snrmax=999, returnstate=False):
@@ -363,7 +361,8 @@ def nbcompile(workdir, fileroot, html=True, basenb='', agdir=''):
     agdir is the activegit repo (optional)
     """
 
-    import inspect, rtpipe, shutil
+    from shutil import copy
+    from rtpipe import get_notebook
     from subprocess import call
 
     os.environ['fileroot'] = fileroot
@@ -371,11 +370,11 @@ def nbcompile(workdir, fileroot, html=True, basenb='', agdir=''):
         os.environ['agdir'] = agdir
 
     if not basenb:
-        basenb = os.path.join(os.path.dirname(os.path.dirname(inspect.getfile(rtpipe))), 'notebooks/baseinteract.ipynb')
+        basenb = get_notebook('baseinteract.ipynb')
 
     logger.info('Moving to {0} and building notebook for {1}'.format(workdir, fileroot))
     os.chdir(workdir)
-    shutil.copy(basenb, '{0}/{1}.ipynb'.format(workdir, fileroot))
+    copy(basenb, '{0}/{1}.ipynb'.format(workdir, fileroot))
 
     cmd = 'jupyter nbconvert {0}.ipynb --inplace --execute --to notebook --allow-errors --ExecutePreprocessor.timeout=3600'.format(fileroot).split(' ')
     status = call(cmd)

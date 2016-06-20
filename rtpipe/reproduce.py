@@ -105,13 +105,19 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
         for key in d0.keys():
             if not hasattr(params, key) and 'memory_limit' not in key:
                 _ = d0.pop(key)
-
         d0['npix'] = 0
         d0['uvres'] = 0
-        d0['nsegments'] = 0
         d0['logfile'] = False
+
+# this triggers redefinition of segment boundaries. memory optimization changed, so this is a problem.
+#        d0['nsegments'] = 0
+#        d0['scale_nsegments'] = 1.
+
         # get cand data
         d = rt.set_pipeline(filename, scan, **d0)
+        (vismem, immem) = rt.calc_memory_footprint(d)
+        assert vismem+immem < d['memory_limit'], 'memory_limit defined, but nsegments must (for now) be set to initial values to properly reproduce candidate'
+
         im, data = rt.pipeline_reproduce(d, candloc, product='imdata') # removed loc[candnum]
 
         # optionally plot
