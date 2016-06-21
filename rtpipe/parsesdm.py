@@ -257,11 +257,8 @@ def read_bdf(sdmfile, scannum, nskip=0, readints=0, bdfdir=''):
         readints = scan.bdf.numIntegration - nskip
 
     logger.info('Reading %d ints starting at int %d' % (readints, nskip))
-    chans = scan.numchans
-    nchans = sum(chans)
-    pols = sdmpy.scan.sdmarray(sdm['Polarization'][0].corrType)
-    npols = len(pols) 
-    data = np.empty( (readints, scan.bdf.numBaseline, nchans, npols), dtype='complex64', order='C')
+    npols = len(sdmpy.scan.sdmarray(sdm['Polarization'][0].corrType))
+    data = np.empty( (readints, scan.bdf.numBaseline, sum(scan.numchans), npols), dtype='complex64', order='C')
     data[:] = scan.bdf.get_data(trange=[nskip, nskip+readints]).reshape(data.shape)
 
     return data
