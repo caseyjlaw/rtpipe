@@ -856,7 +856,7 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
                     logger.debug('Doubling nchunk from %d to fit in %d GB memory limit.' % (d['nchunk'], d['memory_limit']))
                     d['nchunk'] = 2*d['nchunk']
                     (vismem, immem) = calc_memory_footprint(d)
-                    if d['nchunk'] == max(d['dtarr'])/min(d['dtarr'])*d['nthread']: # limit nchunk/nthread to at most the range in dt
+                    if d['nchunk'] >= max(d['dtarr'])/min(d['dtarr'])*d['nthread']: # limit nchunk/nthread to at most the range in dt
                         d['nchunk'] = d['nthread']
                         break
 

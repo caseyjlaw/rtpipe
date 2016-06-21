@@ -205,18 +205,11 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
 
     # define times
     d['starttime_mjd'] = scans[d['scan']]['startmjd']
+
     # assume inttime same for all scans
-
-    for scan in sdm.scans():
-        interval = scan.bdf.get_integration(0).interval
-        nints = int(scan.bdf.numIntegration)
-        # get inttime in seconds
-        inttime = interval/nints
-        scannum = int(scan.idx)
-
-        if scannum == d['scan']:
-            d['inttime'] = np.round(inttime)*1e-9
-            d['nints'] = nints
+    scan = sdm.scan(d['scan'])
+    d['inttime'] = scan.bdf.get_integration(0).interval
+    d['nints'] = int(scan.bdf.numIntegration)
 
     # define pols
     d['pols_orig'] = [pol
@@ -269,9 +262,7 @@ def read_bdf(sdmfile, scannum, nskip=0, readints=0, bdfdir=''):
     pols = sdmpy.scan.sdmarray(sdm['Polarization'][0].corrType)
     npols = len(pols) 
     data = np.empty( (readints, scan.bdf.numBaseline, nchans, npols), dtype='complex64', order='C')
-    data[:] = scan.bdf
-              .get_data(trange=[nskip, nskip+readints])
-              .reshape((data.shape[0], data.shape[1], data.shape[2]*data.shape[3]*data.shape[4], data.shape[5]))
+    data[:] = scan.bdf.get_data(trange=[nskip, nskip+readints]).reshape(data.shape)
 
     return data
 
