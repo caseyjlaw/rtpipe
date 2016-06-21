@@ -12,7 +12,7 @@ setup(
     version = '1.43',
     url = 'http://github.com/caseyjlaw/rtpipe',
     packages = find_packages(),        # get all python scripts in realtime
-    install_requires=['numpy', 'scipy', 'pwkit', 'cython', 'sdmpy>=1.31', 'pyfftw', 'click', 'matplotlib'],
+    install_requires=['numpy', 'scipy', 'pwkit', 'cython', 'sdmpy>=1.35', 'pyfftw', 'click', 'matplotlib'],
     cmdclass = {'build_ext': build_ext},
     ext_modules = ext_modules,
     entry_points='''
