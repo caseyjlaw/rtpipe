@@ -12,6 +12,10 @@ setup(
     version = '1.43',
     url = 'http://github.com/caseyjlaw/rtpipe',
     packages = find_packages(),        # get all python scripts in realtime
+    package_data = {"rtpipe": 
+                    ["notebooks/baseinteract.ipynb"],
+                    },
+    include_package_data = True,
     install_requires=['numpy', 'scipy', 'pwkit', 'cython', 'sdmpy>=1.35', 'pyfftw', 'click', 'matplotlib'],
     cmdclass = {'build_ext': build_ext},
     ext_modules = ext_modules,
