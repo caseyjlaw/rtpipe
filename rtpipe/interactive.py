@@ -782,7 +782,7 @@ def addclassifications(agdir, prop, version=None, statfeats = [0,4,5,6,7,8]):
         ag = activegit.ActiveGit(agdir)
         if version:
             ag.set_version(version)
-        clf = ag.read_classifier()
+        clf = ag.classifier
 
         score = clf.predict_proba((np.nan_to_num(prop[:,statfeats])))[:,1]  # take real score
         return score
