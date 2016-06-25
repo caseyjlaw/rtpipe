@@ -42,6 +42,7 @@ def read_candidates(candsfile, snrmin=0, snrmax=999, returnstate=False):
     elif 'snr1' in d['features']:
         snrcol = d['features'].index('snr1')
 
+    # old style. here for backwards compatibility
     if isinstance(cands, dict):
         loc = []; prop = []
         for kk in sorted(cands.keys()):
@@ -50,14 +51,23 @@ def read_candidates(candsfile, snrmin=0, snrmax=999, returnstate=False):
                 prop.append( list(cands[kk]) )
         loc = np.array(loc)
         prop = np.array(prop)
+
+    # new style
     elif isinstance(cands, tuple):
         loc, prop = cands
         assert isinstance(loc, np.ndarray) and isinstance(prop, np.ndarray), 'if cands object is tuple, contents must be two ndarrays'
         snrsel = np.where( (np.abs(prop[:, snrcol]) > snrmin) & (np.abs(prop[:, snrcol]) < snrmax) )
         loc = loc[snrsel]
         prop = prop[snrsel]
+
     else:
         logger.error('Cands object (in cands file) must be dict or tuple(np.array, np.array).')
+
+    # if segment or scan pkl, insert scan number as first col and modify d
+    if 'scan' not in d['featureind']:
+        scanarr = d['scan'] * np.ones(len(loc), dtype=int)
+        loc = np.concatenate( (scanarr[:,None], loc), axis=1)
+        d['featureind'].insert(0, 'scan')
 
     logger.info('Read %d candidates from %s.' % (len(loc), candsfile))
 
@@ -258,7 +268,8 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
             snrcol = d['features'].index('snr2')
         elif 'snr1' in d['features']:
             snrcol = d['features'].index('snr1')
-        scan = int(pklfile.rstrip('.pkl').split('_sc')[1])   # parsing filename to get scan number
+#        scan = int(pklfile.rstrip('.pkl').split('_sc')[1])   # parsing filename to get scan number
+        scan = d['scan']
         segmenttimesdict[scan] = d['segmenttimes']
         starttime_mjddict[scan] = d['starttime_mjd']
 
@@ -267,7 +278,6 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
         # build merged loc,prop lists
         for i in range(len(locs)):
             loc = list(locs[i])
-            loc.insert(0, scan)
             prop = list(props[i])
             mergeloc += [loc]
             mergeprop += [prop]
@@ -293,7 +303,6 @@ def merge_cands(pkllist, outroot='', remove=[], snrmin=0, snrmax=999):
         mergeprop = mergeprop[ww]
 
     # update metadata
-    d['featureind'].insert(0, 'scan')
     d['remove'] = remove
     d['segmenttimesdict'] = segmenttimesdict
     d['starttime_mjddict'] = starttime_mjddict
