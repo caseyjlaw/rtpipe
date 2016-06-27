@@ -5,12 +5,13 @@ import rtpipe.parsecands as pc
 import pickle, logging, os
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
+import numpy.ma as ma # mask for plotting
+import matplotlib
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-
-def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, returndata=False, outname='', **kwargs):
+def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, returndata=False, outname='', newplot=False, **kwargs):
     """ Reproduce detection of a single candidate for plotting or inspection.
 
     candsfile can be merge or single-scan cands pkl file. Difference defined by presence of scan in d['featureind'].
@@ -20,6 +21,7 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
     savefile/outname define if/how to save png of candidate
     if returndata, (im, data) returned.
     kwargs passed to rt.set_pipeline
+    if newplot, then plot with the new candidate plot using new_cand_plot
     """
 
     # get candidate info
@@ -128,7 +130,10 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
         # optionally plot
         if savefile:
             loclabel = scan, segment, candint, dmind, dtind, beamnum
-            make_cand_plot(d, im, data, loclabel, outname=outname)
+            if newplot:
+                new_cand_plot(d, d0, im, data, loclabel, prop, outname=outname) 
+            else:
+                make_cand_plot(d, im, data, loclabel, outname=outname)
 
         # optionally return data
         if returndata:
@@ -236,6 +241,339 @@ def make_cand_plot(d, im, data, loclabel, outname=''):
     if not outname:
         outname = os.path.join(d['workdir'],
                                'cands_{}_sc{}-seg{}-i{}-dm{}-dt{}.png'.format(d['fileroot'], scan,
+                                                                              segment, candint, dmind, dtind))
+
+    try:
+        canvas = FigureCanvasAgg(fig)
+        canvas.print_figure(outname)
+    except ValueError:
+        logger.warn('Could not write figure to %s' % outname)
+
+def new_cand_plot(d, d0, im, data, loclabel, prop, outname=''):
+    """ Builds a new candidate plot, distinct from the original plots produced by make_cand_plot.
+    Expects phased, dedispersed data (cut out in time, dual-pol), image, and metadata
+    loclabel is used to label the plot with (scan, segment, candint, dmind, dtind, beamnum).
+    prop is used to create SNR histogram plot.
+    d and d0 are used to label the plots with useful information.
+    """
+    
+    # given d, d0, im, data, loclabel, and prop: make plot
+    logger.info('Plotting...')
+    logger.debug('(image, data) shape: (%s, %s)' % (str(im.shape), str(data.shape)))
+
+    assert len(loclabel) == 6, 'loclabel should have (scan, segment, candint, dmind, dtind, beamnum)'
+    scan, segment, candint, dmind, dtind, beamnum = loclabel
+
+    # calc source location
+    snrmin = im.min()/im.std()
+    snrmax = im.max()/im.std()
+    if snrmax > -1*snrmin:
+        l1, m1 = rt.calc_lm(d, im, minmax='max')
+        snrobs = snrmax
+    else:
+        l1, m1 = rt.calc_lm(d, im, minmax='min')
+        snrobs = snrmin
+    pt_ra, pt_dec = d['radec']
+    src_ra, src_dec = source_location(pt_ra, pt_dec, l1, m1)
+    logger.info('Peak (RA, Dec): %s, %s' % (src_ra, src_dec))
+
+    # convert l1 and m1 from radians to arcminutes
+    l1arcm = l1*180.*60./np.pi
+    m1arcm = m1*180.*60./np.pi
+
+    # build overall plot
+    fig = plt.Figure(figsize=(12.75,8))
+    
+    # add metadata in subfigure
+    ax = fig.add_subplot(2,3,1, axisbg='white')   
+    
+    # calculate the overall dispersion delay: dd
+    f1 = d['freq_orig'][0]
+    f2 = d['freq_orig'][len(d['freq_orig'])-1]
+    dd = 4.15*d['dmarr'][dmind]*(f1**(-2)-f2**(-2))
+
+    # add annotating info
+    start = 1.1 # these values determine the spacing and location of the annotating information
+    space = 0.07
+    left = 0.0
+    ax.text(left, start, d['fileroot'], fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    ax.text(left, start-space, 'Peak (arcmin): (' + str(np.round(l1arcm, 3)) + ', ' + str(np.round(m1arcm, 3)) + ')', fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    # split the RA and Dec and display in a nice format
+    ra = src_ra.split()
+    dec = src_dec.split()
+    ax.text(left, start-2*space, 'Peak (RA, Dec): (' + ra[0] + ':' + ra[1] + ':' + ra[2][0:4] + ', ' + dec[0] + ':' + dec[1] + ':' + dec[2][0:4]  + ')', 
+            fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    ax.text(left, start-3*space, 'scan: ' + str(scan), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    ax.text(left, start-4*space, 'segment: ' + str(segment), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    ax.text(left, start-5*space, 'integration: ' + str(candint), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    ax.text(left, start-6*space, 'DM: ' + str(d['dmarr'][dmind]), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    ax.text(left, start-7*space, 'dt: ' + str(d['dtarr'][dtind]), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    ax.text(left, start-8*space, '$\Delta$t : '+ str(np.round(dd,1)) + ' ms', fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    ax.text(left, start-9*space, 'SNR: ' + str(np.round(snrobs, 1)), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    ax.text(left, start-10*space, 'Source: ' + str(d['source']), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    # set the plot invisible so that it doesn't interfere with annotations
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+    ax.spines['bottom'].set_color('white')
+    ax.spines['top'].set_color('white') 
+    ax.spines['right'].set_color('white')
+    ax.spines['left'].set_color('white')    
+
+    # plot full dynamic spectra
+    left, width = 0.75, 0.2*2./3.
+    bottom, height = 0.2, 0.7
+    rect_dynsp1 = [left, bottom, width/3., height] # three rectangles for each panel of the spectrum (RR, RR+LL, LL)
+    rect_dynsp2 = [left+width/3., bottom, width/3., height]
+    rect_dynsp3 = [left+2.*width/3., bottom, width/3., height]
+    rect_lc1 = [left, bottom-0.1, width/3., 0.1] 
+    rect_lc2 = [left+width/3., bottom-0.1, width/3., 0.1]
+    rect_lc3 = [left+2.*width/3., bottom-0.1, width/3., 0.1]
+    rect_sp = [left+width, bottom, 0.1*2./3., height]
+    ax_dynsp1 = fig.add_axes(rect_dynsp1)
+    ax_dynsp2 = fig.add_axes(rect_dynsp2, sharey=ax_dynsp1) # sharey so that axes line up
+    ax_dynsp3 = fig.add_axes(rect_dynsp3, sharey=ax_dynsp1)
+    # make RR+LL and LL dynamic spectra y labels invisible so they don't interfere with the plots
+    [label.set_visible(False) for label in ax_dynsp2.get_yticklabels()]
+    [label.set_visible(False) for label in ax_dynsp3.get_yticklabels()]
+    ax_sp = fig.add_axes(rect_sp, sharey=ax_dynsp3)
+    [label.set_visible(False) for label in ax_sp.get_yticklabels()]
+    ax_lc1 = fig.add_axes(rect_lc1)
+    ax_lc2 = fig.add_axes(rect_lc2, sharey=ax_lc1)
+    ax_lc3 = fig.add_axes(rect_lc3, sharey=ax_lc1)
+    [label.set_visible(False) for label in ax_lc2.get_yticklabels()]
+    [label.set_visible(False) for label in ax_lc3.get_yticklabels()]
+    
+    # now actually plot the data
+    spectra = np.swapaxes(data.real,0,1)     
+    dd1 = spectra[...,0]
+    dd2 = spectra[...,0] + spectra[...,1]
+    dd3 = spectra[...,1]
+    colormap = 'viridis'
+    impl1 = ax_dynsp1.imshow(dd1, origin='lower', interpolation='nearest', aspect='auto', cmap=plt.get_cmap(colormap))
+    impl2 = ax_dynsp2.imshow(dd2, origin='lower', interpolation='nearest', aspect='auto', cmap=plt.get_cmap(colormap))
+    impl3 = ax_dynsp3.imshow(dd3, origin='lower', interpolation='nearest', aspect='auto', cmap=plt.get_cmap(colormap))
+    ax_dynsp1.set_yticks(range(0,len(d['freq']),30))
+    ax_dynsp1.set_yticklabels(d['freq'][::30])
+    ax_dynsp1.set_ylabel('Freq (GHz)')
+    ax_dynsp1.set_xlabel('RR')
+    ax_dynsp1.xaxis.set_label_position('top')
+    ax_dynsp2.set_xlabel('RR+LL')
+    ax_dynsp2.xaxis.set_label_position('top')
+    ax_dynsp3.set_xlabel('LL')
+    ax_dynsp3.xaxis.set_label_position('top')
+    [label.set_visible(False) for label in ax_dynsp1.get_xticklabels()] # set xlabels invisible so that they don't interefere with lc plots
+    ax_dynsp1.get_yticklabels()[0].set_visible(False) # This one y label was getting in the way
+    
+    # plot stokes I spectrum of the candidate pulse (assume middle bin)
+    spectrum = spectra[:,len(spectra[0])/2].mean(axis=1) # select stokes I middle bin
+    ax_sp.plot(spectrum, range(len(spectrum)), 'k.')
+    ax_sp.plot(np.zeros(len(spectrum)), range(len(spectrum)), 'r:') # plot 0 Jy dotted line
+    xmin,xmax = ax_sp.get_xlim()
+    ax_sp.set_xticks(np.linspace(xmin,xmax,3).round(2))
+    ax_sp.set_xlabel('Flux (Jy)')    
+
+    # plot mean flux values for each time bin
+    lc1 = dd1.mean(axis=0)
+    lc2 = dd2.mean(axis=0)
+    lc3 = dd3.mean(axis=0)
+    lenlc = len(data)
+    ax_lc1.plot(range(0,lenlc), list(lc1)[:lenlc], 'k.')
+    ax_lc2.plot(range(0,lenlc), list(lc2)[:lenlc], 'k.')
+    ax_lc3.plot(range(0,lenlc), list(lc3)[:lenlc], 'k.')
+    ax_lc1.plot(range(0,lenlc), list(np.zeros(lenlc)), 'r:') # plot 0 Jy dotted line for each plot
+    ax_lc2.plot(range(0,lenlc), list(np.zeros(lenlc)), 'r:')
+    ax_lc3.plot(range(0,lenlc), list(np.zeros(lenlc)), 'r:')    
+    ax_lc2.set_xlabel('Integration (rel)')
+    ax_lc1.set_ylabel('Flux (Jy)')
+    ax_lc1.set_xticks([0, 0.5*lenlc, lenlc])
+    ax_lc1.set_xticklabels(['0', str(lenlc/2), str(lenlc)]) # note I chose to only show the '0' label for one of the plots to avoid messy overlap
+    ax_lc2.set_xticks([0, 0.5*lenlc, lenlc])
+    ax_lc2.set_xticklabels(['', str(lenlc/2), str(lenlc)])
+    ax_lc3.set_xticks([0, 0.5*lenlc, lenlc])
+    ax_lc3.set_xticklabels(['', str(lenlc/2), str(lenlc)])
+    ymin,ymax = ax_lc1.get_ylim()
+    ax_lc1.set_yticks(np.linspace(ymin,ymax,3).round(2))
+
+    # readjust the x tick marks on the dynamic spectra so that they line up with the lc plots
+    ax_dynsp1.set_xticks([0, 0.5*lenlc, lenlc])
+    ax_dynsp2.set_xticks([0, 0.5*lenlc, lenlc])
+    ax_dynsp3.set_xticks([0, 0.5*lenlc, lenlc])
+
+    # plot second set of dynamic spectra (averaged across frequency bins to get SNR=2 for the detected candidate)
+    left, width = 0.45, 0.1333
+    bottom, height = 0.1, 0.4
+    rect_dynsp1 = [left, bottom, width/3., height]
+    rect_dynsp2 = [left+width/3., bottom, width/3., height]
+    rect_dynsp3 = [left+2.*width/3., bottom, width/3., height]
+    rect_sp = [left+width, bottom, 0.1*2./3., height]
+    ax_dynsp1 = fig.add_axes(rect_dynsp1)
+    ax_dynsp2 = fig.add_axes(rect_dynsp2, sharey=ax_dynsp1)
+    ax_dynsp3 = fig.add_axes(rect_dynsp3, sharey=ax_dynsp1)
+    # make RR+LL and LL dynamic spectra y labels invisible so they don't interfere with the plots
+    [label.set_visible(False) for label in ax_dynsp2.get_yticklabels()]
+    [label.set_visible(False) for label in ax_dynsp3.get_yticklabels()]
+    ax_sp = fig.add_axes(rect_sp, sharey=ax_dynsp3)
+    [label.set_visible(False) for label in ax_sp.get_yticklabels()]
+
+    # calculate the number of frequency rows to average together (make the plot have an SNR of 2)
+    n = int((2.*(len(spectra))**0.5/snrobs)**2)
+    if n == 0: # if n==0 then don't average any (avoids errors for modding and dividing by 0)
+        dd1avg = dd1
+        dd3avg = dd3
+    else:
+        # otherwise, add zeros onto the data so that it's length is cleanly divisible by n (makes it easier to average over)
+        dd1zerotemp = np.concatenate((np.zeros((n-len(spectra)%n, len(spectra[0])), dtype=dd1.dtype), dd1), axis=0)
+        dd3zerotemp = np.concatenate((np.zeros((n-len(spectra)%n, len(spectra[0])), dtype=dd3.dtype), dd3), axis=0)
+        # make them masked arrays so that the appended zeros do not affect average calculation
+        zeros = np.zeros((len(dd1), len(dd1[0])))
+        ones = np.ones((n-len(spectra)%n, len(dd1[0])))
+        masktemp = np.concatenate((ones, zeros), axis=0)
+        dd1zero = ma.masked_array(dd1zerotemp, mask=masktemp)
+        dd3zero = ma.masked_array(dd3zerotemp, mask=masktemp)
+        # average together the data
+        dd1avg = np.array([], dtype=dd1.dtype)
+        for i in range(len(spectra[0])):
+            temp = dd1zero[:,i].reshape(-1,n)
+            tempavg = np.reshape(np.mean(temp, axis=1),(len(temp),1))
+            temprep = np.repeat(tempavg, n, axis=0) # repeats the mean values to create more pixels (easier to properly crop when it is finally displayed)
+            if i == 0:
+                dd1avg = temprep
+            else:
+                dd1avg = np.concatenate((dd1avg, temprep), axis=1)
+        dd3avg = np.array([], dtype=dd3.dtype)
+        for i in range(len(spectra[0])):
+            temp = dd3zero[:,i].reshape(-1,n)
+            tempavg = np.reshape(np.mean(temp, axis=1),(len(temp),1))
+            temprep = np.repeat(tempavg, n, axis=0)
+            if i == 0:
+                dd3avg = temprep
+            else:
+                dd3avg = np.concatenate((dd3avg, temprep), axis=1)
+    dd2avg = dd1avg + dd3avg # add together to get averaged RR+LL spectrum
+    colormap = 'viridis'
+    if n == 0: # again, if n==0 then don't crop the spectra because no zeroes were appended
+        dd1avgcrop = dd1avg
+        dd2avgcrop = dd2avg
+        dd3avgcrop = dd3avg
+    else: # otherwise, crop off the appended zeroes
+        dd1avgcrop = dd1avg[len(ones):len(dd1avg),:]
+        dd2avgcrop = dd2avg[len(ones):len(dd2avg),:]
+        dd3avgcrop = dd3avg[len(ones):len(dd3avg),:]
+    impl1 = ax_dynsp1.imshow(dd1avgcrop, origin='lower', interpolation='nearest', aspect='auto', cmap=plt.get_cmap(colormap))
+    impl2 = ax_dynsp2.imshow(dd2avgcrop, origin='lower', interpolation='nearest', aspect='auto', cmap=plt.get_cmap(colormap))
+    impl3 = ax_dynsp3.imshow(dd3avgcrop, origin='lower', interpolation='nearest', aspect='auto', cmap=plt.get_cmap(colormap))
+    ax_dynsp1.set_yticks(range(0,len(d['freq']), 30))
+    ax_dynsp1.set_yticklabels(d['freq'][::30])
+    ax_dynsp1.set_ylabel('Freq (GHz)')
+    ax_dynsp1.set_xlabel('RR')
+    ax_dynsp1.xaxis.set_label_position('top')
+    ax_dynsp2.set_xlabel('Integration (rel)')
+    ax2 = ax_dynsp2.twiny()
+    ax2.set_xlabel('RR+LL')
+    [label.set_visible(False) for label in ax2.get_xticklabels()]
+    ax_dynsp3.set_xlabel('LL')
+    ax_dynsp3.xaxis.set_label_position('top')
+    
+    # plot stokes I spectrum of the candidate pulse in the averaged data (assume middle bin)
+    ax_sp.plot(dd2avgcrop[:,len(dd2avgcrop[0])/2]/2., range(len(dd2avgcrop)), 'k.')
+    ax_sp.plot(np.zeros(len(dd2avgcrop)), range(len(dd2avgcrop)), 'r:')
+    xmin,xmax = ax_sp.get_xlim()
+    ax_sp.set_xticks(np.linspace(xmin,xmax,3).round(2))
+    ax_sp.get_xticklabels()[0].set_visible(False)
+    ax_sp.set_xlabel('Flux (Jy)')    
+
+    # readjust the x tick marks on the dynamic spectra
+    ax_dynsp1.set_xticks([0, 0.5*lenlc, lenlc])
+    ax_dynsp1.set_xticklabels(['0', str(lenlc/2), str(lenlc)])
+    ax_dynsp2.set_xticks([0, 0.5*lenlc, lenlc])
+    ax_dynsp2.set_xticklabels(['', str(lenlc/2), str(lenlc)])
+    ax_dynsp3.set_xticks([0, 0.5*lenlc, lenlc])
+    ax_dynsp3.set_xticklabels(['', str(lenlc/2), str(lenlc)])
+
+    # plot the image and zoomed cutout
+    ax = fig.add_subplot(2,3,4)
+    fov = np.degrees(1./d['uvres'])*60.
+    impl = ax.imshow(im.transpose(), aspect='equal', origin='upper',
+                     interpolation='nearest', extent=[fov/2, -fov/2, -fov/2, fov/2],
+                     cmap=plt.get_cmap('viridis'), vmin=0, vmax=0.5*im.max())
+    ax.set_xlabel('RA Offset (arcmin)')
+    ax.set_ylabel('Dec Offset (arcmin)')
+    ax.autoscale(False) # to stop the plot from autoscaling when we plot the triangles that label the location
+    # add markers on the axes to indicate the measured position of the candidate
+    ax.scatter(x=[l1arcm], y=[-fov/2], c='#ffff00', s=60, marker='^', clip_on=False)
+    ax.scatter(x=[fov/2], y=[m1arcm], c='#ffff00', s=60, marker='>', clip_on=False)
+    ax.set_frame_on(False) # makes it so the axis does not intersect the location triangles (for cosmetic reasons)
+    
+    # add a zoomed cutout image of the candidate (set width at 5*synthesized beam)
+    key = d['vrange'].keys()[0]
+    umax = d['urange'][key]
+    vmax = d['vrange'][key]
+    uvdist = (umax**2+vmax**2)**0.5
+    sbeam = np.degrees(d['uvoversample']/uvdist)*60. # calculate synthesized beam in arcminutes
+    # figure out the location to center the zoomed image on
+    xratio = len(im[0])/fov # pix/arcmin
+    yratio = len(im)/fov # pix/arcmin
+    mult = 5 # sets how many times the synthesized beam the zoomed FOV is
+    xmin = int(len(im[0])/2-(m1arcm+sbeam*mult)*xratio)
+    xmax = int(len(im[0])/2-(m1arcm-sbeam*mult)*xratio)
+    ymin = int(len(im)/2-(l1arcm+sbeam*mult)*yratio)
+    ymax = int(len(im)/2-(l1arcm-sbeam*mult)*yratio)
+    left, width = 0.231, 0.15
+    bottom, height = 0.465, 0.15
+    rect_imcrop = [left, bottom, width, height]
+    ax_imcrop = fig.add_axes(rect_imcrop)
+    impl = ax_imcrop.imshow(im.transpose()[xmin:xmax,ymin:ymax], aspect=1, origin='upper',
+                     interpolation='nearest', extent=[-1,1,-1,1],
+                     cmap=plt.get_cmap('viridis'), vmin=0, vmax=0.5*im.max())
+    # setup the axes
+    ax_imcrop.set_ylabel('Dec (arcmin)')
+    ax_imcrop.set_xlabel('RA (arcmin)')
+    ax_imcrop.xaxis.set_label_position('top')
+    ax_imcrop.xaxis.tick_top()
+    xlabels = [str(np.round(l1arcm+sbeam*mult/2, 1)), '', str(np.round(l1arcm, 1)), '', str(np.round(l1arcm-sbeam*mult/2, 1))]
+    ylabels = [str(np.round(m1arcm-sbeam*mult/2, 1)), '', str(np.round(m1arcm, 1)), '', str(np.round(m1arcm+sbeam*mult/2, 1))]
+    ax_imcrop.set_xticklabels(xlabels)
+    ax_imcrop.set_yticklabels(ylabels)
+    # change axis label location of inset so it doesn't interfere with the full picture
+    ax_imcrop.get_yticklabels()[0].set_verticalalignment('bottom')
+
+    # create SNR versus N histogram for the whole observation (properties for each candidate in the observation given by prop)
+    left, width = 0.45, 0.2
+    bottom, height = 0.6, 0.3
+    rect_snr = [left, bottom, width, height]
+    ax_snr = fig.add_axes(rect_snr)
+    snrs = np.array(prop[:,0])
+    pos_snrs = snrs[snrs >= 0]
+    neg_snrs = snrs[snrs < 0]
+    minval = 5.5
+    maxval = 8.0
+    # determine the min and max values of the x axis
+    if min(pos_snrs) < min(np.abs(neg_snrs)):
+        minval = min(pos_snrs)
+    else:
+        minval = min(np.abs(neg_snrs))
+    if max(pos_snrs) > max(np.abs(neg_snrs)):
+        maxval = max(pos_snrs)
+    else:
+        maxval = max(np.abs(neg_snrs))
+    # positive SNR bins are in blue
+    # absolute values of negative SNR bins are taken and plotted as red x's on top of positive blue bins for compactness
+    n, b, patches = ax_snr.hist(pos_snrs, 50, (minval,maxval), facecolor='blue', zorder=1)
+    vals, bin_edges = np.histogram(np.abs(neg_snrs), 50, (minval,maxval))
+    bins = np.array([(bin_edges[i]+bin_edges[i+1])/2. for i in range(len(vals))])
+    vals = np.array(vals)
+    ax_snr.scatter(bins[vals > 0], vals[vals > 0], marker='x', c='orangered', alpha=1.0, zorder=2)
+    ax_snr.set_xlabel('SNR')
+    ax_snr.set_xlim(left=minval-0.2)
+    ax_snr.set_xlim(right=maxval+0.2)
+    ax_snr.set_ylabel('N')
+    ax_snr.set_yscale('log')
+    # draw vertical line where the candidate SNR is
+    ax_snr.axvline(x=np.abs(snrobs), linewidth=1, color='y', alpha=0.7)
+
+    if not outname:
+        outname = os.path.join(d['workdir'],
+                               'cands_newplot_{}_sc{}-seg{}-i{}-dm{}-dt{}.png'.format(d['fileroot'], scan,
                                                                               segment, candint, dmind, dtind))
 
     try:
