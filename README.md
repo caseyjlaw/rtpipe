@@ -15,7 +15,8 @@ Requirements
 
 Install
 ---
-    conda install numpy scipy pwkit casa-tools casa-python casa-data jupyter bokeh cython matplotlib
+    conda install numpy scipy jupyter bokeh cython matplotlib
+    conda install -c pkgw pwkit casa-tools casa-python casa-data
     pip install rtpipe
 
 pwkit is needed to access CASA libraries and so the anaconda installer is thus required. Alternatively, one can build pwkit and environment variables set like so to see libraries of an existing CASA installation:
