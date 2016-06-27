@@ -11,7 +11,7 @@ import matplotlib
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, returndata=False, outname='', newplot=False, **kwargs):
+def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, returndata=False, outname='', newplot=True, **kwargs):
     """ Reproduce detection of a single candidate for plotting or inspection.
 
     candsfile can be merge or single-scan cands pkl file. Difference defined by presence of scan in d['featureind'].
@@ -25,10 +25,9 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
     """
 
     # get candidate info
-    loc, prop = pc.read_candidates(candsfile)
+    loc, prop, d0 = pc.read_candidates(candsfile, returnstate=True)
 
     # define state dict and overload with user prefs
-    d0 = pickle.load(open(candsfile, 'r'))
     for key in kwargs:
         logger.info('Setting %s to %s' % (key, kwargs[key]))
         d0[key] = kwargs[key]
@@ -102,7 +101,10 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
             d0['workdir'] = os.path.dirname(candsfile)
         filename = os.path.join(d0['workdir'], os.path.basename(d0['filename']))
 
-        segmenttimes = d0['segmenttimesdict'][scan]
+        if d0.has_key('segmenttimesdict'):  # using merged pkl
+            segmenttimes = d0['segmenttimesdict'][scan]
+        else:
+            segmenttimes = d0['segmenttimes']
 
         # clean up d0 of superfluous keys
         params = pp.Params()  # will be used as input to rt.set_pipeline
@@ -131,7 +133,7 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
         if savefile:
             loclabel = scan, segment, candint, dmind, dtind, beamnum
             if newplot:
-                new_cand_plot(d, d0, im, data, loclabel, prop, outname=outname) 
+                new_cand_plot(d, im, data, loclabel, prop, outname=outname) 
             else:
                 make_cand_plot(d, im, data, loclabel, outname=outname)
 
@@ -249,7 +251,7 @@ def make_cand_plot(d, im, data, loclabel, outname=''):
     except ValueError:
         logger.warn('Could not write figure to %s' % outname)
 
-def new_cand_plot(d, d0, im, data, loclabel, prop, outname=''):
+def new_cand_plot(d, im, data, loclabel, prop, outname=''):
     """ Builds a new candidate plot, distinct from the original plots produced by make_cand_plot.
     Expects phased, dedispersed data (cut out in time, dual-pol), image, and metadata
     loclabel is used to label the plot with (scan, segment, candint, dmind, dtind, beamnum).
@@ -303,14 +305,13 @@ def new_cand_plot(d, d0, im, data, loclabel, prop, outname=''):
     dec = src_dec.split()
     ax.text(left, start-2*space, 'Peak (RA, Dec): (' + ra[0] + ':' + ra[1] + ':' + ra[2][0:4] + ', ' + dec[0] + ':' + dec[1] + ':' + dec[2][0:4]  + ')', 
             fontname='sans-serif', transform = ax.transAxes, fontsize='small')
-    ax.text(left, start-3*space, 'scan: ' + str(scan), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
-    ax.text(left, start-4*space, 'segment: ' + str(segment), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
-    ax.text(left, start-5*space, 'integration: ' + str(candint), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
-    ax.text(left, start-6*space, 'DM: ' + str(d['dmarr'][dmind]), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
-    ax.text(left, start-7*space, 'dt: ' + str(d['dtarr'][dtind]), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
-    ax.text(left, start-8*space, '$\Delta$t : '+ str(np.round(dd,1)) + ' ms', fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    ax.text(left, start-3*space, 'Source: ' + str(d['source']), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    ax.text(left, start-4*space, 'scan: ' + str(scan), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    ax.text(left, start-5*space, 'segment: ' + str(segment), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    ax.text(left, start-6*space, 'integration: ' + str(candint), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    ax.text(left, start-7*space, 'DM = ' + str(d['dmarr'][dmind]) + ' (index ' + str(dmind) + ')', fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+    ax.text(left, start-8*space, 'dt = ' + str(np.round(dd,1)) + ' ms' + ' (index ' + str(dtind) + ')', fontname='sans-serif', transform = ax.transAxes, fontsize='small')
     ax.text(left, start-9*space, 'SNR: ' + str(np.round(snrobs, 1)), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
-    ax.text(left, start-10*space, 'Source: ' + str(d['source']), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
     # set the plot invisible so that it doesn't interfere with annotations
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
@@ -545,6 +546,11 @@ def new_cand_plot(d, d0, im, data, loclabel, prop, outname=''):
     snrs = np.array(prop[:,0])
     pos_snrs = snrs[snrs >= 0]
     neg_snrs = snrs[snrs < 0]
+    if not neg_snrs:  # if working with subset and only positive snrs
+        neg_snrs = pos_snrs
+        nonegs = True
+    else:
+        nonegs = False
     minval = 5.5
     maxval = 8.0
     # determine the min and max values of the x axis
@@ -562,7 +568,8 @@ def new_cand_plot(d, d0, im, data, loclabel, prop, outname=''):
     vals, bin_edges = np.histogram(np.abs(neg_snrs), 50, (minval,maxval))
     bins = np.array([(bin_edges[i]+bin_edges[i+1])/2. for i in range(len(vals))])
     vals = np.array(vals)
-    ax_snr.scatter(bins[vals > 0], vals[vals > 0], marker='x', c='orangered', alpha=1.0, zorder=2)
+    if not nonegs:
+        ax_snr.scatter(bins[vals > 0], vals[vals > 0], marker='x', c='orangered', alpha=1.0, zorder=2)
     ax_snr.set_xlabel('SNR')
     ax_snr.set_xlim(left=minval-0.2)
     ax_snr.set_xlim(right=maxval+0.2)
@@ -573,7 +580,7 @@ def new_cand_plot(d, d0, im, data, loclabel, prop, outname=''):
 
     if not outname:
         outname = os.path.join(d['workdir'],
-                               'cands_newplot_{}_sc{}-seg{}-i{}-dm{}-dt{}.png'.format(d['fileroot'], scan,
+                               'cands_{}_sc{}-seg{}-i{}-dm{}-dt{}.png'.format(d['fileroot'], scan,
                                                                               segment, candint, dmind, dtind))
 
     try:

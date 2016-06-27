@@ -9,7 +9,7 @@ setup(
     description = 'Python scripts for fast transient searches with radio interferometer data',
     author = 'Casey Law',
     author_email = 'caseyjlaw@gmail.com',
-    version = '1.43',
+    version = '1.44',
     url = 'http://github.com/caseyjlaw/rtpipe',
     packages = find_packages(),        # get all python scripts in realtime
     package_data = {"rtpipe": 

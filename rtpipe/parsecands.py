@@ -403,7 +403,7 @@ def thresholdcands(candsfile, threshold, numberperscan=1):
     """
 
     # read metadata and define columns of interest
-    d = pickle.load(open(candsfile, 'r'))
+    loc, prop, d = pc.read_candidates(candsfile, returnstate=True)
     try:
         scancol = d['featureind'].index('scan')
     except ValueError:
@@ -413,8 +413,6 @@ def thresholdcands(candsfile, threshold, numberperscan=1):
     elif 'snr1' in d['features']:
         snrcol = d['features'].index('snr1')
 
-    # read data and define snrs
-    loc, prop = pc.read_candidates(candsfile)
     snrs = [prop[i][snrcol] for i in range(len(prop)) if prop[i][snrcol] > threshold]
 
     # calculate unique list of locs of interest
