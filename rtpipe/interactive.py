@@ -15,27 +15,27 @@ import activegit, sys
 def initializenb():
     """ Find input files and log initialization info """
 
-    print('Working directory: {0}'.format(os.getcwd()))
-    print('Run on {0}'.format(asctime()))
+    logger.info('Working directory: {0}'.format(os.getcwd()))
+    logger.info('Run on {0}'.format(asctime()))
     try:
         fileroot = os.environ['fileroot']
-        print('Setting fileroot to {0} from environment variable.\n'.format(fileroot))
+        logger.info('Setting fileroot to {0} from environment variable.\n'.format(fileroot))
         candsfile = 'cands_{0}_merge.pkl'.format(fileroot)
         noisefile = 'noise_{0}_merge.pkl'.format(fileroot)
     except KeyError:
         sdmdir = os.getcwd()
-        print('Setting sdmdir to current directory {0}\n'.format(os.path.abspath(sdmdir)))
+        logger.info('Setting sdmdir to current directory {0}\n'.format(os.path.abspath(sdmdir)))
         candsfiles = glob.glob('cands_*_merge.pkl')
         noisefiles = glob.glob('noise_*_merge.pkl')
         if len(candsfiles) == 1 and len(noisefiles) == 1:
-            print('Found one cands/merge file set')
+            logger.info('Found one cands/merge file set')
         else:
-            print('Found multiple cands/noise file sets. Taking first.')
+            logger.warn('Found multiple cands/noise file sets. Taking first.')
 
         candsfile = candsfiles[0]
         noisefile = noisefiles[0]
         fileroot = candsfile.rstrip('_merge.pkl').lstrip('cands_')
-    print('Set: \n\t candsfile {} \n\t noisefile {} \n\t fileroot {} '.format(candsfile, noisefile, fileroot))
+    logger.info('Set: \n\t candsfile {} \n\t noisefile {} \n\t fileroot {} '.format(candsfile, noisefile, fileroot))
     return (candsfile, noisefile, fileroot)
 
 
@@ -701,38 +701,43 @@ def colorsat(l,m):
     return ["#%02x%02x%02x" % (np.floor(amp[i]*red[i]), np.floor(amp[i]*green[i]), np.floor(amp[i]*blue[i])) for i in range(len(l))]
 
 
-def filterdata(data, plinds, d, threshold, ignorestr, thresh0=6., thresh1=7.):
+def filterdata(data, plinds, d, threshold, ignorestr):
     """ Iteratively filter bad times and set indices for later plotting """
 
+    logger.info('Ignoring times from ignorestr {0}'.format(ignorestr))
     ignoret = parseignoret(ignorestr)
+
+    thresh0 = d['sigma_image1']
+    thresh1 = d['sigma_plot']
+
     plinds['cir'] = calcinds(data, thresh0, ignoret=ignoret) # positive cands
     plinds['cro'] = calcinds(data, -1*thresh0, ignoret=ignoret) # negative cands
     plinds['edg'] = calcinds(data, thresh1, ignoret=ignoret) # cands with png plots
     sortinds = sorted(set(plinds['cir'] + plinds['cro'] + plinds['edg']))
-    print('Selected {} ({} linked) points.'.format(len(sortinds), len(plinds['edg'])))
+    logger.info('Selected {} ({} linked) points.'.format(len(sortinds), len(plinds['edg'])))
     
-    print('Estimated total on target time: {} s\n'.format(calcontime(
+    logger.info('Estimated total on target time: {} s\n'.format(calcontime(
         data, inds=plinds['cir']+plinds['cro']+plinds['edg'])))
     
     # these must get get rescaled when cands are ignored
     data['zs'] = normprob(d, data['snrs'], inds=sortinds)   
 
     # print high 1s bin counts
+    logger.info('Finding high 1-second bins with threshold {0}'.format(threshold))
     hight, highcount = findhight(data, ignoret=ignoret, threshold=threshold)
     if len(hight):
-        print('High times \t High counts:')
+        logger.info('High times \t High counts:')
         for i in range(len(hight)):
-              print('{0}\t{1}'.format(hight[i], highcount[i]))
+              logger.info('{0}\t{1}'.format(hight[i], highcount[i]))
     else:
-        print('No high 1s bin counts.')
-    print('\n')
+        logger.info('No high 1s bin counts.\n')
 
     # print high cands and their times
     biginds = np.argsort(data['abssnr'][sortinds])[-5:]    
-    print('Top 5 abs(snr) candidates and times:')
+    logger.info('Top 5 abs(snr) candidates and times:')
     for ind in biginds[::-1]:
-        print(data['snrs'][sortinds][ind], data['time'][sortinds][ind])
-    print('\n')
+        logger.info('{0} {1}'.format(data['snrs'][sortinds][ind], data['time'][sortinds][ind]))
+    logger.info('\n')
 
 
 def parseignoret(ignorestr):
@@ -782,7 +787,7 @@ def addclassifications(agdir, prop, version=None, statfeats = [0,4,5,6,7,8]):
         ag = activegit.ActiveGit(agdir)
         if version:
             ag.set_version(version)
-        clf = ag.read_classifier()
+        clf = ag.classifier
 
         score = clf.predict_proba((np.nan_to_num(prop[:,statfeats])))[:,1]  # take real score
         return score

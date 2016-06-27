@@ -39,6 +39,9 @@ class state:
             else:
                 print('Format {0} not recognized. Please choose either pickle or text.'.format(format))
 
+        print('Saving {0} to label {1}'.format(obj, label))
+
+
     def load(self, label):
         """ Load obj with give label from hidden state directory """
 
