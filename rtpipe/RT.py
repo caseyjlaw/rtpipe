@@ -436,13 +436,15 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
             elif 'snr1' in d['features']:
                 snrcol = d['features'].index('snr1')
 
+            snrs = n.array([value[snrcol] for value in cands.itervalues()])
+
             maxsnr = max([0] + [value[snrcol] for value in cands.itervalues()])  # be sure max includes at least one value
             if maxsnr > d['sigma_plot']:
                 segment, candint, dmind, dtind, beamnum = [key for key, value in cands.iteritems() if value[snrcol] == maxsnr][0]
                 logger.info('Making cand plot for scan %d, segment %d, candint %d, dmind %d, dtint %d with SNR %.1f.' % (d['scan'], segment, candint, dmind, dtind, maxsnr))
                 im, data = runreproduce(d, data_mem, data_resamp_mem, u, v, w, dmind, dtind, candint)
                 loclabel = [d['scan'], segment, candint, dmind, dtind, beamnum]
-                makecp(d, im, data, loclabel)
+                makecp(d, im, data, loclabel, version=2, snrs=snrs)
             else:
                 logger.info('No candidate in segment %d above sigma_plot %.1f' % (d['segment'], d['sigma_plot']))
 
