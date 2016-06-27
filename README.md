@@ -15,7 +15,7 @@ Requirements
 
 Install
 ---
-    conda install numpy scipy pwkit casa-tools casa-python casa-data jupyter bokeh cython matplotlib
+    conda install numpy scipy jupyter bokeh cython matplotlib
     conda install -c pkgw pwkit casa-tools casa-python casa-data
     pip install rtpipe
 
