@@ -277,9 +277,9 @@ def make_cand_plot(d, im, data, loclabel, version=2, snrs=[], outname=''):
         ax.text(left, start-5*space, 'segment: ' + str(segment), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
         ax.text(left, start-6*space, 'integration: ' + str(candint), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
         ax.text(left, start-7*space, 'DM = ' + str(d['dmarr'][dmind]) + ' (index ' + str(dmind) + ')', fontname='sans-serif', transform = ax.transAxes, fontsize='small')
-        ax.text(left, start-8*space, 'dt = ' + str(np.round(d['dtarr'][dtind], 3)*1e3) + ' ms' + ' (index ' + str(dtind) + ')', fontname='sans-serif', transform = ax.transAxes, fontsize='small')
-        ax.text(left, start-8*space, 'disp delay = ' + str(np.round(dd,1)) + ' ms', fontname='sans-serif', transform = ax.transAxes, fontsize='small')
-        ax.text(left, start-9*space, 'SNR: ' + str(np.round(snrobs, 1)), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+        ax.text(left, start-8*space, 'dt = ' + str(np.round(d['inttime']*d['dtarr'][dtind], 3)*1e3) + ' ms' + ' (index ' + str(dtind) + ')', fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+        ax.text(left, start-9*space, 'disp delay = ' + str(np.round(dd,1)) + ' ms', fontname='sans-serif', transform = ax.transAxes, fontsize='small')
+        ax.text(left, start-10*space, 'SNR: ' + str(np.round(snrobs, 1)), fontname='sans-serif', transform = ax.transAxes, fontsize='small')
         # set the plot invisible so that it doesn't interfere with annotations
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
