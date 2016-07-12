@@ -10,6 +10,7 @@ import pwkit.environments.casa.util as casautil
 import sdmpy
 import rtpipe.parseparams as pp
 from rtlib_cython import calc_blarr
+from lxml.etree import XMLSyntaxError
 qa = casautil.tools.quanta()
 me = casautil.tools.measures()
 
@@ -66,7 +67,7 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
                   if prop['source'] == d['source']][0]
 
     # define spectral info
-    sdm = sdmpy.SDM(d['filename'])
+    sdm = getsdm(d['filename'])
     d['spw_orig'] = [int(str(row.spectralWindowId).split('_')[1])
                      for row in sdm['SpectralWindow']]
     d['spw_nchan'] = [int(row.numChan) for row in sdm['SpectralWindow']]
@@ -249,7 +250,7 @@ def read_bdf(sdmfile, scannum, nskip=0, readints=0, bdfdir=''):
 
     assert os.path.exists(sdmfile), 'sdmfile %s does not exist' % sdmfile
 
-    sdm = sdmpy.SDM(sdmfile, bdfdir=bdfdir)
+    sdm = getsdm(sdmfile, bdfdir=bdfdir)
     scan = sdm.scan(scannum)
     assert scan.bdf.fname, 'bdfstr not defined for scan %d' % scannum
 
@@ -302,7 +303,7 @@ def read_bdf_segment(d, segment=-1):
     # read Flag.xml and apply flags for given ant/time range
     # currently only implemented for segmented data
     if d['applyonlineflags'] and segment > -1:
-        sdm = sdmpy.SDM(d['filename'])
+        sdm = getsdm(d['filename'])
 
         allantdict = dict(zip([str(ant.antennaId) for ant in sdm['Antenna']],
                               [int(str(ant.name).lstrip('ea'))
@@ -421,7 +422,7 @@ def calc_uvw(sdmfile, scan=0, datetime=0, radec=(), bdfdir=''):
         direction = me.direction('J2000', str(ra)+'deg', str(dec)+'deg')
 
     # define metadata "frame" for uvw calculation
-    sdm = sdmpy.SDM(sdmfile)
+    sdm = getsdm(sdmfile)
     telescopename = str(sdm['ExecBlock'][0]['telescopeName']).strip()
     logger.debug('Found observatory name %s' % telescopename)
 
@@ -497,7 +498,7 @@ def get_uvw_segment(d, segment=-1):
 def read_sources(sdmname):
     """ Use sdmpy to get all sources and ra,dec per scan as dict """
 
-    sdm = sdmpy.SDM(sdmname)
+    sdm = getsdm(sdmname)
     sourcedict = {}
 
     for row in sdm['Field']:
@@ -517,7 +518,7 @@ def read_sources(sdmname):
 def read_scans(sdmfile, bdfdir=''):
     """ Use sdmpy to get all scans and info needed for rtpipe as dict """
 
-    sdm = sdmpy.SDM(sdmfile, bdfdir)
+    sdm = getsdm(sdmfile, bdfdir)
     scandict = {}
     skippedscans = []
 
@@ -593,3 +594,15 @@ def sdm2ms(sdmfile, msfile, scan, inttime='0'):
                              scan, sdmfile, msfile])
 
     return msfile
+
+
+def getsdm(*args, **kwargs):
+    """ Wrap sdmpy.SDM to get around schema change error """
+
+    try:
+        sdm = sdmpy.SDM(*args, **kwargs)
+    except XMLSyntaxError:
+        kwargs['use_xsd'] = False
+        sdm = sdmpy.SDM(*args, **kwargs)
+
+    return sdm
