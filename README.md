@@ -20,7 +20,8 @@ Install
 
 If you have [anaconda](https://www.continuum.io/downloads), you can install `rtpipe` like this:
 
-    conda install -c pkgw numpy scipy jupyter bokeh cython matplotlib pwkit casa-tools casa-python casa-data
+    conda install -c conda-forge numpy scipy jupyter bokeh cython matplotlib 
+    conda install -c pkgw pwkit casa-tools casa-python casa-data
     pip install rtpipe activegit
 
 Alternate Install
