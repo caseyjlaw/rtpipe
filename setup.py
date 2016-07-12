@@ -16,7 +16,7 @@ setup(
                     ["notebooks/baseinteract.ipynb"],
                     },
     include_package_data = True,
-    install_requires=['numpy', 'scipy', 'pwkit', 'cython', 'sdmpy>=1.35', 'pyfftw', 'click', 'matplotlib'],
+    install_requires=['numpy', 'scipy', 'pwkit', 'cython', 'sdmpy>=1.35', 'pyfftw', 'click', 'matplotlib', 'activegit'],
     cmdclass = {'build_ext': build_ext},
     ext_modules = ext_modules,
     entry_points='''
