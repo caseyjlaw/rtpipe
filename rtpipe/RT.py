@@ -1364,6 +1364,7 @@ def imagearm(sdmfile, scan, segment, npix=512, res=50, **kwargs):
     vn = v[selnorth]
 
     grid = n.zeros((len(data), npix), dtype='complex64')
+    grid2 = n.zeros((len(data), npix), dtype='float32')
     datalist = []
     for (uu, vv, dd) in [(uw, vw, dataw), (ue, ve, datae), (un, vn, datan)]:
 #        uu = n.round(uu/res).astype(int)
@@ -1372,10 +1373,14 @@ def imagearm(sdmfile, scan, segment, npix=512, res=50, **kwargs):
         vv = n.mod(vv/res, npix)
         uv = n.sqrt(uu**2 + vv**2)
         uv = n.round(uv).astype(int)
-        grid[:, uv] = dd
-        datalist.append(n.fft.ifft(grid, axis=1).real)
+        for i in range(len(uv)):
+            if uv[i] < 512:
+                grid[:, uv[i]] = dd[:, i]
+        grid2 = n.fft.ifft(grid, axis=1).real
+        datalist.append(grid2)
 
     return datalist
+
 
 def sample_image(d, data, u, v, w, i=-1, verbose=1, imager='xy', wres=100):
     """ Samples one integration and returns image
