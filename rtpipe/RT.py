@@ -1334,6 +1334,49 @@ def image1wrap(d, u, v, w, npixx, npixy, candint):
     return image
 
 
+def imagearm(sdmfile, scan, segment, npix=512, res=50, **kwargs):
+    """ Function to do end-to-end 1d, arm-based imaging """
+
+    import sdmpy
+    sdm = sdmpy.SDM(sdmfile)
+    ants = {ant.stationId:ant.name for ant in sdm['Antenna']}
+    stations = {st.stationId: st.name for st in sdm['Station'] if 'X' not in str(st.name)}
+    west = [int(str(ants[st]).lstrip('ea')) for st in stations if 'W' in str(stations[st])]
+    east = [int(str(ants[st]).lstrip('ea')) for st in stations if 'E' in str(stations[st])]
+    north = [int(str(ants[st]).lstrip('ea')) for st in stations if 'N' in str(stations[st])]
+
+    d = set_pipeline(sdmfile, scan, **kwargs)
+    blarr = rtlib.calc_blarr(d)
+    selwest = [i for i in range(len(blarr)) if all([b in west for b in blarr[i]])]
+    seleast = [i for i in range(len(blarr)) if all([b in east for b in blarr[i]])]
+    selnorth = [i for i in range(len(blarr)) if all([b in north for b in blarr[i]])]
+
+    u,v,w = ps.get_uvw_segment(d, segment=segment)
+    data = pipeline_reproduce(d, segment=segment, product='data')
+    dataw = data[:,selwest].mean(axis=3).mean(axis=2)
+    datae = data[:,seleast].mean(axis=3).mean(axis=2)
+    datan = data[:,selnorth].mean(axis=3).mean(axis=2)
+    uw = u[selwest]
+    ue = u[seleast]
+    un = u[selnorth]
+    vw = v[selwest]
+    ve = v[seleast]
+    vn = v[selnorth]
+
+    grid = n.zeros((len(data), npix), dtype='complex64')
+    datalist = []
+    for (uu, vv, dd) in [(uw, vw, dataw), (ue, ve, datae), (un, vn, datan)]:
+#        uu = n.round(uu/res).astype(int)
+#        vv = n.round(vv/res).astype(int)
+        uu = n.mod(uu/res, npix)
+        vv = n.mod(vv/res, npix)
+        uv = n.sqrt(uu**2 + vv**2)
+        uv = n.round(uv).astype(int)
+        grid[:, uv] = dd
+        datalist.append(n.fft.ifft(grid, axis=1).real)
+
+    return datalist
+
 def sample_image(d, data, u, v, w, i=-1, verbose=1, imager='xy', wres=100):
     """ Samples one integration and returns image
     i is integration to image. Default is mid int.
