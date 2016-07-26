@@ -1,4 +1,4 @@
-__all__ = ['RT', 'parsesdm', 'parsems', 'parsecands', 'parsecal', 'parseparams', 'interactive', 'nbpipeline', 'reproduce']
+__all__ = ['RT', 'parsesdm', 'parsems', 'parsecands', 'parsecal', 'parseparams', 'interactive', 'nbpipeline', 'reproduce', 'FDMT']
 
 from rtpipe import *
 import os.path
