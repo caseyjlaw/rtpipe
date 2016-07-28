@@ -68,6 +68,32 @@ def FDMT_params(f_min, f_max, maxDT, inttime):
     logger.info('Freqs from {0}-{1}, MaxDT {2}, Int time {3} => maxDM {4}'.format(f_min, f_max, maxDT, inttime, maxDM))
 
 
+def dmtoind(dm, f_min, f_max, nchan0, inttime, it):
+    """
+    Given FDMT state, return indices to slice partial FDMT solution and sump to a given DM
+    """
+
+#    maxDT = dmtodt(dm) # need to write
+
+    if it>0:
+        correction = dF/2.
+    else:
+        correction = 0
+
+    shift = []
+    nchan = nchan0/2**(iteration_num)
+    for i_F in range(nchan):
+        f_start = (f_max - f_min)/float(nchan) * (i_F) + f_min
+        f_end = (f_max - f_min)/float(nchan) *(i_F+1) + f_min
+        f_middle = (f_end - f_start)/2. + f_start - correction
+        f_middle_larger = (f_end - f_start)/2 + f_start + correction
+
+        dT_middle = int(round(i_dT * (1./f_middle**2 - 1./f_start**2)/(1./f_end**2 - 1./f_start**2)))
+        dT_middle_larger = int(round(i_dT * (1./f_middle_larger**2 - 1./f_start**2)/(1./f_end**2 - 1./f_start**2)))
+
+        shift.append( (-dT_middle_larger, i_F) )
+
+
 def FDMT_initialization(datain, f_min, f_max, maxDT, dataType):
     """
     Input: datain - visibilities of (nint, nbl, nchan, npol)
