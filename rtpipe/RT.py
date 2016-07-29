@@ -599,6 +599,7 @@ def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[])
     d1['npix'] = 0; d1['uvres'] = 0
     d1['savecands'] = False
     d1['savenoise'] = False
+    d1['logfile'] = False
 
     # redefine d. many parameters modified after this to keep from messing up time boundaries/cand location
     d = set_pipeline(filename, scan, **d1)
@@ -642,6 +643,8 @@ def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[])
     # search
     logger.info('Refining DM grid to %s and expanding images to (%d, %d) pix with uvres %d' % (str(d['dmarr']), d['npixx'], d['npixy'], d['uvres']))
     cands = search(d, data_mem, u_mem, v_mem, w_mem)
+    cands = {tuple([scan]+list(loc)):list(prop) for (loc, prop) in cands.iteritems()}
+    d['featureind'].insert(0, 'scan')
 
 # making cand plot from this
 # need to keep from confusing old and new indices
