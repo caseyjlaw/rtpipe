@@ -131,7 +131,7 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
 def list_cands(candsfile, threshold, candnum=-1):
     """ Prints candidate info in time order above some threshold and returns loc of candnum or all SNRs """
 
-    loc, prop, d0 = pc.read_candidates(candsfile, returnstate=True)
+    loc, prop, d0 = pc.read_candidates(candsfile, snrmin=threshold, returnstate=True)
 
     if 'snr2' in d0['features']:
         snrcol = d0['features'].index('snr2')
@@ -168,9 +168,11 @@ def refine_cand(candsfile, candloc=[], candnum=-1, threshold=0, scaledm=2.1, sca
     if candnum >= 0:
         candloc, candprop = list_cands(candsfile, candnum=candnum, threshold=threshold)
         d = pickle.load(open(candsfile, 'r'))
+        logger.info('Refining cand {0} with features {1}'.format(candloc, candprop))
         cands = rt.pipeline_refine(d, candloc, scaledm=scaledm, scalepix=scalepix, scaleuv=scaleuv, chans=chans)
         return cands
     elif candloc:
+        logger.info('Refining cand {0}'.format(candloc))
         d = pickle.load(open(candsfile, 'r'))
         cands = rt.pipeline_refine(d, candloc, scaledm=scaledm, scalepix=scalepix, scaleuv=scaleuv, chans=chans)
         return cands
@@ -198,25 +200,26 @@ def refine_cands(candsfile, threshold=0, scaledm=2.1, scalepix=2, scaleuv=1.0, c
         if snr > 0:
             d, cands = refine_cand(candsfile, threshold=threshold, candnum=i,
                                 scaledm=scaledm, scalepix=scalepix, scaleuv=scaleuv, chans=chans)
-            candlocs = np.array(cands.keys())
-            candprops = np.array(cands.values())
+            if cands:
+                candlocs = np.array(cands.keys())
+                candprops = np.array(cands.values())
 
-            scan = locs[i, scancol]
-            segment = locs[i, segmentcol]
-            candint = locs[i, intcol]
-            dmind = locs[i, dmindcol]
-            dtind = locs[i, dtindcol]
-            candfile = 'cands_{0}_sc{1}-seg{2}-i{3}-dm{4}-dt{5}.pkl'.format(d['fileroot'], scan, segment, candint, dmind, dtind)
+                scan = locs[i, scancol]
+                segment = locs[i, segmentcol]
+                candint = locs[i, intcol]
+                dmind = locs[i, dmindcol]
+                dtind = locs[i, dtindcol]
+                candfile = 'cands_{0}_sc{1}-seg{2}-i{3}-dm{4}-dt{5}.pkl'.format(d['fileroot'], scan, segment, candint, dmind, dtind)
 
-            if any([candsnr > snr for candsnr in candprops[:, snrcol]]):
-                logger.info('Cand {0} had SNR {1} and refinement found a higher SNR in new ones: {2}.'.format(i, snr, candprops[:, snrcol]))
-                logger.info('Saving to {0}: {1}'.format(candfile, cands))
+                if any([candsnr > snr for candsnr in candprops[:, snrcol]]):
+                    logger.info('Cand {0} had SNR {1} and refinement found a higher SNR in new ones: {2}.'.format(i, snr, candprops[:, snrcol]))
+                    logger.info('Saving to {0}: {1}'.format(candfile, cands))
 
-                with open(candfile, 'w') as pkl:
-                    pickle.dump(d, pkl, protocol=2)
-                    pickle.dump((candlocs, candprops), pkl, protocol=2)
-            else:
-                logger.info('Cand {0} had SNR {1}, but refinement found no improvement: {2}'.format(i, snr, candprops[:, snrcol]))
+                    with open(candfile, 'w') as pkl:
+                        pickle.dump(d, pkl, protocol=2)
+                        pickle.dump((candlocs, candprops), pkl, protocol=2)
+                else:
+                    logger.info('Cand {0} had SNR {1}, but refinement found no improvement: {2}'.format(i, snr, candprops[:, snrcol]))
 
 
 def make_cand_plot(d, im, data, loclabel, version=2, snrs=[], outname=''):
