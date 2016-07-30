@@ -416,7 +416,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
                     # set dm- and dt-dependent int ranges for segment
                     nskip_dm = ((d['datadelay'][-1] - d['datadelay'][dmind]) / dt) * (d['segment'] != 0)  # nskip=0 for first segment
                     searchints = (d['readints'] - d['datadelay'][dmind]) / dt - nskip_dm
-                    logger.info('Imaging %d ints from %d for (%d,%d)' % (searchints, nskip_dm, dm, dt),)
+                    logger.debug('Imaging %d ints from %d for (%d,%d)' % (searchints, nskip_dm, dm, dt),)
 
                     # imaging in shared memory, mapped over ints
                     image1part = partial(image1, d, u, v, w, dmind, dtind, beamnum)
@@ -639,7 +639,7 @@ def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[],
     elif scaledm == 1.:
         d['dmarr'] = [dmcand]
 
-    d['datadelay'] = [rtlib.calc_delay(d['freq'], d['inttime'],dm).max() for dm in d['dmarr']] + d['datadelay'][-1]
+    d['datadelay'] = [rtlib.calc_delay(d['freq'], d['inttime'],dm).max() for dm in d['dmarr']] + [d['datadelay'][-1]]
     d['dtarr'] = [d['dtarr'][dtind]]
     d['npixx'] = scalepix*d['npixx']
     d['npixy'] = scalepix*d['npixy']
