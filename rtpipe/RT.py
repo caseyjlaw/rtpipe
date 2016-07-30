@@ -416,7 +416,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
                     # set dm- and dt-dependent int ranges for segment
                     nskip_dm = ((d['datadelay'][-1] - d['datadelay'][dmind]) / dt) * (d['segment'] != 0)  # nskip=0 for first segment
                     searchints = (d['readints'] - d['datadelay'][dmind]) / dt - nskip_dm
-                    logger.debug('Imaging %d ints from %d for (%d,%d)' % (searchints, nskip_dm, dm, dt),)
+                    logger.info('Imaging %d ints from %d for (%d,%d)' % (searchints, nskip_dm, dm, dt),)
 
                     # imaging in shared memory, mapped over ints
                     image1part = partial(image1, d, u, v, w, dmind, dtind, beamnum)
@@ -567,7 +567,7 @@ def make_transient(std, DMmax, Amin=6., Amax=20., rmax=20., rmin=0., DMmin=0.):
     return loff, moff, A, DM
 
 
-def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[]):
+def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[], returndata=False):
     """ 
     Reproduces candidate and potentially improves sensitivity through better DM and imaging parameters.
     scale* parameters enhance sensitivity by making refining dmgrid and images.
@@ -582,6 +582,8 @@ def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[])
     scan, segment, candint, dmind, dtind, beamnum = candloc
 
     d1 = d0.copy() # dont mess with original (mutable!)
+
+    segmenttimes = d1['segmenttimesdict'][scan]
 
     # if file not at stated full path, assume it is local
     if not os.path.exists(d1['filename']):
@@ -606,8 +608,9 @@ def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[])
     if chans:
         d['chans'] = chans
 
-    # define memroy space
-    # trim data?
+    d['segmenttimes'] = segmenttimes
+    d['nsegments'] = len(segmenttimes)
+
     data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
     u_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
     v_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
@@ -633,8 +636,10 @@ def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[])
             except IndexError:
                 dmdelta = 0.1*dmcand
         d['dmarr'] = list(n.arange(dmcand-dmdelta, dmcand+dmdelta, dmdelta/scaledm))
-    else:
+    elif scaledm == 1.:
         d['dmarr'] = [dmcand]
+
+    d['datadelay'] = [rtlib.calc_delay(d['freq'], d['inttime'],dm).max() for dm in d['dmarr']] + d['datadelay'][-1]
     d['dtarr'] = [d['dtarr'][dtind]]
     d['npixx'] = scalepix*d['npixx']
     d['npixy'] = scalepix*d['npixy']
@@ -654,7 +659,10 @@ def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[])
 #    make_cand_plot(d, im, data, loclabel, outname=outname)
 
     # return info to reproduce/visualize refined cands
-    return d, cands
+    if returndata:
+        return data
+    else:
+        return d, cands
 
 
 def pipeline_lightcurve(d, l1=0, m1=0, segments=[], scan=-1):

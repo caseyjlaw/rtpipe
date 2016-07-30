@@ -11,7 +11,7 @@ import matplotlib
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, returndata=False, outname='', newplot=True, **kwargs):
+def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, returndata=False, outname='', newplot=True, returnstate=False, **kwargs):
     """ Reproduce detection of a single candidate for plotting or inspection.
 
     candsfile can be merge or single-scan cands pkl file. Difference defined by presence of scan in d['featureind'].
@@ -100,6 +100,8 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
         d0['npix'] = 0
         d0['uvres'] = 0
         d0['logfile'] = False
+        d0['savenoise'] = False
+        d0['savecands'] = False
 
 # this triggers redefinition of segment boundaries. memory optimization changed, so this is a problem.
 #        d0['nsegments'] = 0
@@ -126,6 +128,8 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
         # optionally return data
         if returndata:
             return (im, data)
+        elif returnstate:
+            return d
 
 
 def list_cands(candsfile, threshold, candnum=-1):
@@ -150,7 +154,7 @@ def list_cands(candsfile, threshold, candnum=-1):
         logger.info("%d: %s, %.1f, %.1f, %.1f" % (i, str(loc[i]), prop[i, snrcol], np.array(d0['dmarr'])[loc[i,dmindcol]], times[i]))
 
 
-def refine_cand(candsfile, candloc=[], candnum=-1, threshold=0, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[]):
+def refine_cand(candsfile, candloc=[], candnum=-1, threshold=0, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[], returndata=False):
     """ Helper function to interact with merged cands file and refine analysis
 
     candsfile is merged pkl file
@@ -162,27 +166,19 @@ def refine_cand(candsfile, candloc=[], candnum=-1, threshold=0, scaledm=2.1, sca
         candlocs, candprops, d0 = pc.read_candidates(candsfile, snrmin=threshold, returnstate=True)
         candloc = candlocs[candnum]
         candprop = candprops[candnum]
-        if d0.has_key('segmenttimesdict'):  # using merged pkl
-            scancol = d0['featureind'].index('scan')
-            segmenttimes = d0['segmenttimesdict'][candloc[scancol]]
-            d0['segmenttimes'] = segmenttimes
-            d0['nsegments'] = len(segmenttimes)
 
         logger.info('Refining cand {0} with features {1}'.format(candloc, candprop))
-        d, cands = rt.pipeline_refine(d0, candloc, scaledm=scaledm, scalepix=scalepix, scaleuv=scaleuv, chans=chans)
-        return d, cands
+        values = rt.pipeline_refine(d0, candloc, scaledm=scaledm, scalepix=scalepix, scaleuv=scaleuv, chans=chans, returndata=returndata)
+        return values
+
     elif candloc:
         logger.info('Refining cand {0}'.format(candloc))
         d0 = pickle.load(open(candsfile, 'r'))
-        if d0.has_key('segmenttimesdict'):  # using merged pkl
-            segmenttimes = d0['segmenttimesdict'][scan]
-            d0['segmenttimes'] = segmenttimes
-            d0['nsegments'] = len(segmenttimes)
-
-        d, cands = rt.pipeline_refine(d0, candloc, scaledm=scaledm, scalepix=scalepix, scaleuv=scaleuv, chans=chans)
+        values = rt.pipeline_refine(d0, candloc, scaledm=scaledm, scalepix=scalepix, scaleuv=scaleuv, chans=chans, returndata=returndata)
         return d, cands
     else:
         return None
+
 
 def refine_cands(candsfile, threshold=0, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[], savepkl=True):
     """ Runs refine_cand on all positive SNR candidates above threshold. Any detected at higher SNR are highlighted. """
