@@ -132,8 +132,8 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
             return d
 
 
-def list_cands(candsfile, threshold, candnum=-1):
-    """ Prints candidate info in time order above some threshold and returns loc of candnum or all SNRs """
+def list_cands(candsfile, threshold=0.):
+    """ Prints candidate info in time order above some threshold """
 
     loc, prop, d0 = pc.read_candidates(candsfile, snrmin=threshold, returnstate=True)
 
@@ -142,7 +142,6 @@ def list_cands(candsfile, threshold, candnum=-1):
     elif 'snr1' in d0['features']:
         snrcol = d0['features'].index('snr1')
     dmindcol = d0['featureind'].index('dmind')
-    dmind = loc[candnum, dmindcol]
 
     snrs = prop[:, snrcol]
     times = pc.int2mjd(d0, loc)
