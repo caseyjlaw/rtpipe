@@ -141,20 +141,13 @@ def list_cands(candsfile, threshold, candnum=-1):
     dmind = loc[candnum, dmindcol]
 
     snrs = prop[:, snrcol]
-    select = np.where(np.abs(snrs) > threshold)[0]
-    loc = loc[select]
-    prop = prop[select]
     times = pc.int2mjd(d0, loc)
     times = times - times[0]
 
-    if candnum >= 0:
-        return (loc[candnum], prop[candnum])
-    else:
-        logger.info('Getting candidates...')
-        logger.info('candnum: loc, SNR, DM (pc/cm3), time (s; rel)')
-        for i in range(len(loc)):
-            logger.info("%d: %s, %.1f, %.1f, %.1f" % (i, str(loc[i]), prop[i, snrcol], np.array(d0['dmarr'])[loc[i,dmindcol]], times[i]))
-        return (loc, prop)
+    logger.info('Getting candidates...')
+    logger.info('candnum: loc, SNR, DM (pc/cm3), time (s; rel)')
+    for i in range(len(loc)):
+        logger.info("%d: %s, %.1f, %.1f, %.1f" % (i, str(loc[i]), prop[i, snrcol], np.array(d0['dmarr'])[loc[i,dmindcol]], times[i]))
 
 
 def refine_cand(candsfile, candloc=[], candnum=-1, threshold=0, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[]):
@@ -166,16 +159,28 @@ def refine_cand(candsfile, candloc=[], candnum=-1, threshold=0, scaledm=2.1, sca
     """
 
     if candnum >= 0:
-        candloc, candprop = list_cands(candsfile, candnum=candnum, threshold=threshold)
-        d = pickle.load(open(candsfile, 'r'))
+        candlocs, candprops, d0 = pc.read_candidates(candsfile, snrmin=threshold, returnstate=True)
+        candloc = candlocs[candnum]
+        candprop = candprops[candnum]
+        if d0.has_key('segmenttimesdict'):  # using merged pkl
+            scancol = d0['featureind'].index('scan')
+            segmenttimes = d0['segmenttimesdict'][candloc[scancol]]
+            d0['segmenttimes'] = segmenttimes
+            d0['nsegments'] = len(segmenttimes)
+
         logger.info('Refining cand {0} with features {1}'.format(candloc, candprop))
-        cands = rt.pipeline_refine(d, candloc, scaledm=scaledm, scalepix=scalepix, scaleuv=scaleuv, chans=chans)
-        return cands
+        d, cands = rt.pipeline_refine(d0, candloc, scaledm=scaledm, scalepix=scalepix, scaleuv=scaleuv, chans=chans)
+        return d, cands
     elif candloc:
         logger.info('Refining cand {0}'.format(candloc))
-        d = pickle.load(open(candsfile, 'r'))
-        cands = rt.pipeline_refine(d, candloc, scaledm=scaledm, scalepix=scalepix, scaleuv=scaleuv, chans=chans)
-        return cands
+        d0 = pickle.load(open(candsfile, 'r'))
+        if d0.has_key('segmenttimesdict'):  # using merged pkl
+            segmenttimes = d0['segmenttimesdict'][scan]
+            d0['segmenttimes'] = segmenttimes
+            d0['nsegments'] = len(segmenttimes)
+
+        d, cands = rt.pipeline_refine(d0, candloc, scaledm=scaledm, scalepix=scalepix, scaleuv=scaleuv, chans=chans)
+        return d, cands
     else:
         return None
 
@@ -199,7 +204,7 @@ def refine_cands(candsfile, threshold=0, scaledm=2.1, scalepix=2, scaleuv=1.0, c
     for (i, snr) in enumerate(snrs):
         if snr > 0:
             d, cands = refine_cand(candsfile, threshold=threshold, candnum=i,
-                                scaledm=scaledm, scalepix=scalepix, scaleuv=scaleuv, chans=chans)
+                                   scaledm=scaledm, scalepix=scalepix, scaleuv=scaleuv, chans=chans)
             if cands:
                 candlocs = np.array(cands.keys())
                 candprops = np.array(cands.values())
