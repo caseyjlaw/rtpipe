@@ -143,14 +143,15 @@ def list_cands(candsfile, threshold=0.):
         snrcol = d0['features'].index('snr1')
     dmindcol = d0['featureind'].index('dmind')
 
-    snrs = prop[:, snrcol]
-    times = pc.int2mjd(d0, loc)
-    times = times - times[0]
+    if len(loc):
+        snrs = prop[:, snrcol]
+        times = pc.int2mjd(d0, loc)
+        times = times - times[0]
 
-    logger.info('Getting candidates...')
-    logger.info('candnum: loc, SNR, DM (pc/cm3), time (s; rel)')
-    for i in range(len(loc)):
-        logger.info("%d: %s, %.1f, %.1f, %.1f" % (i, str(loc[i]), prop[i, snrcol], np.array(d0['dmarr'])[loc[i,dmindcol]], times[i]))
+        logger.info('Getting candidates...')
+        logger.info('candnum: loc, SNR, DM (pc/cm3), time (s; rel)')
+        for i in range(len(loc)):
+            logger.info("%d: %s, %.1f, %.1f, %.1f" % (i, str(loc[i]), prop[i, snrcol], np.array(d0['dmarr'])[loc[i,dmindcol]], times[i]))
 
 
 def refine_cand(candsfile, candloc=[], candnum=-1, threshold=0, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[], returndata=False):
