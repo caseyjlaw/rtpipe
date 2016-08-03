@@ -1,6 +1,7 @@
 import rtpipe.RT as rt
 import rtpipe.parsecands as pc
 import rtpipe.parsesdm as ps
+import rtpipe.reproduce as reproduce
 import click, os, glob
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -107,6 +108,34 @@ def nbcompile(filename, html, basenb, agdir):
     filename = os.path.abspath(filename)
 
     pc.nbcompile(os.path.dirname(filename), os.path.basename(filename), html=html, basenb=basenb, agdir=agdir)
+
+
+@cli.command()
+@click.argument('candsfile', type=str)
+@click.option('--threshold', type=float, default=0., help='Filter candidates to abs(snr) > threshold')
+def list_cands(candsfile, threshold):
+    """ Print candidates above abs(snr) in candsfile """
+
+    reproduce.list_cands(candsfile, threshold)
+
+
+@cli.command()
+@click.argument('candsfile', type=str)
+@click.argument('candnum', type=int)
+@click.option('--threshold', type=float, default=0., help='Filter candidates to abs(snr) > threshold')
+def refine_cand(candsfile, candnum, threshold):
+    """ Run refinement search for candnum in list_cands with abs(snr) > threshold """
+
+    reproduce.refine_cand(candsfile, candnum=candnum, threshold=threshold)
+
+
+@cli.command()
+@click.argument('candsfile', type=str)
+@click.option('--threshold', type=float, default=0., help='Filter candidates to abs(snr) > threshold')
+def refine_cands(candsfile, threshold):
+    """ Run refinement search and save candidates for all in candsfile with snr > threshold """
+
+    reproduce.refine_cands(candsfile, threshold=threshold)
 
 
 if __name__ == '__main__':

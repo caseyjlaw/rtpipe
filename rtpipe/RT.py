@@ -567,7 +567,7 @@ def make_transient(std, DMmax, Amin=6., Amax=20., rmax=20., rmin=0., DMmin=0.):
     return loff, moff, A, DM
 
 
-def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[]):
+def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[], returndata=False):
     """ 
     Reproduces candidate and potentially improves sensitivity through better DM and imaging parameters.
     scale* parameters enhance sensitivity by making refining dmgrid and images.
@@ -582,6 +582,8 @@ def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[])
     scan, segment, candint, dmind, dtind, beamnum = candloc
 
     d1 = d0.copy() # dont mess with original (mutable!)
+
+    segmenttimes = d1['segmenttimesdict'][scan]
 
     # if file not at stated full path, assume it is local
     if not os.path.exists(d1['filename']):
@@ -599,14 +601,16 @@ def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[])
     d1['npix'] = 0; d1['uvres'] = 0
     d1['savecands'] = False
     d1['savenoise'] = False
+    d1['logfile'] = False
 
     # redefine d. many parameters modified after this to keep from messing up time boundaries/cand location
     d = set_pipeline(filename, scan, **d1)
     if chans:
         d['chans'] = chans
 
-    # define memroy space
-    # trim data?
+    d['segmenttimes'] = segmenttimes
+    d['nsegments'] = len(segmenttimes)
+
     data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
     u_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
     v_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
@@ -632,8 +636,10 @@ def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[])
             except IndexError:
                 dmdelta = 0.1*dmcand
         d['dmarr'] = list(n.arange(dmcand-dmdelta, dmcand+dmdelta, dmdelta/scaledm))
-    else:
+    elif scaledm == 1.:
         d['dmarr'] = [dmcand]
+
+    d['datadelay'] = [rtlib.calc_delay(d['freq'], d['inttime'],dm).max() for dm in d['dmarr']] + [d['datadelay'][-1]]
     d['dtarr'] = [d['dtarr'][dtind]]
     d['npixx'] = scalepix*d['npixx']
     d['npixy'] = scalepix*d['npixy']
@@ -642,6 +648,8 @@ def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[])
     # search
     logger.info('Refining DM grid to %s and expanding images to (%d, %d) pix with uvres %d' % (str(d['dmarr']), d['npixx'], d['npixy'], d['uvres']))
     cands = search(d, data_mem, u_mem, v_mem, w_mem)
+    cands = {tuple([scan]+list(loc)):list(prop) for (loc, prop) in cands.iteritems()}
+    d['featureind'].insert(0, 'scan')
 
 # making cand plot from this
 # need to keep from confusing old and new indices
@@ -651,7 +659,10 @@ def pipeline_refine(d0, candloc, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[])
 #    make_cand_plot(d, im, data, loclabel, outname=outname)
 
     # return info to reproduce/visualize refined cands
-    return d, cands
+    if returndata:
+        return data
+    else:
+        return d, cands
 
 
 def pipeline_lightcurve(d, l1=0, m1=0, segments=[], scan=-1):
@@ -1332,6 +1343,54 @@ def image1wrap(d, u, v, w, npixx, npixy, candint):
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
     image = rtlib.imgonefullxy(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[candint], npixx, npixy, d['uvres'], verbose=1)
     return image
+
+
+def imagearm(sdmfile, scan, segment, npix=512, res=50, **kwargs):
+    """ Function to do end-to-end 1d, arm-based imaging """
+
+    import sdmpy
+    sdm = sdmpy.SDM(sdmfile)
+    ants = {ant.stationId:ant.name for ant in sdm['Antenna']}
+    stations = {st.stationId: st.name for st in sdm['Station'] if 'X' not in str(st.name)}
+    west = [int(str(ants[st]).lstrip('ea')) for st in stations if 'W' in str(stations[st])]
+    east = [int(str(ants[st]).lstrip('ea')) for st in stations if 'E' in str(stations[st])]
+    north = [int(str(ants[st]).lstrip('ea')) for st in stations if 'N' in str(stations[st])]
+
+    d = set_pipeline(sdmfile, scan, **kwargs)
+    blarr = rtlib.calc_blarr(d)
+    selwest = [i for i in range(len(blarr)) if all([b in west for b in blarr[i]])]
+    seleast = [i for i in range(len(blarr)) if all([b in east for b in blarr[i]])]
+    selnorth = [i for i in range(len(blarr)) if all([b in north for b in blarr[i]])]
+
+    u,v,w = ps.get_uvw_segment(d, segment=segment)
+    data = pipeline_reproduce(d, segment=segment, product='data')
+    dataw = data[:,selwest].mean(axis=3).mean(axis=2)
+    datae = data[:,seleast].mean(axis=3).mean(axis=2)
+    datan = data[:,selnorth].mean(axis=3).mean(axis=2)
+    uw = u[selwest]
+    ue = u[seleast]
+    un = u[selnorth]
+    vw = v[selwest]
+    ve = v[seleast]
+    vn = v[selnorth]
+
+    grid = n.zeros((len(data), npix), dtype='complex64')
+    grid2 = n.zeros((len(data), npix), dtype='float32')
+    datalist = []
+    for (uu, vv, dd) in [(uw, vw, dataw), (ue, ve, datae), (un, vn, datan)]:
+#        uu = n.round(uu/res).astype(int)
+#        vv = n.round(vv/res).astype(int)
+        uu = n.mod(uu/res, npix)
+        vv = n.mod(vv/res, npix)
+        uv = n.sqrt(uu**2 + vv**2)
+        uv = n.round(uv).astype(int)
+        for i in range(len(uv)):
+            if uv[i] < 512:
+                grid[:, uv[i]] = dd[:, i]
+        grid2 = n.fft.ifft(grid, axis=1).real
+        datalist.append(grid2)
+
+    return datalist
 
 
 def sample_image(d, data, u, v, w, i=-1, verbose=1, imager='xy', wres=100):

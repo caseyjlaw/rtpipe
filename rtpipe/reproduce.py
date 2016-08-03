@@ -11,7 +11,7 @@ import matplotlib
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, returndata=False, outname='', newplot=True, **kwargs):
+def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, returndata=False, outname='', newplot=True, returnstate=False, **kwargs):
     """ Reproduce detection of a single candidate for plotting or inspection.
 
     candsfile can be merge or single-scan cands pkl file. Difference defined by presence of scan in d['featureind'].
@@ -47,10 +47,7 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
     elif 'm1' in d0['features']:
         mcol = d0['features'].index('m1')
 
-    try:
-        scancol = d0['featureind'].index('scan')  # if merged pkl
-    except ValueError:
-        scancol = -1   # if single-scan pkl
+    scancol = d0['featureind'].index('scan')
     segmentcol = d0['featureind'].index('segment')
     intcol = d0['featureind'].index('int')
     dtindcol = d0['featureind'].index('dtind')
@@ -61,24 +58,13 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
     select = np.where(np.abs(snrs) > threshold)[0]
     loc = loc[select]
     prop = prop[select]
-    times = pc.int2mjd(d0, loc)
-    times = times - times[0]
 
-    # default case will print cand info
-    if (candnum < 0) and (not len(candloc)):
-        logger.info('Getting candidates...')
-        logger.info('candnum: loc, SNR, DM (pc/cm3), time (s; rel)')
-        for i in range(len(loc)):
-            logger.info("%d: %s, %.1f, %.1f, %.1f" % (i, str(loc[i]), prop[i, snrcol], np.array(d0['dmarr'])[loc[i,dmindcol]], times[i]))
-    else:  # if candnum or candloc provided, try to reproduce
+    if candnum >= 0 or len(candloc):
         if (candnum >= 0) and not len(candloc):
             logger.info('Reproducing and visualizing candidate %d at %s with properties %s.' % (candnum, loc[candnum], prop[candnum]))
             dmarrorig = d0['dmarr']
             dtarrorig = d0['dtarr']
-            if scancol >= 0:  # here we have a merge pkl
-                scan = loc[candnum, scancol]
-            else:   # a scan-based cands pkl
-                scan = d0['scan']
+            scan = loc[candnum, scancol]
             segment = loc[candnum, segmentcol]
             candint = loc[candnum, intcol]
             dmind = loc[candnum, dmindcol]
@@ -114,6 +100,8 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
         d0['npix'] = 0
         d0['uvres'] = 0
         d0['logfile'] = False
+        d0['savenoise'] = False
+        d0['savecands'] = False
 
 # this triggers redefinition of segment boundaries. memory optimization changed, so this is a problem.
 #        d0['nsegments'] = 0
@@ -140,9 +128,33 @@ def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, ret
         # optionally return data
         if returndata:
             return (im, data)
+        elif returnstate:
+            return d
 
 
-def refine_cand(candsfile, candloc=[], threshold=0):
+def list_cands(candsfile, threshold=0.):
+    """ Prints candidate info in time order above some threshold """
+
+    loc, prop, d0 = pc.read_candidates(candsfile, snrmin=threshold, returnstate=True)
+
+    if 'snr2' in d0['features']:
+        snrcol = d0['features'].index('snr2')
+    elif 'snr1' in d0['features']:
+        snrcol = d0['features'].index('snr1')
+    dmindcol = d0['featureind'].index('dmind')
+
+    if len(loc):
+        snrs = prop[:, snrcol]
+        times = pc.int2mjd(d0, loc)
+        times = times - times[0]
+
+        logger.info('Getting candidates...')
+        logger.info('candnum: loc, SNR, DM (pc/cm3), time (s; rel)')
+        for i in range(len(loc)):
+            logger.info("%d: %s, %.1f, %.1f, %.1f" % (i, str(loc[i]), prop[i, snrcol], np.array(d0['dmarr'])[loc[i,dmindcol]], times[i]))
+
+
+def refine_cand(candsfile, candloc=[], candnum=-1, threshold=0, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[], returndata=False):
     """ Helper function to interact with merged cands file and refine analysis
 
     candsfile is merged pkl file
@@ -150,15 +162,66 @@ def refine_cand(candsfile, candloc=[], threshold=0):
     if no candloc, then it prints out cands above threshold.
     """
 
-    if not candloc:
-        plot_cand(candsfile, candloc=[], candnum=-1, threshold=threshold,
-                  savefile=False, returndata=False)
-    else:
-        d = pickle.load(open(candsfile, 'r'))
-        cands = rt.pipeline_refine(d, candloc)
+    if candnum >= 0:
+        candlocs, candprops, d0 = pc.read_candidates(candsfile, snrmin=threshold, returnstate=True)
+        candloc = candlocs[candnum]
+        candprop = candprops[candnum]
 
-    return cands
-       
+        logger.info('Refining cand {0} with features {1}'.format(candloc, candprop))
+        values = rt.pipeline_refine(d0, candloc, scaledm=scaledm, scalepix=scalepix, scaleuv=scaleuv, chans=chans, returndata=returndata)
+        return values
+
+    elif candloc:
+        logger.info('Refining cand {0}'.format(candloc))
+        d0 = pickle.load(open(candsfile, 'r'))
+        values = rt.pipeline_refine(d0, candloc, scaledm=scaledm, scalepix=scalepix, scaleuv=scaleuv, chans=chans, returndata=returndata)
+        return d, cands
+    else:
+        return None
+
+
+def refine_cands(candsfile, threshold=0, scaledm=2.1, scalepix=2, scaleuv=1.0, chans=[], savepkl=True):
+    """ Runs refine_cand on all positive SNR candidates above threshold. Any detected at higher SNR are highlighted. """
+
+    # get snrs above threshold
+    locs, props, d = pc.read_candidates(candsfile, snrmin=threshold, returnstate=True)
+
+    if 'snr2' in d['features']:
+        snrcol = d['features'].index('snr2')
+    elif 'snr1' in d['features']:
+        snrcol = d['features'].index('snr1')
+    scancol = d['featureind'].index('scan')
+    segmentcol = d['featureind'].index('segment')
+    intcol = d['featureind'].index('int')
+    dtindcol = d['featureind'].index('dtind')
+    dmindcol = d['featureind'].index('dmind')
+    snrs = props[:, snrcol]
+    
+    for (i, snr) in enumerate(snrs):
+        if snr > 0:
+            d, cands = refine_cand(candsfile, threshold=threshold, candnum=i,
+                                   scaledm=scaledm, scalepix=scalepix, scaleuv=scaleuv, chans=chans)
+            if cands:
+                candlocs = np.array(cands.keys())
+                candprops = np.array(cands.values())
+
+                scan = locs[i, scancol]
+                segment = locs[i, segmentcol]
+                candint = locs[i, intcol]
+                dmind = locs[i, dmindcol]
+                dtind = locs[i, dtindcol]
+                candfile = 'cands_{0}_sc{1}-seg{2}-i{3}-dm{4}-dt{5}.pkl'.format(d['fileroot'], scan, segment, candint, dmind, dtind)
+
+                if any([candsnr > snr for candsnr in candprops[:, snrcol]]):
+                    logger.info('Cand {0} had SNR {1} and refinement found a higher SNR in new ones: {2}.'.format(i, snr, candprops[:, snrcol]))
+                    logger.info('Saving to {0}: {1}'.format(candfile, cands))
+
+                    with open(candfile, 'w') as pkl:
+                        pickle.dump(d, pkl, protocol=2)
+                        pickle.dump((candlocs, candprops), pkl, protocol=2)
+                else:
+                    logger.info('Cand {0} had SNR {1}, but refinement found no improvement: {2}'.format(i, snr, candprops[:, snrcol]))
+
 
 def make_cand_plot(d, im, data, loclabel, version=2, snrs=[], outname=''):
     """ Builds a new candidate plot, distinct from the original plots produced by make_cand_plot.
