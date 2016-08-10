@@ -1,22 +1,23 @@
-import rtpipe.parsems as pm
-import rtpipe.parsecal as pc
-import rtpipe.parsesdm as ps
-import rtlib_cython as rtlib
+import os, glob, logging
+import cPickle as pickle
+from functools import partial
+import random
+import math
 import multiprocessing as mp
 import multiprocessing.sharedctypes as mps
 from contextlib import closing
 import numpy as n
 from scipy.special import erf
 import scipy.stats.mstats as mstats
+import rtpipe.parsems as pm
+import rtpipe.parsecal as pc
+import rtpipe.parsesdm as ps
+from rtpipe.version import __version__
+import rtlib_cython as rtlib
 try:
     import casautil 
 except ImportError:
     import pwkit.environments.casa.util as casautil
-import os, glob, logging
-import cPickle as pickle
-from functools import partial
-import random
-import math
 
 # setup CASA and logging
 qa = casautil.tools.quanta()
@@ -737,6 +738,9 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
     else:
         d = pm.get_metadata(filename, scan, paramfile=paramfile, **kwargs)
         d['dataformat'] = 'ms'
+
+    # set version
+    d['rtpipe_version'] = __version__
 
     # define rootname for in/out cal/products
     if fileroot:
