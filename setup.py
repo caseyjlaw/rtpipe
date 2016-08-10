@@ -4,12 +4,14 @@ import numpy, glob
 
 ext_modules = [Extension("rtlib_cython", ["rtlib/rtlib_cython.pyx"], include_dirs=[numpy.get_include()])]
 
+exec(open('rtpipe/version.py').read())  # set __version__
+
 setup(
     name = 'rtpipe',
     description = 'Python scripts for fast transient searches with radio interferometer data',
     author = 'Casey Law',
     author_email = 'caseyjlaw@gmail.com',
-    version = '1.47',
+    version = __version__,
     url = 'http://github.com/caseyjlaw/rtpipe',
     packages = find_packages(),        # get all python scripts in realtime
     package_data = {"rtpipe": 
