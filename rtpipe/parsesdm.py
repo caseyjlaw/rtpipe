@@ -518,7 +518,7 @@ def read_sources(sdmname):
 def read_scans(sdmfile, bdfdir=''):
     """ Use sdmpy to get all scans and info needed for rtpipe as dict """
 
-    sdm = getsdm(sdmfile, bdfdir)
+    sdm = getsdm(sdmfile, bdfdir=bdfdir)
     scandict = {}
     skippedscans = []
 
