@@ -47,6 +47,7 @@ def pipeline(d, segments):
         segments = [segments]
 
     logger.info('Starting search of %s, scan %d, segments %s' % (d['filename'], d['scan'], str(segments)))
+    assert os.path.exists(d['gainfile']), 'Calibration file autodetection failed for gainfile {0}'.format(d['gainfile'])
 
     # seed the pseudo-random number generator # TJWL
     random.seed()    
@@ -776,7 +777,8 @@ def set_pipeline(filename, scan, fileroot='', paramfile='', **kwargs):
             d['gainfile'] = filelist[0]
             logger.info('Autodetected telcal file %s' % d['gainfile'])
 
-        assert os.path.exists(d['gainfile']), 'Calibration file autodetection failed for gainfile {0}'.format(d['gainfile'])
+        if not os.path.exists(d['gainfile']):
+            logger.warn('Calibration file autodetection failed for gainfile {0}'.format(d['gainfile']))
 
     # define features
     d['featureind'] = ['segment', 'int', 'dmind', 'dtind', 'beamnum']  # feature index. should be stable.
