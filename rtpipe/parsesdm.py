@@ -67,7 +67,7 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
                   if prop['source'] == d['source']][0]
 
     # define spectral info
-    sdm = getsdm(d['filename'])
+    sdm = getsdm(d['filename'], bdfdir=d['bdfdir'])
     d['spw_orig'] = [int(str(row.spectralWindowId).split('_')[1])
                      for row in sdm['SpectralWindow']]
     d['spw_nchan'] = [int(row.numChan) for row in sdm['SpectralWindow']]
@@ -303,7 +303,7 @@ def read_bdf_segment(d, segment=-1):
     # read Flag.xml and apply flags for given ant/time range
     # currently only implemented for segmented data
     if d['applyonlineflags'] and segment > -1:
-        sdm = getsdm(d['filename'])
+        sdm = getsdm(d['filename'], bdfdir=d['bdfdir'])
 
         allantdict = dict(zip([str(ant.antennaId) for ant in sdm['Antenna']],
                               [int(str(ant.name).lstrip('ea'))
