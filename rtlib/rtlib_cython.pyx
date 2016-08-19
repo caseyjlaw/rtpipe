@@ -71,7 +71,7 @@ cpdef beamonefullxy(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n.floa
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cpdef imgonefullxy(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n.float32_t, ndim=2, mode='c'] v, n.ndarray[DTYPE_t, ndim=3, mode='c'] data, unsigned int npixx, unsigned int npixy, unsigned int uvres, verbose=1):
+cpdef imgonefullxy(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n.float32_t, ndim=2, mode='c'] v, n.ndarray[DTYPE_t, ndim=3, mode='c'] data, unsigned int npixx, unsigned int npixy, unsigned int uvres, verbose=0):
     # Same as imgallfullxy, but one flux scaled image
     # Defines uvgrid filter before loop
     # flips xy gridding!
@@ -223,8 +223,8 @@ cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarr
     cdef n.ndarray[CTYPE_t, ndim=2] uu = n.round(u/res).astype(n.int)
     cdef n.ndarray[CTYPE_t, ndim=2] vv = n.round(v/res).astype(n.int)
 
-    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)
-    
+#    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)
+
     ok = n.logical_and(n.abs(uu) < npixx/2, n.abs(vv) < npixy/2)
     uu = n.mod(uu, npixx)
     vv = n.mod(vv, npixy)
@@ -244,7 +244,8 @@ cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarr
     candints = []; candims = []; candsnrs = []
     for t in xrange(len0):
         arr[:] = grid[t]
-        im = ifft(arr).real*int(npixx*npixy)
+#        im = ifft(arr).real*int(npixx*npixy)
+        im = pyfftw.interfaces.numpy_fft.ifft2(arr).real
 
         # find most extreme pixel
         snrmax = im.max()/im.std()

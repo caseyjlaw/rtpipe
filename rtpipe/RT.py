@@ -53,13 +53,6 @@ def pipeline(d, segments):
     # seed the pseudo-random number generator # TJWL
     random.seed()    
 
-    # pyfftw wisdom
-#    logger.debug('Finding best FFT...')
-#    arr = pyfftw.empty_aligned((d['npixx'], d['npixy']), dtype='complex64', n=16) 
-#    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)#, planner_effort='FFTW_PATIENT')
-#    pyfftw.interfaces.cache.enable()
-#    pyfftw.interfaces.cache.set_keepalive_time(30)
-
     # set up shared arrays to fill
     data_read_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2);  data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
     u_read_mem = mps.Array(mps.ctypes.c_float, d['nbl']);  u_mem = mps.Array(mps.ctypes.c_float, d['nbl'])
@@ -73,6 +66,12 @@ def pipeline(d, segments):
     v = numpyview(v_mem, 'float32', d['nbl'], raw=False)
     w = numpyview(w_mem, 'float32', d['nbl'], raw=False)
                 
+    # plan fft
+    logger.debug('Planning FFT...')
+    arr = pyfftw.empty_aligned((d['npixx'], d['npixy']), dtype='complex64', n=16)
+    arr[:] = n.random.randn(*arr.shape) + 1j*n.random.randn(*arr.shape)
+    fft_arr = pyfftw.interfaces.numpy_fft.ifft2(arr)
+
     results = {}
     # only one needed for parallel read/process. more would overwrite memory space
     with closing(mp.Pool(1, initializer=initread, initargs=(data_read_mem, u_read_mem, v_read_mem, w_read_mem, data_mem, u_mem, v_mem, w_mem))) as readpool:  
