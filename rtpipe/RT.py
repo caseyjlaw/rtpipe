@@ -14,6 +14,7 @@ import rtpipe.parsecal as pc
 import rtpipe.parsesdm as ps
 from rtpipe.version import __version__
 import rtlib_cython as rtlib
+import pyfftw
 try:
     import casautil 
 except ImportError:
@@ -51,6 +52,13 @@ def pipeline(d, segments):
 
     # seed the pseudo-random number generator # TJWL
     random.seed()    
+
+    # pyfftw wisdom
+    logger.debug('Finding best FFT...')
+    arr = pyfftw.empty_aligned((d['npixx'], d['npixy']), dtype='complex64', n=16) 
+    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)#, planner_effort='FFTW_PATIENT')
+#    pyfftw.interfaces.cache.enable()
+#    pyfftw.interfaces.cache.set_keepalive_time(30)
 
     # set up shared arrays to fill
     data_read_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2);  data_mem = mps.Array(mps.ctypes.c_float, datasize(d)*2)
@@ -124,7 +132,7 @@ def pipeline(d, segments):
                             if d['savecands']:
                                 savecands(d, falsecands, domock=True)
 
-                        cands = search(d, data_mem, u_mem, v_mem, w_mem)
+                        cands = search(d, data_mem, u_mem, v_mem, w_mem, ifft=ifft)
 
                     # save candidate info
                     if d['savecands']:
@@ -358,7 +366,7 @@ def dataflagatom(chans, pol, d, sig, mode, conv):
     return rtlib.dataflag(data, chans, pol, d, sig, mode, conv)
 
 
-def search(d, data_mem, u_mem, v_mem, w_mem):
+def search(d, data_mem, u_mem, v_mem, w_mem, ifft=None):
     """ Search function.
     Queues all trials with multiprocessing.
     Assumes shared memory system with single uvw grid for all images.
@@ -421,7 +429,7 @@ def search(d, data_mem, u_mem, v_mem, w_mem):
                     logger.debug('Imaging %d ints from %d for (%d,%d)' % (searchints, nskip_dm, dm, dt),)
 
                     # imaging in shared memory, mapped over ints
-                    image1part = partial(image1, d, u, v, w, dmind, dtind, beamnum)
+                    image1part = partial(image1, d, u, v, w, dmind, dtind, beamnum, ifft=ifft)
                     nchunkdt = min(searchints, max(d['nthread'], d['nchunk']/dt))  # parallelize in range bounded by (searchints, nthread)
                     irange = [(nskip_dm + searchints*chunk/nchunkdt, nskip_dm + searchints*(chunk+1)/nchunkdt) for chunk in range(nchunkdt)]
                     imageresults = resamppool.map(image1part, irange)
@@ -1116,7 +1124,7 @@ def calc_dmgrid(d, maxloss=0.05, dt=3000., mindm=0., maxdm=0.):
     return dmgrid_final
 
 
-def image1(d, u, v, w, dmind, dtind, beamnum, irange):
+def image1(d, u, v, w, dmind, dtind, beamnum, irange, ifft=None):
     """ Parallelizable function for imaging a chunk of data for a single dm.
     Assumes data is dedispersed and resampled, so this just images each integration.
     Simple one-stage imaging that returns dict of params.
@@ -1127,7 +1135,7 @@ def image1(d, u, v, w, dmind, dtind, beamnum, irange):
     data_resamp = numpyview(data_resamp_mem, 'complex64', datashape(d))
 
 #    logger.info('i0 {0}, i1 {1}, dm {2}, dt {3}, len {4}'.format(i0, i1, dmind, dtind, len(data_resamp)))
-    ims,snr,candints = rtlib.imgallfullfilterxyflux(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[i0:i1], d['npixx'], d['npixy'], d['uvres'], d['sigma_image1'])
+    ims,snr,candints = rtlib.imgallfullfilterxyflux(n.outer(u, d['freq']/d['freq_orig'][0]), n.outer(v, d['freq']/d['freq_orig'][0]), data_resamp[i0:i1], d['npixx'], d['npixy'], d['uvres'], d['sigma_image1'], ifft=ifft)
 
 #    logger.info('finished imaging candints {0}'.format(candints))
 

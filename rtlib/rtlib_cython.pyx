@@ -41,7 +41,7 @@ cpdef beamonefullxy(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n.floa
     cdef n.ndarray[CTYPE_t, ndim=2] uu = n.round(u/res).astype(n.int)
     cdef n.ndarray[CTYPE_t, ndim=2] vv = n.round(v/res).astype(n.int)
 
-    cdef arr = pyfftw.n_byte_align_empty((npixx,npixy), 16, dtype='complex64')
+    cdef arr = pyfftw.empty_aligned((npixx,npixy), dtype='complex64', n=16)
     ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)
 
     ok = n.logical_and(n.abs(uu) < npixx/2, n.abs(vv) < npixy/2)
@@ -88,7 +88,7 @@ cpdef imgonefullxy(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n.float
     cdef unsigned int cellv
     cdef unsigned int nonzeros = 0
     cdef n.ndarray[DTYPE_t, ndim=2] grid = n.zeros((npixx,npixy), dtype='complex64')
-    cdef arr = pyfftw.n_byte_align_empty((npixx,npixy), 16, dtype='complex64')
+    cdef arr = pyfftw.empty_aligned((npixx,npixy), dtype='complex64', n=16)
 
     # put uv data on grid
     cdef n.ndarray[CTYPE_t, ndim=2] uu = n.round(u/uvres).astype(n.int)
@@ -148,14 +148,14 @@ cpdef imgallfullfilterxy(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n
     cdef unsigned int cellu
     cdef unsigned int cellv
     cdef n.ndarray[DTYPE_t, ndim=3] grid = n.zeros((len0,npixx,npixy), dtype='complex64')
-    cdef arr = pyfftw.n_byte_align_empty((npixx,npixy), 32, dtype='complex64')
+    cdef arr = pyfftw.empty_aligned((npixx,npixy), dtype='complex64', n=16)
     cdef float snr
 
     # put uv data on grid
     cdef n.ndarray[CTYPE_t, ndim=2] uu = n.round(u/res).astype(n.int)
     cdef n.ndarray[CTYPE_t, ndim=2] vv = n.round(v/res).astype(n.int)
 
-    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True, planner_effort='FFTW_PATIENT')
+    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)#, planner_effort='FFTW_PATIENT')
     
     ok = n.logical_and(n.abs(uu) < npixx/2, n.abs(vv) < npixy/2)
     uu = n.mod(uu, npixx)
@@ -196,7 +196,7 @@ cpdef imgallfullfilterxy(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n.float32_t, ndim=2, mode='c'] v, n.ndarray[DTYPE_t, ndim=4, mode='c'] data, unsigned int npixx, unsigned int npixy, unsigned int res, float thresh):
+cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n.float32_t, ndim=2, mode='c'] v, n.ndarray[DTYPE_t, ndim=4, mode='c'] data, unsigned int npixx, unsigned int npixy, unsigned int res, float thresh, ifft=None):
     # Same as imgallfull, but returns only candidates and rolls images
     # Defines uvgrid filter before loop
     # flips xy gridding!
@@ -216,14 +216,15 @@ cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarr
     cdef unsigned int cellv
     cdef unsigned int nonzeros = 0
     cdef n.ndarray[DTYPE_t, ndim=3] grid = n.zeros((len0,npixx,npixy), dtype='complex64')
-    cdef arr = pyfftw.n_byte_align_empty((npixx,npixy), 16, dtype='complex64')
+    cdef arr = pyfftw.empty_aligned((npixx,npixy), dtype='complex64', n=16)
     cdef float snr
 
     # put uv data on grid
     cdef n.ndarray[CTYPE_t, ndim=2] uu = n.round(u/res).astype(n.int)
     cdef n.ndarray[CTYPE_t, ndim=2] vv = n.round(v/res).astype(n.int)
 
-    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True, planner_effort='FFTW_PATIENT')
+    if not ifft:
+        ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)#, planner_effort='FFTW_PATIENT')
     
     ok = n.logical_and(n.abs(uu) < npixx/2, n.abs(vv) < npixy/2)
     uu = n.mod(uu, npixx)
@@ -289,7 +290,7 @@ cpdef imgonefullw(n.ndarray[n.float32_t, ndim=2] u, n.ndarray[n.float32_t, ndim=
     cdef int kerv
     cdef n.ndarray[DTYPE_t, ndim=2] grid = n.zeros((npix,npix), dtype='complex64')
 #    cdef n.ndarray[DTYPE_t, ndim=2] gridacc = n.zeros((npix,npix), dtype='complex64')
-    cdef arr = pyfftw.n_byte_align_empty((npix,npix), 16, dtype='complex64')
+    cdef arr = pyfftw.empty_aligned((npix,npix), dtype='complex64', n=16)
 
     # put uv data on grid
     cdef n.ndarray[CTYPE_t, ndim=2] uu = n.round(u/uvres).astype(n.int)
@@ -342,7 +343,7 @@ cpdef genuvkernels(n.ndarray[n.float32_t, ndim=1] w, wres, unsigned int npix, un
     cdef n.ndarray[DTYPE_t, ndim=2] uvker
     npix = npix*oversample
     uvres = uvres/oversample
-    cdef lmker = pyfftw.n_byte_align_empty( (npix, npix), 16, dtype='complex64')
+    cdef lmker = pyfftw.empty_aligned( (npix, npix), dtype='complex64', n=16)
 
     dofft = pyfftw.builders.fft2(lmker)
 
