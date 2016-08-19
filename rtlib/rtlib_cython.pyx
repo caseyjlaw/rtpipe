@@ -196,7 +196,7 @@ cpdef imgallfullfilterxy(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n.float32_t, ndim=2, mode='c'] v, n.ndarray[DTYPE_t, ndim=4, mode='c'] data, unsigned int npixx, unsigned int npixy, unsigned int res, float thresh, ifft=None):
+cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarray[n.float32_t, ndim=2, mode='c'] v, n.ndarray[DTYPE_t, ndim=4, mode='c'] data, unsigned int npixx, unsigned int npixy, unsigned int res, float thresh):
     # Same as imgallfull, but returns only candidates and rolls images
     # Defines uvgrid filter before loop
     # flips xy gridding!
@@ -223,8 +223,7 @@ cpdef imgallfullfilterxyflux(n.ndarray[n.float32_t, ndim=2, mode='c'] u, n.ndarr
     cdef n.ndarray[CTYPE_t, ndim=2] uu = n.round(u/res).astype(n.int)
     cdef n.ndarray[CTYPE_t, ndim=2] vv = n.round(v/res).astype(n.int)
 
-    if not ifft:
-        ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)#, planner_effort='FFTW_PATIENT')
+    ifft = pyfftw.builders.ifft2(arr, overwrite_input=True, auto_align_input=True, auto_contiguous=True)
     
     ok = n.logical_and(n.abs(uu) < npixx/2, n.abs(vv) < npixy/2)
     uu = n.mod(uu, npixx)
