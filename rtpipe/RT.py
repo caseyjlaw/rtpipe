@@ -249,7 +249,7 @@ def pipeline_reproduce(d, candloc=[], segment=None, lm=None, product='data'):
 
     d and segment can be given, if only reading data.
     candloc is length 5 or 6 with ([scan], segment, candint, dmind, dtind, beamnum).
-    product can be 'data', 'dataph', 'imdata'.
+    product can be 'data', 'dataph', 'imdata', 'datacorr'.
     lm is tuple of (l,m) coordinates in radians.
     """
 
@@ -295,9 +295,14 @@ def pipeline_reproduce(d, candloc=[], segment=None, lm=None, product='data'):
         return data
 
     elif product == 'dataph':
-        logger.info('Reproducing data...')
+        logger.info('Reproducing data and phasing...')
         assert lm, 'lm must be tuple with (l, m) coords in radians.'
         data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w, dmind, dtind, lm=lm)
+        return data
+
+    elif product == 'datacorr':
+        logger.info('Reproducing data...')
+        data = runreproduce(d, data_mem, data_reproduce_mem, u, v, w, dmind, dtind)
         return data
 
     elif product == 'imdata':
@@ -979,7 +984,7 @@ def calc_segment_times(d):
         segmenttimes.append((starttime, stoptime))
     d['segmenttimes'] = n.array(segmenttimes)
     totaltimeread = 24*3600*(d['segmenttimes'][:, 1] - d['segmenttimes'][:, 0]).sum()            # not guaranteed to be the same for each segment
-    d['readints'] = n.round(totaltimeread / (d['inttime']*d['nsegments']*d['read_tdownsample'])).astype(int)
+    d['readints'] = n.round(totaltimeread / (d['inttime']*d['nsegments'])).astype(int)
     d['t_segment'] = totaltimeread/d['nsegments']
 
 
@@ -1481,11 +1486,11 @@ def savecands(d, cands, domock=False):
 
 
 def datashape(d):
-    return (d['readints'], d['nbl'], d['nchan'], d['npol'])
+    return (d['readints']/d['read_tdownsample'], d['nbl'], d['nchan']/d['read_fdownsample'], d['npol'])
 
 
 def datasize(d):
-    return long(d['readints']*d['nbl']*d['nchan']*d['npol'])
+    return long(d['readints']*d['nbl']*d['nchan']*d['npol']/(d['read_tdownsample']*d['read_fdownsample']))
 
 
 def numpyview(arr, datatype, shape, raw=False):

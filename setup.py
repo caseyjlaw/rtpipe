@@ -24,5 +24,6 @@ setup(
     entry_points='''
         [console_scripts]
         rtpipe=rtpipe.cli:cli
-'''
+''',
+    zip_safe=False
 )
