@@ -199,7 +199,7 @@ def cleanup(workdir, fileroot, scans=[]):
 
     # merge cands/noise files per scan
     for scan in scans:
-        pc.merge_segments(fileroot, scan, cleanup=True, sizelimit=2.)
+        merge_segments(fileroot, scan, cleanup=True, sizelimit=2.)
 
 
 def merge_noises(pkllist, outroot=''):
@@ -403,7 +403,7 @@ def thresholdcands(candsfile, threshold, numberperscan=1):
     """
 
     # read metadata and define columns of interest
-    loc, prop, d = pc.read_candidates(candsfile, returnstate=True)
+    loc, prop, d = read_candidates(candsfile, returnstate=True)
     try:
         scancol = d['featureind'].index('scan')
     except ValueError:
