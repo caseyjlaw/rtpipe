@@ -96,41 +96,6 @@ def pipeline(d, segments):
                         continue
                     
                     with data_mem.get_lock():
-                        if d['mock']: # could be list or int
-                            # assume that std of vis in the middle of the segment is
-                            # characteristic of noise throughout the segment
-                            falsecands = {}
-                            datamid = n.ma.masked_equal(data[d['readints']/2].real, 0, copy=True)
-                            madstd = 1.4826 * n.ma.median(n.abs(datamid - n.ma.median(datamid)))/n.sqrt(d['npol']*d['nbl']*d['nchan'])
-                            std = datamid.std()/n.sqrt(d['npol']*d['nbl']*d['nchan'])
-                            logger.debug('Noise per vis in central int: madstd {}, std {}'.format(madstd, std))
-                            dt = 1 # pulse width in integrations
-
-                            if isinstance(d['mock'], int):
-                                for i in n.random.randint(d['datadelay'][-1], d['readints'], d['mock']):  # add nmock transients at random ints
-                                    (loff, moff, A, DM) = make_transient(madstd, max(d['dmarr']), Amin=1.2*d['sigma_image1'])
-                                    candid =  (int(segment), int(i), DM, int(dt), int(0))
-                                    falsecands[candid] = [A/madstd, A, loff, moff]
-                            elif isinstance(d['mock'], list):
-                                for mock in d['mock']:
-                                    try:
-                                        (i, DM, loff, moff, SNR) = mock
-                                        candid =  (int(segment), int(i), DM, int(dt), int(0))
-                                        falsecands[candid] = [SNR, SNR*madstd, loff, moff]
-                                    except:
-                                        logger.warn('Could not parse mock parameters: {}'.format(mock))
-                            else:
-                                logger.warn('Not a recognized type for mock.')
-
-                            for candid in falsecands:
-                                (segment, i, DM, dt, beamnum) = candid
-                                (SNR, A, loff, moff) = falsecands[candid]
-                                logger.info('Adding mock transient at int %d, DM %.1f, (l, m) = (%f, %f) at est SNR %.1f' % (i, DM, loff, moff, SNR))
-                                add_transient(d, data, u, v, w, loff, moff, i, A, DM, dt)
-
-                            if d['savecands']:
-                                savecands(d, falsecands, domock=True)
-
                         cands = search(d, data_mem, u_mem, v_mem, w_mem)
 
                     # save candidate info
@@ -234,6 +199,41 @@ def pipeline_dataprep(d, segment):
                 logger.debug('Not rephasing.')
         except KeyError:
             pass
+
+        if d['mock']: # could be list or int
+            # assume that std of vis in the middle of the segment is
+            # characteristic of noise throughout the segment
+            falsecands = {}
+            datamid = n.ma.masked_equal(data_read[d['readints']/2].real, 0, copy=True)
+            madstd = 1.4826 * n.ma.median(n.abs(datamid - n.ma.median(datamid)))/n.sqrt(d['npol']*d['nbl']*d['nchan'])
+            std = datamid.std()/n.sqrt(d['npol']*d['nbl']*d['nchan'])
+            logger.debug('Noise per vis in central int: madstd {}, std {}'.format(madstd, std))
+            dt = 1 # pulse width in integrations
+
+            if isinstance(d['mock'], int):
+                for i in n.random.randint(d['datadelay'][-1], d['readints'], d['mock']):  # add nmock transients at random ints
+                    (loff, moff, A, DM) = make_transient(madstd, max(d['dmarr']), Amin=1.2*d['sigma_image1'])
+                    candid =  (int(segment), int(i), DM, int(dt), int(0))
+                    falsecands[candid] = [A/madstd, A, loff, moff]
+            elif isinstance(d['mock'], list):
+                for mock in d['mock']:
+                    try:
+                        (i, DM, loff, moff, SNR) = mock
+                        candid =  (int(segment), int(i), DM, int(dt), int(0))
+                        falsecands[candid] = [SNR, SNR*madstd, loff, moff]
+                    except:
+                        logger.warn('Could not parse mock parameters: {}'.format(mock))
+            else:
+                logger.warn('Not a recognized type for mock.')
+
+            for candid in falsecands:
+                (segment, i, DM, dt, beamnum) = candid
+                (SNR, A, loff, moff) = falsecands[candid]
+                logger.info('Adding mock transient at int %d, DM %.1f, (l, m) = (%f, %f) at est SNR %.1f' % (i, DM, loff, moff, SNR))
+                add_transient(d, data_read, u_read, v_read, w_read, loff, moff, i, A, DM, dt)
+            
+            if d['savecands']:
+                savecands(d, falsecands, domock=True)
 
         with data_mem.get_lock():
             data[:] = data_read[:]
@@ -1411,7 +1411,7 @@ def imagearm(sdmfile, scan, segment, npix=512, res=50, **kwargs):
     return datalist
 
 
-def sample_image(d, data, u, v, w, i=-1, verbose=1, imager='xy', wres=100):
+def sample_image(d, data, u, v, w, i=-1, verbose=0, imager='xy', wres=100):
     """ Samples one integration and returns image
     i is integration to image. Default is mid int.
     """
