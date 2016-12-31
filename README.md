@@ -3,7 +3,7 @@ rtpipe
 
 `rtpipe` (as in 'real-time pipeline') is a Python library for searching radio interferometry data for fast (subsecond) transients. This differs from traditional time-domain techniques used on large single-dish telescopes in that visibilities also measure spatial information (i.e., make images).
 
-To view a demonstration of `rtpipe`, see this [Jupyter notebook with FRB 121102 data](https://github.com/caseyjlaw/FRB121102/blob/master/demo_FRB121102.ipynb). To execute that notebook, you will need to install the code and download about 1 GB of data. Alternatively, you can also explore some simpler featuers in a Jupyter notebook using [![Binder](http://mybinder.org/badge.svg)](http://mybinder.org:/repo/caseyjlaw/reproducing-fast-imaging-rrats).
+To view a demonstration of `rtpipe`, see this [Jupyter notebook with FRB 121102 data](https://github.com/caseyjlaw/FRB121102/blob/master/demo_FRB121102.ipynb). To execute that notebook, you will need to install the code and download about 1 GB of data. Alternatively, you can also explore some simpler features in a Jupyter notebook using [![Binder](http://mybinder.org/badge.svg)](http://mybinder.org:/repo/caseyjlaw/reproducing-fast-imaging-rrats).
 
 `rtpipe` supersedes [tpipe](http://github.com/caseyjlaw/tpipe) by using a paradigm that defines how to break long (large) data into smaller, independent pieces with a single treatment (flagging, image gridding, calibration, etc.).
 
