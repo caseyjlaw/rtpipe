@@ -12,8 +12,8 @@ Requirements
 
 * Python 2.7
 * Scientific Python (e.g., supported by NumFOCUS): numpy, scipy, matplotlib, multiprocessing, bokeh
-* Cython 0.19.1
-* [pyFFTW](https://pypi.python.org/pypi/pyFFTW) (0.92)
+* Cython 0.19.1+
+* [pyFFTW](https://pypi.python.org/pypi/pyFFTW) 0.92+
 * [pwkit](http://github.com/pkgw/pwkit) (for access to CASA libraries)
 * [sdmpy](http://github.com/caseyjlaw/sdmpy) (for reading SDM format data)
 
