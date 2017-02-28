@@ -56,10 +56,15 @@ def read_candidates(candsfile, snrmin=0, snrmax=999, returnstate=False):
     elif isinstance(cands, tuple):
         loc, prop = cands
         assert isinstance(loc, np.ndarray) and isinstance(prop, np.ndarray), 'if cands object is tuple, contents must be two ndarrays'
-        if len(prop):
-            snrsel = np.where( (np.abs(prop[:, snrcol]) > snrmin) & (np.abs(prop[:, snrcol]) < snrmax) )
-            loc = loc[snrsel]
-            prop = prop[snrsel]
+        if not len(loc):
+            if returnstate:
+                return (loc, prop, d)
+            else:
+                return (loc, prop)
+
+        snrsel = np.where( (np.abs(prop[:, snrcol]) > snrmin) & (np.abs(prop[:, snrcol]) < snrmax) )
+        loc = loc[snrsel]
+        prop = prop[snrsel]
 
     else:
         logger.error('Cands object (in cands file) must be dict or tuple(np.array, np.array).')
