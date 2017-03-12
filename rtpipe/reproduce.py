@@ -11,6 +11,7 @@ import matplotlib
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 def plot_cand(candsfile, candloc=[], candnum=-1, threshold=0, savefile=True, returndata=False, outname='', newplot=True, returnstate=False, **kwargs):
     """ Reproduce detection of a single candidate for plotting or inspection.
 
@@ -278,6 +279,7 @@ def make_cand_plot(d, im, data, loclabel, version=2, snrs=[], outname=''):
         ax_sp = fig.add_axes(rect_sp)
         spectra = np.swapaxes(data.real,0,1)      # seems that latest pickle actually contains complex values in spectra...
         dd = np.concatenate( (spectra[...,0], np.zeros_like(spectra[...,0]), spectra[...,1]), axis=1)    # make array for display with white space between two pols
+        logger.debug('{0}'.format(dd.shape))
         impl = ax_dynsp.imshow(dd, origin='lower', interpolation='nearest', aspect='auto', cmap=plt.get_cmap('Greys'))
         ax_dynsp.text(0.5, 0.95, 'RR LL', horizontalalignment='center', verticalalignment='center', fontsize=16, color='w', transform = ax_dynsp.transAxes)
         ax_dynsp.set_yticks(range(0,len(d['freq']),30))
@@ -306,6 +308,7 @@ def make_cand_plot(d, im, data, loclabel, version=2, snrs=[], outname=''):
         # image
         ax = fig.add_subplot(223)
         fov = np.degrees(1./d['uvres'])*60.
+        logger.debug('{0}'.format(im.shape))
         impl = ax.imshow(im.transpose(), aspect='equal', origin='upper',
                          interpolation='nearest', extent=[fov/2, -fov/2, -fov/2, fov/2],
                          cmap=plt.get_cmap('Greys'), vmin=0, vmax=0.5*im.max())
@@ -381,6 +384,9 @@ def make_cand_plot(d, im, data, loclabel, version=2, snrs=[], outname=''):
         dd2 = spectra[...,0] + spectra[...,1]
         dd3 = spectra[...,1]
         colormap = 'viridis'
+        logger.debug('{0}'.format(dd1.shape))
+        logger.debug('{0}'.format(dd2.shape))
+        logger.debug('{0}'.format(dd3.shape))
         impl1 = ax_dynsp1.imshow(dd1, origin='lower', interpolation='nearest', aspect='auto', cmap=plt.get_cmap(colormap))
         impl2 = ax_dynsp2.imshow(dd2, origin='lower', interpolation='nearest', aspect='auto', cmap=plt.get_cmap(colormap))
         impl3 = ax_dynsp3.imshow(dd3, origin='lower', interpolation='nearest', aspect='auto', cmap=plt.get_cmap(colormap))
@@ -491,6 +497,9 @@ def make_cand_plot(d, im, data, loclabel, version=2, snrs=[], outname=''):
             dd1avgcrop = dd1avg[len(ones):len(dd1avg),:]
             dd2avgcrop = dd2avg[len(ones):len(dd2avg),:]
             dd3avgcrop = dd3avg[len(ones):len(dd3avg),:]
+        logger.debug('{0}'.format(dd1avgcrop.shape))
+        logger.debug('{0}'.format(dd2avgcrop.shape))
+        logger.debug('{0}'.format(dd3avgcrop.shape))
         impl1 = ax_dynsp1.imshow(dd1avgcrop, origin='lower', interpolation='nearest', aspect='auto', cmap=plt.get_cmap(colormap))
         impl2 = ax_dynsp2.imshow(dd2avgcrop, origin='lower', interpolation='nearest', aspect='auto', cmap=plt.get_cmap(colormap))
         impl3 = ax_dynsp3.imshow(dd3avgcrop, origin='lower', interpolation='nearest', aspect='auto', cmap=plt.get_cmap(colormap))
@@ -546,14 +555,16 @@ def make_cand_plot(d, im, data, loclabel, version=2, snrs=[], outname=''):
         xratio = len(im[0])/fov # pix/arcmin
         yratio = len(im)/fov # pix/arcmin
         mult = 5 # sets how many times the synthesized beam the zoomed FOV is
-        xmin = int(len(im[0])/2-(m1arcm+sbeam*mult)*xratio)
+        xmin = max(0, int(len(im[0])/2-(m1arcm+sbeam*mult)*xratio))
         xmax = int(len(im[0])/2-(m1arcm-sbeam*mult)*xratio)
-        ymin = int(len(im)/2-(l1arcm+sbeam*mult)*yratio)
+        ymin = max(0, int(len(im)/2-(l1arcm+sbeam*mult)*yratio))
         ymax = int(len(im)/2-(l1arcm-sbeam*mult)*yratio)
         left, width = 0.231, 0.15
         bottom, height = 0.465, 0.15
         rect_imcrop = [left, bottom, width, height]
         ax_imcrop = fig.add_axes(rect_imcrop)
+        logger.debug('{0}'.format(im.transpose()[xmin:xmax,ymin:ymax].shape))
+        logger.debug('{0} {1} {2} {3}'.format(xmin, xmax, ymin, ymax))
         impl = ax_imcrop.imshow(im.transpose()[xmin:xmax,ymin:ymax], aspect=1, origin='upper',
                                 interpolation='nearest', extent=[-1,1,-1,1],
                                 cmap=plt.get_cmap('viridis'), vmin=0, vmax=0.5*im.max())
