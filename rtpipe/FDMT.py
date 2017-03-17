@@ -64,7 +64,7 @@ def FDMT_params(f_min, f_max, maxDT, inttime):
     Summarize DM grid and other parameters.
     """
 
-    maxDM = inttime*maxDT/(4.2e-3 * (1/f_min**2 - 1/f_max**2))
+    maxDM = inttime*maxDT/(4.1488e-3 * (1/f_min**2 - 1/f_max**2))
     logger.info('Freqs from {0}-{1}, MaxDT {2}, Int time {3} => maxDM {4}'.format(f_min, f_max, maxDT, inttime, maxDM))
 
 

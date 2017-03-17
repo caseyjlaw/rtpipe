@@ -591,7 +591,7 @@ cpdef n.ndarray[n.int_t, ndim=1] calc_delay(n.ndarray[float, ndim=1] freq, float
 
     cdef float freqref = freq[len(freq)-1]
 
-    return n.round((4.2e-3 * dm * (1/(freq*freq) - 1/(freqref*freqref)))/inttime,0).astype(n.int16)
+    return n.round((4.1488e-3 * dm * (1/(freq*freq) - 1/(freqref*freqref)))/inttime,0).astype(n.int16)
 
 cpdef calc_resample(float chanwidth, float midfreq, float dm, float inttime):
     """ Function to calculate resmapling factor.

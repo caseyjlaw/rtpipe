@@ -529,7 +529,7 @@ def add_transient(d, data, u, v, w, l1, m1, i, s, dm=0, dt=1):
     """
 
     ang = lambda ch: l1 * u * d['freq'][ch]/d['freq_orig'][0] + m1 * v * d['freq'][ch]/d['freq_orig'][0]
-    delay = lambda ch: n.round(4.2e-3 * dm * (d['freq'][ch]**(-2) - d['freq'][-1]**(-2))/d['inttime'], 0).astype(int)
+    delay = lambda ch: n.round(4.1488e-3 * dm * (d['freq'][ch]**(-2) - d['freq'][-1]**(-2))/d['inttime'], 0).astype(int)
 
     #snr_ideal = s/(data[i].real.std()/n.sqrt(d['npol']*d['nbl']*d['nchan']))
     #logger.info('SNR of source with system brightness %.1f = %d (idealized; ok at low SNR)' % (s, int(snr_ideal)))

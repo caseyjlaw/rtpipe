@@ -711,7 +711,7 @@ def flag_calcmad(data):
 
 #     freqref = freq[len(freq)-1]
 
-#     return np.round((4.2e-3 * dm * (1/(freq*freq) - 1/(freqref*freqref)))/inttime,0).astype(np.int16)
+#     return np.round((4.1488e-3 * dm * (1/(freq*freq) - 1/(freqref*freqref)))/inttime,0).astype(np.int16)
 
 
 # @jit
