@@ -51,7 +51,7 @@ Contributors
 
 Citation
 ----
-If you use tpipe, please support open software by citing the record on the [Astrophysics Source Code Library](ascl.net) at http://ascl.net/1706.002. In AASTeX, you can do this like so:
+If you use rtpipe, please support open software by citing the record on the [Astrophysics Source Code Library](ascl.net) at http://ascl.net/1706.002. In AASTeX, you can do this like so:
 ```
 \software{..., rtpipe \citep{2017ascl.soft06002L}, ...}
 ```
