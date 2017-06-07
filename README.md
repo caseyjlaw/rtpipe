@@ -49,3 +49,9 @@ Contributors
 * Peter Williams (CASA libraries and general advice)
 * Paul Demorest (sdmpy)
 
+Citation
+----
+If you use tpipe, please support open software by citing the record on the [Astrophysics Source Code Library](ascl.net) at http://ascl.net/1706.002. In AASTeX, you can do this like so:
+```
+\software{..., tpipe \citep{2017ascl.soft06002L}, ...}
+```
