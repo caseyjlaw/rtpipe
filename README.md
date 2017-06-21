@@ -1,9 +1,13 @@
 rtpipe
 ==
 
+<a href="http://ascl.net/1706.002"><img src="https://img.shields.io/badge/ascl-1706.002-blue.svg?colorB=262255" alt="ascl:1706.002" /></a>
+[![Binder](http://mybinder.org/badge.svg)](http://mybinder.org:/repo/caseyjlaw/reproducing-fast-imaging-rrats).
+
+
 `rtpipe` (as in 'real-time pipeline') is a Python library for searching radio interferometry data for fast (subsecond) transients. This differs from traditional time-domain techniques used on large single-dish telescopes in that visibilities also measure spatial information (i.e., make images).
 
-To view a demonstration of `rtpipe`, see this [Jupyter notebook with FRB 121102 data](https://github.com/caseyjlaw/FRB121102/blob/master/demo_FRB121102.ipynb). To execute that notebook, you will need to install the code and download about 1 GB of data. Alternatively, you can also explore some simpler features in a Jupyter notebook using [![Binder](http://mybinder.org/badge.svg)](http://mybinder.org:/repo/caseyjlaw/reproducing-fast-imaging-rrats).
+To view a demonstration of `rtpipe`, see this [Jupyter notebook with FRB 121102 data](https://github.com/caseyjlaw/FRB121102/blob/master/demo_FRB121102.ipynb). To execute that notebook, you will need to install the code and download about 1 GB of data. Alternatively, you can also explore some simpler features in a Jupyter notebook using [Binder](http://mybinder.org:/repo/caseyjlaw/reproducing-fast-imaging-rrats).
 
 `rtpipe` supersedes [tpipe](http://github.com/caseyjlaw/tpipe) by using a paradigm that defines how to break long (large) data into smaller, independent pieces with a single treatment (flagging, image gridding, calibration, etc.).
 
@@ -28,7 +32,7 @@ If you have [anaconda](https://www.continuum.io/downloads), you can install `rtp
 I've had one report that installing from the conda-forge channel does not pick up some packages. If so, you may also try installing like this:
 
     conda install -c conda-forge numpy scipy jupyter bokeh cython matplotlib
-    conda install -c pkgw pwkit casa-tools casa-python casa-data
+    conda install -c pkgw-forge pwkit casa-tools casa-python casa-data
     pip install rtpipe
 
 Alternate Install
@@ -49,3 +53,9 @@ Contributors
 * Peter Williams (CASA libraries and general advice)
 * Paul Demorest (sdmpy)
 
+Citation
+----
+If you use rtpipe, please support open software by citing the record on the [Astrophysics Source Code Library](ascl.net) at http://ascl.net/1706.002. In AASTeX, you can do this like so:
+```
+\software{..., rtpipe \citep{2017ascl.soft06002L}, ...}
+```
