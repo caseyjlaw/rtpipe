@@ -551,7 +551,7 @@ def read_scans(sdmfile, bdfdir=''):
                 scandict[scannum]['bdfstr'] = None
                 logger.debug('Invalid bdf for %d of %s' % (scannum, sdmfile) )
 
-        except IOError:
+        except AttributeError, IOError:
             skippedscans.append(scannum)
 
     if skippedscans:
