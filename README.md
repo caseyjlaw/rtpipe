@@ -59,3 +59,8 @@ If you use rtpipe, please support open software by citing the record on the [Ast
 ```
 \software{..., rtpipe \citep{2017ascl.soft06002L}, ...}
 ```
+
+Acknowledgements
+--------
+This code has been supported by the University of California Office of the President under Lab Fees Research Program Award
+237863 and NSF ATI program under Grant 1611606.
