@@ -539,7 +539,9 @@ def read_scans(sdmfile, bdfdir=''):
             interval = scan.bdf.get_integration(0).interval
             endmjd = startmjd + (nints*interval)/(24*3600)
             bdfstr = scan.bdf.fname
-
+        except AttributeError, IOError:
+            skippedscans.append(scannum)
+        else:
             scandict[scannum]['startmjd'] = startmjd
             scandict[scannum]['endmjd'] = endmjd
             scandict[scannum]['duration'] = endmjd-startmjd
@@ -550,9 +552,6 @@ def read_scans(sdmfile, bdfdir=''):
             if (not os.path.exists(scandict[scannum]['bdfstr'])) or ('X1' in bdfstr):
                 scandict[scannum]['bdfstr'] = None
                 logger.debug('Invalid bdf for %d of %s' % (scannum, sdmfile) )
-
-        except IOError:
-            skippedscans.append(scannum)
 
     if skippedscans:
         logger.warn('No BDF found for scans {0}'.format(skippedscans))
