@@ -54,8 +54,8 @@ def get_metadata(filename, scan, paramfile='', **kwargs):
             logger.warn('loglevel of {0} not attribute of logging'.format(d['loglevel']))
 
     # define scan list
-    if 'bdfdir' not in d:
-        d['bdfdir'] = ''
+#    if 'bdfdir' not in d:
+#        d['bdfdir'] = ''
 
     scans = read_scans(d['filename'], bdfdir=d['bdfdir'])
     sources = read_sources(d['filename'])

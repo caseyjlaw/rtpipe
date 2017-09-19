@@ -27,6 +27,7 @@ class Params(object):
         self.flagantsol = True; self.gainfile = ''; self.bpfile = ''; self.fileroot = ''; self.applyonlineflags = True
         self.savenoise = False; self.savecands = False; self.logfile = True; self.loglevel = 'INFO'
         self.writebdfpkl = False; self.mock = 0
+        self.bdfdir = ''
                            
         # overload with the parameter file values, if provided
         if len(paramfile):
