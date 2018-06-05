@@ -10,7 +10,10 @@ from bokeh.models import Row, Column
 from collections import OrderedDict 
 from rtpipe.parsecands import read_noise, read_candidates
 from time import asctime
-import activegit, sys
+try:
+    import activegit, sys
+except:
+    print('no activegit')
 
 def initializenb():
     """ Find input files and log initialization info """
